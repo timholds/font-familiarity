@@ -1,0 +1,29 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Font Dataset Generator</title>
+    <!-- Dynamically include Google Fonts -->
+    {% for font in fonts %}
+    <link href="{{ font.url }}" rel="stylesheet">
+    {% endfor %}
+    
+    <style>
+        .text-block {
+            padding: 20px;
+            margin: 20px;
+            background: white;
+            min-height: 200px;
+            font-size: 16;
+        }
+    </style>
+</head>
+<body style="background-color: #f0f0f0;">
+    {% for font in fonts %}
+    <div id="{{ font.name|replace(' ', '_') }}" class="text-block" style="font-family: '{{ font.name }}', sans-serif;">
+        <h3>{{ font.name }}</h3>
+        {{ text }}
+    </div>
+    {% endfor %}
+</body>
+</html>
