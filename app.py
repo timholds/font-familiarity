@@ -1,6 +1,12 @@
 # app.py
 from flask import Flask, render_template
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import os
+import time
 
 app = Flask(__name__)
 
@@ -16,28 +22,71 @@ def load_fonts(filename):
 
 @app.route('/')
 def home():
-    # Load the Lorem Ipsum text
-    lorem_text = load_text_file('lorem_ipsum.txt')
-    
-    # Load the list of fonts
+    """Landing page with links to all fonts"""
     fonts = load_fonts('fonts.txt')
-    
-    # Create font data for template
-    font_data = []
-    for font in fonts:
-        # Convert font name to format needed for Google Fonts URL
-        url_font_name = font.replace(' ', '+')
-        font_data.append({
-            'name': font,
-            'url': f'https://fonts.googleapis.com/css2?family={url_font_name}&display=swap'
-        })
-    
-    return render_template(
-        'base.html',
-        fonts=font_data,
-        text=lorem_text
-    )
+    return render_template('index.html', fonts=fonts)
+
+@app.route('/font/<font_name>')
+def show_font(font_name):
+    """Page for individual font"""
+    lorem_text = load_text_file('lorem_ipsum.txt')
+    font_data = {
+        'name': font_name,
+        'url': f'https://fonts.googleapis.com/css2?family={font_name.replace(" ", "+")}&display=swap'
+    }
+    return render_template('single_font.html', font=font_data, text=lorem_text)
+
+def setup_webdriver():
+    """Configure Chrome WebDriver with appropriate options"""
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--disable-gpu')
+    return webdriver.Chrome(options=chrome_options)
+
+def capture_screenshots(output_dir='font-images'):
+    """Capture screenshots for each font"""
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    fonts = load_fonts('fonts.txt')
+    driver = setup_webdriver()
+    base_url = 'http://localhost:5000'
+
+    try:
+        for font in fonts:
+            print(f"Processing font: {font}")
+            
+            # Navigate to the font's page
+            font_url = f"{base_url}/font/{font.replace(' ', '%20')}"
+            driver.get(font_url)
+            
+            # Wait for font to load
+            time.sleep(2)  # Give time for font to load
+            
+            # Find and screenshot the text block
+            element = driver.find_element(By.CLASS_NAME, 'text-block')
+            
+            # Clean filename
+            filename = f"{font.replace(' ', '_').lower()}.png"
+            filepath = os.path.join(output_dir, filename)
+            
+            # Take screenshot
+            element.screenshot(filepath)
+            print(f"Saved screenshot to {filepath}")
+            
+    finally:
+        driver.quit()
 
 if __name__ == '__main__':
-    app.debug = True
-    app.run(host='0.0.0.0', port=5000)
+    # Run Flask app in a separate thread
+    from threading import Thread
+    server = Thread(target=lambda: app.run(debug=False))
+    server.daemon = True
+    server.start()
+    
+    # Give the server a moment to start
+    time.sleep(2)
+    
+    # Start capturing screenshots
+    capture_screenshots()
