@@ -1,0 +1,22 @@
+<!-- templates/single_font.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Font: {{ font.name }}</title>
+    <link href="{{ font.url }}" rel="stylesheet">
+    <style>
+        .text-block {
+            padding: 20px;
+            margin: 20px;
+            background: white;
+            min-height: 200px;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body style="background-color: #f0f0f0;">
+    <div class="text-block" style="font-family: '{{ font.name }}', sans-serif;">
+        {{ text }}
+    </div>
+</body>
+</html>
