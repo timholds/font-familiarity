@@ -59,6 +59,8 @@ def find_similar_classes(query_class, centroids, k=5):
 
 # Confusion Matrix
 def get_confusion_based_similarities(model, dataloader):
+    # TODO get num_classes from dataloader / num lines in fonts.txt
+    num_classes = 10
     confusion = torch.zeros(num_classes, num_classes)
     model.eval()
     
