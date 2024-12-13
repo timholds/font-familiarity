@@ -1,8 +1,9 @@
+import torch
 from pathlib import Path
-from generate_data import FontDataset
+from dataset import FontDataset
 from torch.utils.data import DataLoader
 from train import FontSimilarityModel
-
+from typing import List, Dict, Tuple
 
 def find_similar_fonts(self, query_idx: int, centroids: Dict[int, torch.Tensor], 
                           k: int = 5) -> List[Tuple[int, float]]:
@@ -33,11 +34,13 @@ def main():
     font_paths = list(font_dir.glob("*.ttf"))
     
     # Create dataset and dataloader
-    dataset = FontDataset(font_paths, text_samples)
+    dataset = FontDataset()#font_paths, text_samples)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
     
     # Initialize and train model
     model = FontSimilarityModel()
+    #model = torch.compile(model)
+    breakpoint()
     num_epochs = 10
     
     for epoch in range(num_epochs):

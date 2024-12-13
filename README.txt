@@ -22,3 +22,7 @@ no access to training data, "synthesizes pseudo samples from the underlying data
 distribution on which it is trained."
 
 do contrastive losses mean anything for us? could we classify the fonts into families and use that as an (additional) label?
+
+[ ] figure out how to get the images into a nice shape for ML
+- what resolution should i use 
+- should i be using PIL to create the images directly and use the google fonts api to download the fonts files locally?

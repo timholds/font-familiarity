@@ -6,11 +6,17 @@
     <link href="{{ font.url }}" rel="stylesheet">
     <style>
         .text-block {
+            width: 512px;
+            height: 512px;
             padding: 20px;
-            margin: 20px;
+            margin: 0;  /* Remove margin to ensure consistent size */
             background: white;
-            min-height: 200px;
             font-size: 24px;
+            box-sizing: border-box;
+            overflow: hidden;  /* Ensure content doesn't affect size */
+            display: flex;
+            align-items: center;  /* Center content vertically */
+            justify-content: center;  /* Center content horizontally */
         }
     </style>
 </head>
