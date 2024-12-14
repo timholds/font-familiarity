@@ -26,3 +26,7 @@ do contrastive losses mean anything for us? could we classify the fonts into fam
 [ ] figure out how to get the images into a nice shape for ML
 - what resolution should i use 
 - should i be using PIL to create the images directly and use the google fonts api to download the fonts files locally?
+
+Update whole shebang into a data generating parameter
+Create a separate system for training the network once you have the data
+[ ] get it reading from the lorum ipson file
