@@ -201,6 +201,8 @@ Imagine the space of image augmentations that would be helpful if we wanted to l
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
 # TODO 
+[ ] fix the error when uploading an image
+[ ] add some processing to resize images coming in and make them single channel
 [ ] remove the model saving part for the sweep. once we know which model trains best we can retrain it and reanble the saving.
 [ ] cleanup the metrics 
 - [ ] is the epoch time metric actually telling me how long an epoch takes?
