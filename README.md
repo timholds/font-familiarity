@@ -12,11 +12,12 @@ Try a more complex model with more data and more regularization
 Try a more complex model with more data and more regularization and more data augmentation
 [ ] Visualize model predictions some small holdout batch every epoch
 
-[ ] data augmentation - vary positioning/layout, font size and style, color and background color, text itself 
-[ ] try a clip model of same font different font?
-[ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5
-[ ] do we get anything out of top eigenvectors of the data covariance matrix
-[ ] distance between their mean images.
+[ ] data augmentation - vary positioning/layout, font size and style, color and background color, text itself  
+[ ] try a clip model of same font different font?  
+[ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5  
+[ ] do we get anything out of top eigenvectors of the data covariance matrix  
+[ ] distance between their mean images  
+
 
 # main software pieces
 - html files to render the text into fonts
@@ -35,18 +36,20 @@ Try a more complex model with more data and more regularization and more data au
 
 
 # TODO
+[ ] figure out how to incorporate weight and width into the data augmentation and perhaps the model explicitly ala https://fonts.google.com/specimen/Roboto/tester  
+-> might involve downloading all the font files and rendering them differently  
 [ ]  update the data generation to something less crude than this original ugly hack - text = text * 10  # Repeat text to ensure enough content  
-[ ] 
 [ X ] get the script reading the text from the lorum_ipsom.txt file  
 [ X ] get the fonts read in to the html page from fonts.txt  
 [ X ] get the script to render the text on an html page in the correct font  
-[ X ] figure out how much data I need  
+[ X ] figure out how much data I need - 100-10k images per class  
 [ X ] get the screenshots saving with minimal overlap  
 [ X ] collect a dataset of screenshots  
 [ X ] get the full sized model to train in colab on an A100  
     - taking ~90/s per iteration  
 Make sure that the metrics look right and wandb   
-[  ] Get a sweep working on colab  
+[  ] Get a sweep working on colab 
+[ ] Put a little demo of each of the fonts on the frontend 
 
 [ X ] get the flask app to launch for the frontend using the model and class embeddings
 [ ] make a simple frontend that is capable of taking in images of fonts and returning out similar fonts  
@@ -283,3 +286,13 @@ Establish a baaaaseline baseline with a one layer MLP
 Establish simple conv baseline for the encoder
 Test a resnet as the encoder
 Test a resnet with supervised contrastive loss (does it need to be a pretrain)
+
+# Similar tools
+The first 3 google results for font finders failed to recognize any of the font images I uploaded. These were high quality 256x256 images, much better quality than I'm training on. They all seem to segment the characters individually and then match against the characters. 
+
+I also tried a "Font Identifier AI" in the ChatGPT store that failed to recognize any of the fonts images I tried.  
+
+The Font Finder Chrome plugin seems quite promising since it uses the information from the browser's elements / CSS. However the format it returns in isn't all that helpful: font-family (stack)
+
+![Font Plugin Example](font-plugin.png)
+https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekalahgha
