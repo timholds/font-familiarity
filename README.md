@@ -1,6 +1,17 @@
 The readme is a project notes section for now.
 
-**Problem Statement**: how do we get the most similar fonts to a given font?
+**Problem Statement**: If you see a font in the wild and want to use it yourself, how do you know the name of the font? If its a paid font, how do you find similar free fonts?
+
+Machine learning steps
+Simple baseline model
+Get a model to overfit
+Regularize
+Try a more complex model
+Try a more complex model with more data
+Try a more complex model with more data and more regularization
+Try a more complex model with more data and more regularization and more data augmentation
+[ ] Visualize model predictions some small holdout batch every epoch
+
 [ ] data augmentation - vary positioning/layout, font size and style, color and background color, text itself 
 [ ] try a clip model of same font different font?
 [ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5
@@ -113,6 +124,22 @@ challenge - 50GB of image data is too big to upload past Github 5GB limit
 
 TODO experiment with different image sizes and compression levels
 TODO try saving images in greyscale
+
+# Dataset
+The images themselves are currently 256x256 grayscale. The code to generate the font images should create a balanced dataset with 1000 (configurable) images per class, saved as jpg files. 
+
+[ ] unhardcode create_font_images.py FontConfig/FontRenderer num_samples_per_font: int = 10)  
+
+[ ] get an input-independent baseline by zeroing out inputs and seeing how it performs   
+[ ] overfit on one batch, launch it and make sure it works on the frontend too  
+
+figure out how to combine steps in one script for gathering data and training the model
+1) generate the data, save the data, prep_train_test_data.py     
+2) train, generate class embeddings, save class embeddings, launch flask app  
+
+
+## Questions
+How much does it matter if the model is trained on jpg images but someone inputs a png image? The png in theory is not lossy, but we will have to resize it to the same size as the training images, which will introduce some lossiness.
 
 ## Image parameters vs filesize 
 |Filesize  | Compression    | Resolution     | Container | Quality      |
