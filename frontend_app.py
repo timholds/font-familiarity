@@ -37,28 +37,59 @@ def load_model_and_embeddings(model_path: str,
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f"Using device: {device}")
         
-        # Verify files exist
-        for path in [model_path, embeddings_path, label_mapping_path]:
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Required file not found: {path}")
+        # Convert paths to absolute paths
+        current_dir = os.path.abspath(os.curdir)
+        model_path = os.path.join(current_dir, model_path)
+        embeddings_path = os.path.join(current_dir, embeddings_path)
+        label_mapping_path = os.path.join(current_dir, label_mapping_path)
+        
+        # Verify all required files exist
+        for path, name in [(model_path, 'Model'), 
+                          (embeddings_path, 'Embeddings'), 
+                          (label_mapping_path, 'Label mapping')]:
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f"{name} file not found: {path}")
+            logger.info(f"Found {name} file: {path}")
+            
+        # Load label mapping
+        logger.info(f"\nLoading label mapping from {label_mapping_path}")
+        label_mapping_raw = np.load(label_mapping_path, allow_pickle=True).item()
+        
+        # Invert the mapping to go from index -> font name
+        label_mapping = {v: k for k, v in label_mapping_raw.items()}
+        
+        logger.info("\nLabel Mapping Analysis:")
+        logger.info(f"Number of fonts: {len(label_mapping)}")
+        logger.info(f"Index range: {min(label_mapping.keys())} to {max(label_mapping.keys())}")
+        logger.info("\nFirst 5 entries:")
+        for idx in sorted(list(label_mapping.keys()))[:5]:
+            logger.info(f"  {idx}: {label_mapping[idx]}")
         
         # Load model state
-        logger.info(f"Loading model from {model_path}")
+        logger.info(f"\nLoading model from {model_path}")
         state = torch.load(model_path, map_location=device)
         state_dict = state['model_state_dict']
         
-        # Extract architecture parameters
+        # Get model dimensions
         embedding_weight = state_dict['embedding_layer.0.weight']
         classifier_weight = state_dict['classifier.weight']
-        
         embedding_dim = embedding_weight.shape[0]
         flatten_dim = embedding_weight.shape[1]
         num_classes = classifier_weight.shape[0]
         
-        logger.info(f"Model architecture: embedding_dim={embedding_dim}, "
-                   f"flatten_dim={flatten_dim}, num_classes={num_classes}")
+        logger.info("\nModel Architecture:")
+        logger.info(f"Embedding dim: {embedding_dim}")
+        logger.info(f"Flatten dim: {flatten_dim}")
+        logger.info(f"Number of classes: {num_classes}")
         
-        # Initialize and load model
+        # Check if model's number of classes matches label mapping
+        if num_classes != len(label_mapping):
+            logger.warning("\nWARNING: Model/Label mapping mismatch!")
+            logger.warning(f"Model expects {num_classes} classes")
+            logger.warning(f"Label mapping has {len(label_mapping)} entries")
+            logger.warning("This might cause issues with font recognition")
+        
+        # Initialize model
         model = SimpleCNN(
             num_classes=num_classes,
             embedding_dim=embedding_dim
@@ -67,18 +98,15 @@ def load_model_and_embeddings(model_path: str,
         model.eval()
         
         # Load embeddings
-        logger.info(f"Loading embeddings from {embeddings_path}")
+        logger.info(f"\nLoading embeddings from {embeddings_path}")
         class_embeddings = torch.from_numpy(np.load(embeddings_path)).to(device)
-        
-        # Load label mapping
-        logger.info(f"Loading label mapping from {label_mapping_path}")
-        label_mapping = np.load(label_mapping_path, allow_pickle=True).item()
+        logger.info(f"Embeddings shape: {class_embeddings.shape}")
         
         is_initialized = True
-        logger.info("Model initialization completed successfully")
+        logger.info("\nInitialization completed!")
         
     except Exception as e:
-        logger.error(f"Error during model initialization: {str(e)}")
+        logger.error(f"Error during initialization: {str(e)}")
         logger.error(traceback.format_exc())
         raise
 
@@ -183,26 +211,36 @@ def predict():
             logger.info(f"Embedding indices: {emb_indices}")
             logger.info(f"Classifier indices: {cls_indices}")
             
-            # Validate indices before conversion
-            all_indices = np.concatenate([emb_indices, cls_indices])
-            invalid_indices = [idx for idx in all_indices if idx not in label_mapping]
-            if invalid_indices:
-                raise ValueError(f"Found invalid indices not in label mapping: {invalid_indices}")
+            # Handle missing indices gracefully
+            embedding_results = []
+            for idx, score in zip(emb_indices, emb_scores):
+                idx_int = int(idx)
+                if idx_int in label_mapping:
+                    embedding_results.append({
+                        'font': label_mapping[idx_int],
+                        'similarity': float(score)
+                    })
+                else:
+                    logger.warning(f"Index {idx_int} not found in label mapping")
+                    embedding_results.append({
+                        'font': f'Unknown Font ({idx_int})',
+                        'similarity': float(score)
+                    })
             
-            # Convert indices to font names
-            embedding_results = [
-                {
-                    'font': label_mapping[int(idx)],
-                    'similarity': float(score)
-                } for idx, score in zip(emb_indices, emb_scores)
-            ]
-            
-            classifier_results = [
-                {
-                    'font': label_mapping[int(idx)],
-                    'probability': float(prob)
-                } for idx, prob in zip(cls_indices, cls_probs)
-            ]
+            classifier_results = []
+            for idx, prob in zip(cls_indices, cls_probs):
+                idx_int = int(idx)
+                if idx_int in label_mapping:
+                    classifier_results.append({
+                        'font': label_mapping[idx_int],
+                        'probability': float(prob)
+                    })
+                else:
+                    logger.warning(f"Index {idx_int} not found in label mapping")
+                    classifier_results.append({
+                        'font': f'Unknown Font ({idx_int})',
+                        'probability': float(prob)
+                    })
             
             return jsonify({
                 'embedding_similarity': embedding_results,
@@ -216,26 +254,29 @@ def predict():
             'error': f"Error processing image: {str(e)}",
             'details': traceback.format_exc()
         }), 500
-    
+
 def main():
     """Initialize and run the Flask application."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
-    parser.add_argument("--embeddings_path", default="class_embeddings.npy",
-                       help="Path to class embeddings .npy file")
-    parser.add_argument("--label_mapping_path", default="font_dataset_npz/label_mapping.npy",
-                       help="Path to label_mapping.npy file")
+    parser.add_argument("--data_dir", default="font_dataset_npz",
+                       help="Directory containing embeddings and label mapping")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
+    
+    # Construct paths relative to data directory
+    embeddings_path = os.path.join(args.data_dir, "class_embeddings.npy")
+    label_mapping_path = os.path.join(args.data_dir, "label_mapping.npy")
     
     logger.info("\nInitializing Flask app...")
     logger.info(f"Port: {args.port}")
     logger.info(f"Model path: {args.model_path}")
-    logger.info(f"Embeddings path: {args.embeddings_path}")
-    logger.info(f"Label mapping path: {args.label_mapping_path}")
+    logger.info(f"Data directory: {args.data_dir}")
+    logger.info(f"Embeddings path: {embeddings_path}")
+    logger.info(f"Label mapping path: {label_mapping_path}")
     
     # Verify required directories exist
-    for directory in ['templates', 'static']:
+    for directory in ['templates', 'static', args.data_dir]:
         dir_path = os.path.join(os.curdir, directory)
         if not os.path.exists(dir_path):
             logger.error(f"Required directory not found: {dir_path}")
@@ -245,8 +286,8 @@ def main():
     try:
         load_model_and_embeddings(
             args.model_path,
-            args.embeddings_path,
-            args.label_mapping_path
+            embeddings_path,
+            label_mapping_path
         )
     except Exception as e:
         logger.error(f"Failed to initialize model: {str(e)}")
@@ -264,3 +305,51 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# def main():
+#     """Initialize and run the Flask application."""
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
+#     parser.add_argument("--embeddings_path", default="class_embeddings.npy",
+#                        help="Path to class embeddings .npy file")
+#     parser.add_argument("--label_mapping_path", default="font_dataset_npz/label_mapping.npy",
+#                        help="Path to label_mapping.npy file")
+#     parser.add_argument("--port", type=int, default=8080)
+#     args = parser.parse_args()
+    
+#     logger.info("\nInitializing Flask app...")
+#     logger.info(f"Port: {args.port}")
+#     logger.info(f"Model path: {args.model_path}")
+#     logger.info(f"Embeddings path: {args.embeddings_path}")
+#     logger.info(f"Label mapping path: {args.label_mapping_path}")
+    
+#     # Verify required directories exist
+#     for directory in ['templates', 'static']:
+#         dir_path = os.path.join(os.curdir, directory)
+#         if not os.path.exists(dir_path):
+#             logger.error(f"Required directory not found: {dir_path}")
+#             raise FileNotFoundError(f"Required directory not found: {dir_path}")
+    
+#     # Load model and embeddings
+#     try:
+#         load_model_and_embeddings(
+#             args.model_path,
+#             args.embeddings_path,
+#             args.label_mapping_path
+#         )
+#     except Exception as e:
+#         logger.error(f"Failed to initialize model: {str(e)}")
+#         logger.error(traceback.format_exc())
+#         raise
+    
+#     logger.info(f"\nStarting Flask server on port {args.port}...")
+#     logger.info("You can access the app at:")
+#     logger.info(f"  http://localhost:{args.port}")
+#     logger.info(f"  http://127.0.0.1:{args.port}")
+#     logger.info("Use Ctrl+C to stop the server\n")
+    
+#     # Start Flask app
+#     app.run(host='0.0.0.0', port=args.port, debug=True)
+
+# if __name__ == '__main__':
+#     main()

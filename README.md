@@ -201,6 +201,7 @@ Imagine the space of image augmentations that would be helpful if we wanted to l
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
 # TODO 
+[ ] move the class embedding generation into prep train test data.py? Otherwise go back to using a class embedding argument in the frontend_app.py instead of searching for it in the dataset folder 
 [ ] fix the error when uploading an image
 [ ] add some processing to resize images coming in and make them single channel
 [ ] remove the model saving part for the sweep. once we know which model trains best we can retrain it and reanble the saving.

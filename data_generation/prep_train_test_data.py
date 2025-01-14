@@ -41,16 +41,26 @@ def process_dataset(root_dir, output_dir, test_size=0.2):
     
     os.makedirs(output_dir, exist_ok=True)
     
-    # Create label mapping
-    font_dirs = sorted(os.listdir(root_dir))
+    # Create label mapping, filtering out hidden files and non-directories
+    font_dirs = [
+        d for d in sorted(os.listdir(root_dir))
+        if not d.startswith('.') and os.path.isdir(os.path.join(root_dir, d))
+    ]
     label_mapping = {name: idx for idx, name in enumerate(font_dirs)}
     
+    # Print label mapping info
+    print("\nLabel Mapping Summary:")
+    print(f"Number of fonts: {len(label_mapping)}")
+    print("\nFirst 5 fonts:")
+    for name, idx in sorted(label_mapping.items())[:5]:
+        print(f"  {name}: {idx}")
+    
     # Collect all paths and labels
-    print("Collecting file paths...")
+    print("\nCollecting file paths...")
     image_paths = []
     labels = []
     
-    for font_name in tqdm(font_dirs):
+    for font_name in tqdm(font_dirs):  # Use filtered font_dirs here
         font_dir = os.path.join(root_dir, font_name)
         if not os.path.isdir(font_dir):
             continue
@@ -68,7 +78,9 @@ def process_dataset(root_dir, output_dir, test_size=0.2):
     )
     
     # Save label mapping
-    np.save(os.path.join(output_dir, 'label_mapping.npy'), label_mapping)
+    mapping_path = os.path.join(output_dir, 'label_mapping.npy')
+    np.save(mapping_path, label_mapping)
+    print(f"\nSaved label mapping to {mapping_path}")
     
     # Process and save training data
     print("\nProcessing training data...")
@@ -81,6 +93,7 @@ def process_dataset(root_dir, output_dir, test_size=0.2):
     print(f"\nComplete! Saved to {output_dir}")
     print(f"Training samples: {len(train_paths)}")
     print(f"Test samples: {len(test_paths)}")
+    print(f"Number of classes: {len(label_mapping)}")
 
 def save_dataset(image_paths, labels, filename):
     """Load images and save as single compressed file"""
@@ -102,6 +115,6 @@ def save_dataset(image_paths, labels, filename):
     print(f"Saved {filename} with {len(images)} images ({file_size:.2f} GB)")
 
 if __name__ == "__main__":
-    root_dir = "font-images2"
+    root_dir = "data/font-images2"
     output_dir = "font_dataset_npz"
     process_dataset(root_dir, output_dir)
