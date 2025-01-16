@@ -36,7 +36,8 @@ Try a more complex model with more data and more regularization and more data au
 [ ] Visualize model predictions some small holdout batch every epoch
 
 ## TODO
-[ ] data augmentation - vary positioning/layout, font size and style, color and background color, text itself  
+[ ] critical:  there's an off by one error in the labels mapping. When I try to use a super overfit model on the frontend, it returns the wrong class with super high certainty! Checking this out closer, I notice it's predicting the class 1 off from the correct class. For example, on an image of the "yesseva" font, the model predicts "yesteryear" with 99.5% certainty.  
+[ ] model experimentation: data augmentation - vary positioning/layout, font size and style, color and background color, text itself  
 [ ] try a clip model of same font different font?  
 [ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5  
 [ ] do we get anything out of top eigenvectors of the data covariance matrix  

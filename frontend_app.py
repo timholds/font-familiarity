@@ -261,11 +261,12 @@ def main():
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
     parser.add_argument("--data_dir", default="font_dataset_npz",
                        help="Directory containing embeddings and label mapping")
+    parser.add_argument("--embedding_file", default="class_embeddings.npy")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     
     # Construct paths relative to data directory
-    embeddings_path = os.path.join(args.data_dir, "class_embeddings.npy")
+    embeddings_path = os.path.join(args.data_dir, args.embedding_file)
     label_mapping_path = os.path.join(args.data_dir, "label_mapping.npy")
     
     logger.info("\nInitializing Flask app...")
