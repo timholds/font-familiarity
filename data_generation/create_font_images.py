@@ -31,6 +31,73 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def calculate_text_multiplier(text: str, 
+                          font_size: int,
+                          line_height: float,
+                          container_height: int,
+                          samples_per_class: int) -> int:
+    """
+    Calculate how many times to repeat the text to ensure enough content for all samples.
+    
+    Args:
+        text: Base text content
+        font_size: Font size in pixels
+        line_height: Line height multiplier (e.g. 1.5)
+        container_height: Height of the container in pixels
+        samples_per_class: Number of samples needed per font
+        
+    Returns:
+        int: Number of times to repeat the text
+    """
+    # Calculate approximate height of one line
+    line_height_px = font_size * line_height
+    
+    # Calculate lines visible in one container
+    lines_per_container = container_height / line_height_px
+    
+    # Calculate approximate characters per line 
+    # Assuming average char width is 0.6 * font_size
+    chars_per_line = container_height / (font_size * 0.6)
+    
+    # Calculate total lines needed for all samples
+    # Add one extra container worth of lines to ensure enough content
+    total_lines_needed = lines_per_container * (samples_per_class + 1)
+    
+    # Calculate total characters needed
+    total_chars_needed = total_lines_needed * chars_per_line
+    
+    # Calculate multiplier (rounding up)
+    text_length = len(text)
+    multiplier = int(total_chars_needed / text_length) + 1
+    
+    return max(1, multiplier)  # Ensure at least one copy
+
+def prepare_text_content(filename: str, **kwargs) -> str:
+    """
+    Load and prepare text content for rendering.
+    
+    Args:
+        filename: Path to text file
+        **kwargs: Arguments to pass to calculate_text_multiplier
+        
+    Returns:
+        str: Prepared text content
+    """
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            text = f.read().strip()
+        if not text:
+            raise ValueError("Text file is empty")
+            
+        # Calculate required repetitions
+        multiplier = calculate_text_multiplier(text, **kwargs)
+        prepared_text = text * multiplier
+        
+        return prepared_text
+        
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Text file not found: {filename}")
+
 @dataclass
 class FontConfig:
     """Configuration for font rendering"""
@@ -41,6 +108,7 @@ class FontConfig:
     font_size: int = 24
     samples_per_font: int = 10
 
+
 class FontRenderer:
     def __init__(self, 
                  fonts_file: str = 'fonts.txt',
@@ -50,19 +118,31 @@ class FontRenderer:
                  port: int = 5100,
                  image_size: tuple = (256, 256),  # Reduced from 512x512
                  image_quality: int = 80, # JPEG quality (0-100))
-                 num_samples_per_font: int = 10):        
-        self.fonts = self._load_fonts(fonts_file)
-        self.text = self._load_text(text_file)
-        self.output_dir = Path(output_dir)
-        self.template_dir = Path(template_dir)
-        self.port = port
-
+                 num_samples_per_font: int = 10,
+                 font_size: int = 16,
+                 line_height: float = 1.5):       
+        
+        self.font_size = font_size
+        self.line_height = line_height
         self.image_size = image_size
         self.image_quality = image_quality
         self.num_samples_per_font = num_samples_per_font
         self.scroll_height = 400
         self.flask_app = None
         self.server_thread = None
+        self.output_dir = Path(output_dir)
+        self.template_dir = Path(template_dir)
+        self.port = port
+
+        self.fonts = self._load_fonts(fonts_file)
+        self.text = prepare_text_content(
+            text_file,
+            font_size=self.font_size,
+            line_height=self.line_height,
+            container_height=self.image_size[1],
+            samples_per_class=self.num_samples_per_font
+        )
+        #self.text = self._load_text(text_file)
         
         # Ensure output directory exists
         if os.path.exists(self.output_dir):
@@ -71,6 +151,7 @@ class FontRenderer:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    
     def _load_fonts(self, filename: str) -> List[str]:
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -81,18 +162,6 @@ class FontRenderer:
             return fonts
         except FileNotFoundError:
             raise FileNotFoundError(f"Fonts file not found: {filename}")
-
-    def _load_text(self, filename: str) -> str:
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                text = f.read().strip()
-            if not text:
-                raise ValueError("Text file is empty")
-            text = text * 10  # Repeat text to ensure enough content
-            logger.info(f"Loaded and repeated text content")
-            return text
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Text file not found: {filename}")
 
     def _setup_webdriver(self) -> webdriver.Chrome:
         chrome_options = Options()
@@ -230,6 +299,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--text_file', default='data_generation/lorem_ipsum.txt')
     parser.add_argument('--font_file', default='data_generation/fonts.txt')
+    parser.add_argument('--output_dir', default='font-images3')
     parser.add_argument('--image_resolution', default=256, type=int)
     parser.add_argument('--samples_per_class', default=10, type=int)
     parser.add_argument('--image_quality', default=10, type=int)
@@ -239,7 +309,7 @@ def main():
     renderer = FontRenderer(
         fonts_file=args.font_file,
         text_file=args.text_file,
-        output_dir='font-images3',
+        output_dir=args.output_dir,
         template_dir='templates',
         image_size=(args.image_resolution, args.image_resolution),  # Smaller size
         image_quality=args.image_quality,

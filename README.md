@@ -1,8 +1,31 @@
+# TODO quickstart
+Create a new virtual environment and install the requirements
+```
+python3 -m venv font-env
+source font-env/bin/activate
+pip install -r requirements.txt
+```
+# Overview 
 The readme is a project notes section for now.
 
-**Problem Statement**: If you see a font in the wild and want to use it yourself, how do you know the name of the font? If its a paid font, how do you find similar free fonts?
+**Problem Statement**: If you see a font in the wild and want to use it yourself, how do you know the name of the font? If its a paid font, how do you find similar free fonts? The goal of this project is to build a tool that can take an image of a font and return the most similar fonts from a dataset of free fonts. We will do this in three steps: 1) generating the dataset of different fonts, 2) training a model to learn the features of each font, and 3) building a frontend to take in an image with some text and return the most similar fonts.
 
-Machine learning steps
+## Main Software Pieces
+- html template to render the text into fonts
+- flask server to put the baked html onto a webpage
+- selenium scraper to takes screenshots of those webpages
+- (optional) compressing the data for storage 
+- saving the data to disk as npz or pkl files
+- model architecture file
+- file to load dataset into pytorch DataLoader
+- file to handle the training loop, evaluation, metrics
+- inference and calculating the most similar fonts, creating the font embeddings
+- frontend to take in an image and return the most similar fonts
+
+
+# Machine learning 
+
+## Steps
 Simple baseline model
 Get a model to overfit
 Regularize
@@ -12,23 +35,22 @@ Try a more complex model with more data and more regularization
 Try a more complex model with more data and more regularization and more data augmentation
 [ ] Visualize model predictions some small holdout batch every epoch
 
+## TODO
 [ ] data augmentation - vary positioning/layout, font size and style, color and background color, text itself  
 [ ] try a clip model of same font different font?  
 [ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5  
 [ ] do we get anything out of top eigenvectors of the data covariance matrix  
 [ ] distance between their mean images  
 
+Idea - what if I just generated the iamges of all the charcters in PIL and then do all the data augmentation to the images where each image has just one character in it
 
-# main software pieces
-- html files to render the text into fonts
-- flask server to put the baked html onto a webpage
-- selenium scraper to takes screenshots of those webpages
-- (optional) compressing the data for storage 
-- saving the data to disk as npz or pkl files
-- model architecture file
-- file to load dataset into pytorch DataLoader
-- file to handle the training loop, evaluation, metrics
-- inference and calculating the most similar fonts
+## Quetions
+What if I framed my problem also as first a character recognition detection problem, and then used the sum of these 
+[ ] find a good open-source ocr character segmentation model and use it to generate 
+-> does a segmentation model help at all here? forcing the model to learn exactly which pixels are and aren't part of the font? caveat is that the low resolution images probably won't work
+
+[ ] Are there any ML strategies for doing CCE on a dataset with a large number of classes?
+
 
 # questions
 - how many datapoints per class do I want if I have around 700 classes? cifar1000 archs probably a good place to start
@@ -131,14 +153,11 @@ TODO try saving images in greyscale
 # Dataset
 The images themselves are currently 256x256 grayscale. The code to generate the font images should create a balanced dataset with 1000 (configurable) images per class, saved as jpg files. 
 
-[ ] unhardcode create_font_images.py FontConfig/FontRenderer num_samples_per_font: int = 10)  
+I choose jpg instead of png so we can compress the images more aggressively on disk. Basically, this is a personal project and I don't want to take up too much space on my hard drive. 
+
 
 [ ] get an input-independent baseline by zeroing out inputs and seeing how it performs   
 [ ] overfit on one batch, launch it and make sure it works on the frontend too  
-
-figure out how to combine steps in one script for gathering data and training the model
-1) generate the data, save the data, prep_train_test_data.py     
-2) train, generate class embeddings, save class embeddings, launch flask app  
 
 
 ## Questions
@@ -287,6 +306,12 @@ Establish simple conv baseline for the encoder
 Test a resnet as the encoder
 Test a resnet with supervised contrastive loss (does it need to be a pretrain)
 
+figure out how to combine steps in one script for gathering data and training the model
+1) generate the data, save the data, prep_train_test_data.py     
+2) train, generate class embeddings, save class embeddings, launch flask app  
+
+
+
 # Similar tools
 The first 3 google results for font finders failed to recognize any of the font images I uploaded. These were high quality 256x256 images, much better quality than I'm training on. They all seem to segment the characters individually and then match against the characters. 
 
@@ -296,3 +321,5 @@ The Font Finder Chrome plugin seems quite promising since it uses the informatio
 
 ![Font Plugin Example](font-plugin.png)
 https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekalahgha
+
+
