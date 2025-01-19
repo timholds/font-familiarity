@@ -73,6 +73,9 @@ def load_model_and_embeddings(model_path: str,
         # Get model dimensions
         embedding_weight = state_dict['embedding_layer.0.weight']
         classifier_weight = state_dict['classifier.weight']
+        print(f"Loaded model state classifier weight shape: {classifier_weight.shape}")
+
+
         embedding_dim = embedding_weight.shape[0]
         flatten_dim = embedding_weight.shape[1]
         num_classes = classifier_weight.shape[0]
@@ -96,6 +99,9 @@ def load_model_and_embeddings(model_path: str,
             num_classes=num_classes,
             embedding_dim=embedding_dim
         ).to(device)
+
+        print(f"Model classifier shape after init: {model.classifier.weight.shape}")
+
         model.load_state_dict(state_dict)
         model.eval()
         
@@ -205,9 +211,14 @@ def predict():
         with torch.no_grad():
             # Get embedding and classifier output
             embedding = model.get_embedding(image_tensor)
+            print(f"Embedding shape: {embedding.shape}")
+            print(f"Classifier weight shape: {model.classifier.weight.shape}")
+            
             logger.info(f"Generated embedding, shape: {embedding.shape}")
             
             logits = model.classifier(embedding)
+            print(f"Logits shape: {logits.shape}")
+
             logger.info(f"Generated logits, shape: {logits.shape}")
             
             # Get predictions using both methods

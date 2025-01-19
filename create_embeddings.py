@@ -27,6 +27,8 @@ def load_model(model_path: str) -> tuple[SimpleCNN, torch.device]:
     
     # Load the saved state
     state = torch.load(model_path, map_location=device)
+    print(f"Saved model classifier shape: {state['model_state_dict']['classifier.weight'].shape}")
+
     state_dict = state['model_state_dict']
     
     # Extract architecture parameters from state dict

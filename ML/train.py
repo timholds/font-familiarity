@@ -10,8 +10,9 @@ import wandb
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 from torch.optim import AdamW
 from metrics import ClassificationMetrics
-
+import os
 from prettytable import PrettyTable
+import numpy as np
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -232,19 +233,45 @@ def main():
         batch_size=args.batch_size
     )
 
+    print("\nStep 2: Validating label mapping...")
+    label_mapping_path = os.path.join(args.data_dir, 'label_mapping.npy')
+    label_mapping = np.load(label_mapping_path, allow_pickle=True).item()
+    
+    assert num_classes == len(label_mapping), (
+        f"Critical Error: Mismatch between dataset classes ({num_classes}) "
+        f"and label mapping entries ({len(label_mapping)})"
+    )
+    
+    # Print label mapping info
+    print(f"Label mapping contains {len(label_mapping)} classes")
+    print("First 5 classes:", list(label_mapping.items())[:5])
+    print("Last 5 classes:", list(label_mapping.items())[-5:])
+
     print(f"num training batches {len(train_loader)}")
     print(f"num training datapoints {len(train_loader.dataset)}")
     print(f"num test batches {len(test_loader)}")
     print(f"num tes datapoints {len(test_loader.dataset)}")
     
     # Initialize model
-    print(f"Initializing model (num_classes={num_classes})...")
+    print("\nStep 3: Initializing model...")
+    print(f"Creating model with num_classes={num_classes}")
     model = SimpleCNN(
         num_classes=num_classes,
         embedding_dim=args.embedding_dim,
         input_size=args.resolution,
         initial_channels=args.initial_channels
     ).to(device)
+
+    actual_classes = model.classifier.weight.shape[0]
+    assert actual_classes == num_classes, (
+        f"Critical Error: Model initialized with wrong number of classes. "
+        f"Got {actual_classes}, expected {num_classes}"
+    )
+    
+
+    print(f"Model initialized with classifier shape: {model.classifier.weight.shape}")
+    print(f"Number of classes from loader: {num_classes}")
+    print(f"Model number of classes: {model.classifier.weight.shape[0]}")
 
 
     total_params     = sum(p.numel() for p in model.parameters())
@@ -343,7 +370,14 @@ def main():
 
             # Save best model
             model_name = f"fontCNN_BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channels}.pt"
+            classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
+            assert classifier_shape[0] == num_classes, (
+                f"Critical Error: Attempting to save model with wrong number of classes. "
+                f"Got {classifier_shape[0]}, expected {num_classes}"
+            )
             torch.save(best_model_state, model_name)
+            print(f"Saved checkpoint with classifier shape: {classifier_shape}")
+
         
         # Update wandb summary periodically
         if (epoch + 1) % 5 == 0 or epoch == args.epochs - 1:
