@@ -136,6 +136,10 @@ def preprocess_image(image_bytes: bytes) -> torch.Tensor:
 
 def get_top_k_similar_fonts(query_embedding: torch.Tensor, k: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """Find k most similar fonts using embedding similarity."""
+    # Add debug logging
+    print(f"Query embedding shape: {query_embedding.shape}")
+    print(f"Class embeddings shape: {class_embeddings.shape}")
+    
     # Normalize query embedding for cosine similarity
     query_embedding = F.normalize(query_embedding, p=2, dim=1)
     
@@ -207,6 +211,9 @@ def predict():
             # Get predictions using both methods
             emb_indices, emb_scores = get_top_k_similar_fonts(embedding)
             cls_indices, cls_probs = get_top_k_predictions(logits)
+             
+            print(f"Embedding indices: {emb_indices}")  # Debug
+            print(f"Classifier indices: {cls_indices}")  # Debug
             
             logger.info(f"Embedding indices: {emb_indices}")
             logger.info(f"Classifier indices: {cls_indices}")
@@ -241,6 +248,10 @@ def predict():
                         'font': f'Unknown Font ({idx_int})',
                         'probability': float(prob)
                     })
+
+            print("First few label mappings:")  # Debug
+            for i in range(min(5, len(label_mapping))):
+                print(f"Index {i}: {label_mapping[i]}")
             
             return jsonify({
                 'embedding_similarity': embedding_results,
