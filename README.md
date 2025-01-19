@@ -5,6 +5,7 @@ python3 -m venv font-env
 source font-env/bin/activate
 pip install -r requirements.txt
 ```
+
 # Overview 
 The readme is a project notes section for now.
 
@@ -323,4 +324,16 @@ The Font Finder Chrome plugin seems quite promising since it uses the informatio
 ![Font Plugin Example](font-plugin.png)
 https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekalahgha
 
+TODO delete extra create_embeddings.py file inside ml (or figure out which one is useful)
 
+# Workflow
+generate data: `python3 data_generation/create_font_images.py --samples_per_class 100 --image_resolution 128 --font_size 35`
+prep data: `python data_generation/prep_train_test_data.py`
+train: `python ml/train.py --data_dir "font_dataset_npz" --embedding_dim 256 --batch_size 32`
+
+once you have a trained, saved pt model, use it to create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir font_dataset_npz/ --output_path class_embeddings_512.npy`
+
+
+Note: when running the frontend, the model pt passed in needs to have an embedding dimension that matches the class embeddings. The model file has the embedding dimension in the name. For example, fontCNN_BS64-ED512-IC16.pt has an embedding dimension of 512.
+
+TODO add test time fixed dataset visualizations so we can concretely see how the model is predicting

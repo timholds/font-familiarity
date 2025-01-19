@@ -76,6 +76,8 @@ def load_model_and_embeddings(model_path: str,
         embedding_dim = embedding_weight.shape[0]
         flatten_dim = embedding_weight.shape[1]
         num_classes = classifier_weight.shape[0]
+
+        print('In frontend, num classes:', num_classes)
         
         logger.info("\nModel Architecture:")
         logger.info(f"Embedding dim: {embedding_dim}")

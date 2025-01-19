@@ -23,6 +23,10 @@ class FontDataset(Dataset):
         label_map_path = os.path.join(root_dir, 'label_mapping.npy')
         self.label_mapping = np.load(label_map_path, allow_pickle=True).item()
         self.num_classes = len(self.label_mapping)
+        print(f"Number of classes: {self.num_classes}")
+        print(f"Label mapping loaded from {label_map_path}")
+        print("First 5 labels:", list(self.label_mapping.items())[:5])
+        print("Last 5 labels:", list(self.label_mapping.items())[-5:])
 
     def __len__(self) -> int:
         return len(self.data)
