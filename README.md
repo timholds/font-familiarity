@@ -326,10 +326,12 @@ https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekal
 
 TODO delete extra create_embeddings.py file inside ml (or figure out which one is useful)
 
+[ X ] TODO disable wandb when im running the unit tests, unless needed
+[ ] TODO make sure the test command args in the readme correspond to the ones in teste2e
 # Test workflow
 Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
 
-Note: All these commands should be run from the root of font-familiarity.
+Note: All these commands should be run from the root of font-familiarity. The file `test_e2e.py` runs all of these commands in sequence.
 - `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
 - `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`
 - `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`

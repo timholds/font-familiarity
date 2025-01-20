@@ -240,7 +240,7 @@ def test_dataset_prep(image_dir, dataset_dir):
     validate_dataset_prep(dataset_dir)
 
 def test_model_training(dataset_dir, model_path:Path, expected_params):
-    
+    os.environ["WANDB_MODE"] = "disabled"
     run_step(
         "python ml/train.py "
         f"--data_dir {dataset_dir} "
