@@ -170,7 +170,8 @@ def run_step(command: str, description: str) -> Optional[str]:
         return result.stdout
     except subprocess.CalledProcessError as e:
         logger.error(f"Step failed: {description}")
-        logger.error(f"Output: {e.output}")
+        logger.error(f"stdout: {e.stdout}")  # Add this line
+        logger.error(f"stderr: {e.stderr}")  # Add this line
         raise PipelineValidationError(f"Pipeline step failed: {e}")
 
 @contextmanager
@@ -201,7 +202,7 @@ def test_full_pipeline():
             "python data_generation/create_font_images.py "
             "--text_file data_generation/lorem_ipsum.txt "
             "--font_file data_generation/fonts_test.txt "
-            f"--output_dir {image_dir}",
+            f"--output_dir {image_dir} "
             "--samples_per_class 10 "
             "--image_resolution 128 "
             "--port 5100 "
@@ -252,12 +253,13 @@ def test_full_pipeline():
         validate_model(model_path, expected_params)
 
         # Step 4: Create embeddings
-        embeddings_path = Path("class_embeddings.npy")
+        embeddings_file = "class_embeddings.npy"
+        embeddings_path = os.path.join(dataset_dir, embeddings_file)
         run_step(
-            f"python create_embeddings.py "
+            "python create_embeddings.py "
             f"--model_path {model_path} "
-            "--data_dir data/font_dataset_npz "
-            f"--output_path {embeddings_path}",
+            f"--data_dir {dataset_dir} "
+            f"--embeddings_file {embeddings_path}",
             "Creating embeddings"
         )
         validate_embeddings(embeddings_path, model_path)
@@ -267,7 +269,7 @@ def test_full_pipeline():
         with frontend_server(
             f"python frontend_app.py "
             f"--model_path {model_path} "
-            "--data_dir data/font_dataset_npz "
+            f"--data_dir {dataset_dir} "
             f"--embedding_file {embeddings_path} "
             f"--port {frontend_port}",
             frontend_port
@@ -281,5 +283,104 @@ def test_full_pipeline():
         logger.error(f"Unexpected error: {e}")
         raise
 
+
+def test_image_generation(image_dir):
+    run_step(
+        "python data_generation/create_font_images.py "
+        "--text_file data_generation/lorem_ipsum.txt "
+        "--font_file data_generation/fonts_test.txt "
+        f"--output_dir {image_dir} "
+        "--samples_per_class 10 "
+        "--image_resolution 128 "
+        "--port 5100 "
+        "--font_size 35 "
+        "--line_height 1.5",
+        "Font image generation"
+    )
+    validate_image_generation(image_dir)
+
+def test_dataset_prep(image_dir, dataset_dir):
+    run_step(
+        "python data_generation/prep_train_test_data.py "
+        f"--input_image_dir {image_dir} "
+        f"--output_dir {dataset_dir} "
+        "--test_size .1",
+        "Dataset preparation"
+    )
+    validate_dataset_prep(dataset_dir)
+
+def test_model_training(dataset_dir, model_path, expected_params):
+    
+    run_step(
+        "python ml/train.py "
+        f"--data_dir {dataset_dir} "
+        f"--epochs {expected_params['epochs']} "
+        f"--batch_size {expected_params['batch_size']} "
+        f"--learning_rate {expected_params['learning_rate']} "
+        f"--weight_decay {expected_params['weight_decay']} "
+        f"--embedding_dim {expected_params['embedding_dim']} "
+        f"--resolution {expected_params['resolution']} "
+        f"--initial_channels {expected_params['initial_channels']}",
+        "Model training"
+    )
+
+    
+    validate_model(model_path, expected_params)
+    return model_path
+
+def test_create_embeddings(dataset_dir, model_path, embeddings_path):
+    # dataset_dir = Path("data/font_dataset_npz_test")
+    # model_path = Path("fontCNN_BS64-ED128-IC16.pt")
+    # TODO 
+    embeddings_file = "class_embeddings.npy"
+    embeddings_path = os.path.join(dataset_dir, embeddings_file)
+    run_step(
+        "python create_embeddings.py "
+        f"--model_path {model_path} "
+        f"--data_dir {dataset_dir} "
+        f"--embeddings_file {embeddings_path}",
+        "Creating embeddings"
+    )
+    validate_embeddings(embeddings_path, model_path)
+
+def test_frontend_server(model_path, dataset_dir, embeddings_path):
+    frontend_port = 8080
+    with frontend_server(
+        f"python frontend_app.py "
+        f"--model_path {model_path} "
+        f"--data_dir {dataset_dir} "
+        f"--embedding_file {embeddings_path} "
+        f"--port {frontend_port}",
+        frontend_port
+    ):
+        logger.info("Pipeline completed successfully!")
+
+def run_unit_tests():
+    expected_params = {
+        'epochs': 1,
+        'batch_size': 64,
+        'learning_rate': .0001,
+        'weight_decay': .01,
+        'embedding_dim': 128,
+        'resolution': 64,
+        'initial_channels': 16,
+    }
+    image_dir = Path("data/font-images-test")
+    dataset_dir = Path("data/font_dataset_npz_test")
+    test_image_generation(image_dir)
+    # test_dataset_prep(image_dir, dataset_dir)
+    # # model_file = f"fontCNN_BS{expected_params['batch_size']}-"
+    # #                 f"ED{expected_params['embedding_dim']}-"
+    # #                 f"IC{expected_params['initial_channels']}.pt"
+    # model_file = f"fontCNN_BS{expected_params['batch_size']}\
+    #     -ED{expected_params['embedding_dim']}\
+    #     -IC{expected_params['initial_channels']}.pt"
+    # model_path = os.path.join(dataset_dir, model_file)
+    # test_model_training(dataset_dir, model_path)
+    # embeddings_path = os.path.join(dataset_dir, "class_embeddings_test.npy")
+    # test_create_embeddings(dataset_dir, model_path, embeddings_path)
+    # test_frontend_server(model_path, dataset_dir, embeddings_path)
+
 if __name__ == "__main__":
-    test_full_pipeline()
+    run_unit_tests()
+    #test_full_pipeline()

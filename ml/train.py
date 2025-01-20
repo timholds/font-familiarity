@@ -13,6 +13,7 @@ from metrics import ClassificationMetrics
 import os
 from prettytable import PrettyTable
 import numpy as np
+from ml.utils import get_model_path
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -369,13 +370,22 @@ def main():
             }
 
             # Save best model
-            model_name = f"fontCNN_BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channels}.pt"
+            # model_name = f"fontCNN_BS{args.batch_size}\
+            #     -ED{args.embedding_dim}-IC{args.initial_channels}.pt"
+            # model_path = os.path.join(args.data_dir, model_name)
+            model_path = get_model_path(
+                base_dir=args.data_dir,
+                prefix='fontCNN',
+                batch_size=args.batch_size,
+                embedding_dim=args.embedding_dim,
+                initial_channels=args.initial_channels
+            )
             classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
             assert classifier_shape[0] == num_classes, (
                 f"Critical Error: Attempting to save model with wrong number of classes. "
                 f"Got {classifier_shape[0]}, expected {num_classes}"
             )
-            torch.save(best_model_state, model_name)
+            torch.save(best_model_state, model_path)
             print(f"Saved checkpoint with classifier shape: {classifier_shape}")
 
         

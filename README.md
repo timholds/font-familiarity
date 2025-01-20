@@ -330,11 +330,13 @@ TODO delete extra create_embeddings.py file inside ml (or figure out which one i
 Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
 
 Note: All these commands should be run from the root of font-familiarity.
-- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir data/font-images-test --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
-- `python data_generation/prep_train_test_data.py --input_image_dir data/font-images-test --output_dir data/font_dataset_npz_test --test_size .1`
-- `python ml/train.py --data_dir "data/font_dataset_npz_test" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
-- `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz_test --output_path class_embeddings_512.npy`
-- `python frontend_app.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz_test --embedding_file class_embeddings.npy --port 8080`
+- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images-test --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
+- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images-test --output_dir test-data/font_dataset_npz_test --test_size .1`
+- `python ml/train.py --data_dir "test-data/font_dataset_npz_test" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
+- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font_dataset_npz_test --output_path class_embeddings_512.npy`
+- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font_dataset_npz_test --embedding_file class_embeddings.npy --port 8080`
+
+
 
 # Workflow
 

@@ -4,6 +4,8 @@ from ml.model import SimpleCNN
 from ml.dataset import get_dataloaders
 import argparse
 from tqdm import tqdm
+import os
+from ml.utils import get_embedding_file
 
 def load_model(model_path: str) -> tuple[SimpleCNN, torch.device]:
     """
@@ -116,8 +118,8 @@ def compute_class_embeddings(model: SimpleCNN,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
-    parser.add_argument("--data_dir", required=True, help="Path to dataset directory")
-    parser.add_argument("--output_path", default="class_embeddings.npy", 
+    parser.add_argument("--data_dir", required=True, help="Path to dataset directory with npz/npz files")
+    parser.add_argument("--embeddings_file", default="class_embeddings.npy", 
                        help="Path to save embeddings")
     parser.add_argument("--batch_size", type=int, default=64)
     args = parser.parse_args()
@@ -149,8 +151,10 @@ def main():
     class_embeddings = compute_class_embeddings(model, test_loader, test_dataset.num_classes, device)
     
     # Save embeddings
-    print(f"\nSaving embeddings to {args.output_path}")
-    np.save(args.output_path, class_embeddings)
+    print(f"\nSaving embeddings to {args.embeddings_file}")
+    # concat the args.output_
+    embedding_path = os.path.join(args.data_dir, args.embeddings_file)
+    np.save(embedding_path, class_embeddings)
 
 if __name__ == "__main__":
     main()
