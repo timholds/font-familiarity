@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from collections import defaultdict
+import argparse
 
 def create_stratified_split(paths, labels, test_size=0.2, seed=42):
     """Create a stratified train/test split without using sklearn"""
@@ -36,15 +37,34 @@ def create_stratified_split(paths, labels, test_size=0.2, seed=42):
         [labels[i] for i in test_indices]
     )
 
-def process_dataset(root_dir, output_dir, test_size=0.2):
+def save_dataset(image_paths, labels, filename):
+    """Load images and save as single compressed file"""
+    images = []
+    
+    for img_path in tqdm(image_paths):
+        try:
+            with Image.open(img_path) as img:
+                img_array = np.array(img)
+                images.append(img_array)
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+    
+    np.savez_compressed(filename, 
+                       images=np.array(images),
+                       labels=np.array(labels))
+    
+    file_size = os.path.getsize(filename) / (1024 ** 3)  # Size in GB
+    print(f"Saved {filename} with {len(images)} images ({file_size:.2f} GB)")
+
+def process_dataset(input_image_dir, output_dir, test_size=0.2):
     """Create and save train/test datasets"""
     
     os.makedirs(output_dir, exist_ok=True)
     
     # Create label mapping, filtering out hidden files and non-directories
     font_dirs = [
-        d for d in sorted(os.listdir(root_dir))
-        if not d.startswith('.') and os.path.isdir(os.path.join(root_dir, d))
+        d for d in sorted(os.listdir(input_image_dir))
+        if not d.startswith('.') and os.path.isdir(os.path.join(input_image_dir, d))
     ]
     label_mapping = {name: idx for idx, name in enumerate(font_dirs)}
     
@@ -61,7 +81,7 @@ def process_dataset(root_dir, output_dir, test_size=0.2):
     labels = []
     
     for font_name in tqdm(font_dirs):  # Use filtered font_dirs here
-        font_dir = os.path.join(root_dir, font_name)
+        font_dir = os.path.join(input_image_dir, font_name)
         if not os.path.isdir(font_dir):
             continue
             
@@ -95,26 +115,15 @@ def process_dataset(root_dir, output_dir, test_size=0.2):
     print(f"Test samples: {len(test_paths)}")
     print(f"Number of classes: {len(label_mapping)}")
 
-def save_dataset(image_paths, labels, filename):
-    """Load images and save as single compressed file"""
-    images = []
-    
-    for img_path in tqdm(image_paths):
-        try:
-            with Image.open(img_path) as img:
-                img_array = np.array(img)
-                images.append(img_array)
-        except Exception as e:
-            print(f"Error processing {img_path}: {e}")
-    
-    np.savez_compressed(filename, 
-                       images=np.array(images),
-                       labels=np.array(labels))
-    
-    file_size = os.path.getsize(filename) / (1024 ** 3)  # Size in GB
-    print(f"Saved {filename} with {len(images)} images ({file_size:.2f} GB)")
+def main():
+    parser = argparse.ArgumentParser(description="Prepare train/test datasets")
+    parser.add_argument("--input_image_dir", default="data/font-images", help="Root directory of font images")
+    parser.add_argument("--output_dir", default="font_dataset_npz", help="Output directory for processed datasets")
+    parser.add_argument("--test_size", type=float, default=0.2, help="Proportion of data to use for testing")
+    args = parser.parse_args()
+
+    process_dataset(args.input_image_dir, args.output_dir, args.test_size)
 
 if __name__ == "__main__":
-    root_dir = "data/font-images2"
-    output_dir = "font_dataset_npz"
-    process_dataset(root_dir, output_dir)
+    main()
+    
