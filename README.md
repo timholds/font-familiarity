@@ -267,7 +267,7 @@ Test my model on cifar dataset instead to sanity check that it is capable of lea
 [ ] Add a note about how the data is stored in the npz and the best way to access it
 - remove "Keys in NPZ file: ['images', 'labels']"
 
-[X] create a small test dataset for iterating on the model - font_dataset_npz_test
+[X] create a small test dataset for iterating on the model - font-dataset-npz_test
 
 [X] make it so that it only saves the class averages at the end of training instead of everytime a new best model gets saved
 [X] add a LR warmup and cosine learning rate
@@ -330,32 +330,45 @@ TODO delete extra create_embeddings.py file inside ml (or figure out which one i
 Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
 
 Note: All these commands should be run from the root of font-familiarity.
-- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images-test --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
-- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images-test --output_dir test-data/font_dataset_npz_test --test_size .1`
-- `python ml/train.py --data_dir "test-data/font_dataset_npz_test" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
-- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font_dataset_npz_test --output_path class_embeddings_512.npy`
-- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font_dataset_npz_test --embedding_file class_embeddings.npy --port 8080`
+- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
+- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`
+- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
+- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --output_path class_embeddings_512.npy`
+- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
 
+### Example file structure
+- test-data
+    - font-images
+        - abeeze
+        - abel
+        - ...
+        - archivo narrow
+    - font-images-npz
+        - label_mapping.npy
+        - train.npz
+        - test.npz
+        - fontCNN_BS64-ED128-IC16.pt
 
+    - 
 
 # Workflow
 
 ## Data generation
 - generate data: `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/full_fonts_list.txt --output_dir data/font-images --samples_per_class 100 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
 TODO output_dir = input_image_dir = "data/font-images"  
-- prep data: `python data_generation/prep_train_test_data.py --input_image_dir data/font-images --output_dir data/font_dataset_npz --test_size .1`
+- prep data: `python data_generation/prep_train_test_data.py --input_image_dir data/font-images --output_dir data/font-dataset-npz --test_size .1`
 
 ## Train Model and Generate Embeddings
-TODO output_dir = data_dir = data/font_dataset_npz
-- train: `python ml/train.py --data_dir "data/font_dataset_npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
+TODO output_dir = data_dir = data/font-dataset-npz
+- train: `python ml/train.py --data_dir "data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
 TODO how can i make the model name legible / get returned from the train script? is it in the pt file somewhere? or just look for the pt file in the directory and assume the directory is getting recreated everytime you run the script 
-- once you have a trained model, create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz --output_path class_embeddings_512.npy`
+- once you have a trained model, create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --output_path class_embeddings_512.npy`
 TODO model_path = model_path = 'fontCNN_BS64-ED512-IC16.pt'
-data_dir = data_dir = 'data/font_dataset_npz'  
+data_dir = data_dir = 'data/font-dataset-npz'  
 
 ## Frontend
 TODO make sure I shouldn't be passing a different embeddings file
-- launch frontend `python frontend_app.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz --embedding_file class_embeddings.npy --port 8080`
+- launch frontend `python frontend_app.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
 
 
 Note: when running the frontend, the model pt passed in needs to have an embedding dimension that matches the class embeddings. The model file has the embedding dimension in the name. For example, fontCNN_BS64-ED512-IC16.pt has an embedding dimension of 512.

@@ -13,7 +13,7 @@ from metrics import ClassificationMetrics
 import os
 from prettytable import PrettyTable
 import numpy as np
-from ml.utils import get_model_path
+from utils import get_model_path
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
