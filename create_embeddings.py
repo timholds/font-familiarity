@@ -28,7 +28,7 @@ def load_model(model_path: str) -> tuple[SimpleCNN, torch.device]:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Load the saved state
-    state = torch.load(model_path, map_location=device)
+    state = torch.load(model_path, weights_only=True, map_location=device)
     print(f"Saved model classifier shape: {state['model_state_dict']['classifier.weight'].shape}")
 
     state_dict = state['model_state_dict']
@@ -153,8 +153,9 @@ def main():
     # Save embeddings
     print(f"\nSaving embeddings to {args.embeddings_file}")
     # concat the args.output_
-    embedding_path = os.path.join(args.data_dir, args.embeddings_file)
-    np.save(embedding_path, class_embeddings)
+    #embedding_path = os.path.join(args.data_dir, args.embeddings_file)
+    #print(embedding_path, args.data_dir, args.embeddings_file)
+    np.save(args.embeddings_file, class_embeddings)
 
 if __name__ == "__main__":
     main()

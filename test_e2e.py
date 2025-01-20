@@ -76,7 +76,7 @@ def validate_model(model_path: Path, expected_params: dict) -> None:
     
     try:
         # Load model checkpoint
-        checkpoint = torch.load(model_path, map_location='cpu')
+        checkpoint = torch.load(model_path, weights_only=True, map_location='cpu')
         
         # Check required keys in checkpoint
         required_keys = ['model_state_dict', 'optimizer_state_dict', 'epoch', 'test_metrics']
@@ -112,7 +112,7 @@ def validate_embeddings(embeddings_path: Path, model_path: Path) -> None:
     try:
         # Load embeddings and model
         embeddings = np.load(embeddings_path)
-        checkpoint = torch.load(model_path, map_location='cpu')
+        checkpoint = torch.load(model_path, weights_only=True, map_location='cpu')
         
         # Get number of classes from model
         classifier_weight = checkpoint['model_state_dict']['classifier.weight']
@@ -212,97 +212,6 @@ def frontend_server(command: str, port: int):
             process.terminate()
             process.wait()
 
-# def test_full_pipeline():
-#     """Run and validate the complete pipeline"""
-#     try:
-#         # Step 1: Generate font images
-#         image_dir = Path("data/font-images-test")
-#         run_step(
-#             "python data_generation/create_font_images.py "
-#             "--text_file data_generation/lorem_ipsum.txt "
-#             "--font_file data_generation/fonts_test.txt "
-#             f"--output_dir {image_dir} "
-#             "--samples_per_class 10 "
-#             "--image_resolution 128 "
-#             "--port 5100 "
-#             "--font_size 35 "
-#             "--line_height 1.5",
-#             "Font image generation"
-#         )
-#         validate_image_generation(image_dir)
-
-#         # Step 2: Prepare dataset
-#         dataset_dir = Path("data/font_dataset_npz_test")
-#         run_step(
-#             "python data_generation/prep_train_test_data.py "
-#             f"--input_image_dir {image_dir} "
-#             f"--output_dir {dataset_dir} "
-#             "--test_size .1",
-#             "Dataset preparation"
-#         )
-#         validate_dataset_prep(dataset_dir)
-
-#         # Step 3: Train model
-#         expected_params = {
-#             'epochs': 1,
-#             'batch_size': 64,
-#             'learning_rate': .0001,
-#             'weight_decay': .01,
-#             'embedding_dim': 128,
-#             'resolution': 64,
-#             'initial_channels': 16,
-#         }
-        
-#         run_step(
-#             "python ml/train.py "
-#             f"--data_dir {dataset_dir} "
-#             f"--epochs {expected_params['epochs']} "
-#             f"--batch_size {expected_params['batch_size']} "
-#             f"--learning_rate {expected_params['learning_rate']} "
-#             f"--weight_decay {expected_params['weight_decay']} "
-#             f"--embedding_dim {expected_params['embedding_dim']} "
-#             f"--resolution {expected_params['resolution']} "
-#             f"--initial_channels {expected_params['initial_channels']}",
-#             "Model training"
-#         )
-
-#         model_path = Path(f"fontCNN_BS{expected_params['batch_size']}-"
-#                          f"ED{expected_params['embedding_dim']}-"
-#                          f"IC{expected_params['initial_channels']}.pt")
-#         validate_model(model_path, expected_params)
-
-#         # Step 4: Create embeddings
-#         embeddings_file = "class_embeddings.npy"
-#         embeddings_path = os.path.join(dataset_dir, embeddings_file)
-#         run_step(
-#             "python create_embeddings.py "
-#             f"--model_path {model_path} "
-#             f"--data_dir {dataset_dir} "
-#             f"--embeddings_file {embeddings_path}",
-#             "Creating embeddings"
-#         )
-#         validate_embeddings(embeddings_path, model_path)
-
-#         # Step 5: Start frontend server
-#         frontend_port = 8080
-#         with frontend_server(
-#             f"python frontend_app.py "
-#             f"--model_path {model_path} "
-#             f"--data_dir {dataset_dir} "
-#             f"--embedding_file {embeddings_path} "
-#             f"--port {frontend_port}",
-#             frontend_port
-#         ):
-#             logger.info("Pipeline completed successfully!")
-            
-#     except PipelineValidationError as e:
-#         logger.error(f"Pipeline validation failed: {e}")
-#         raise
-#     except Exception as e:
-#         logger.error(f"Unexpected error: {e}")
-#         raise
-
-
 def test_image_generation(image_dir):
     run_step(
         "python data_generation/create_font_images.py "
@@ -351,8 +260,8 @@ def test_create_embeddings(dataset_dir, model_path, embeddings_path):
     # dataset_dir = Path("data/font_dataset_npz_test")
     # model_path = Path("fontCNN_BS64-ED128-IC16.pt")
     # TODO 
-    embeddings_file = "class_embeddings.npy"
-    embeddings_path = os.path.join(dataset_dir, embeddings_file)
+    # embeddings_file = "class_embeddings.npy"
+    # embeddings_path = os.path.join(dataset_dir, embeddings_file)
     run_step(
         "python create_embeddings.py "
         f"--model_path {model_path} "
@@ -393,10 +302,9 @@ def run_unit_tests():
             expected_params['batch_size'], expected_params['embedding_dim'],
             expected_params['initial_channels'])
     
-    print(model_path)
-    test_model_training(dataset_dir, model_path, expected_params)
-    # embeddings_path = os.path.join(dataset_dir, "class_embeddings_test.npy")
-    # test_create_embeddings(dataset_dir, model_path, embeddings_path)
+    # test_model_training(dataset_dir, model_path, expected_params)
+    embeddings_path = Path(os.path.join(dataset_dir, "class_embeddings_test.npy"))
+    test_create_embeddings(dataset_dir, model_path, embeddings_path)
     # test_frontend_server(model_path, dataset_dir, embeddings_path)
 
 if __name__ == "__main__":
