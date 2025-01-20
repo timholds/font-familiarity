@@ -5,7 +5,7 @@ from ml.dataset import get_dataloaders
 import argparse
 from tqdm import tqdm
 import os
-from ml.utils import get_embedding_file
+from ml.utils import get_embedding_path
 
 def load_model(model_path: str) -> tuple[SimpleCNN, torch.device]:
     """

@@ -38,6 +38,10 @@ def load_model_and_embeddings(model_path: str,
         logger.info(f"Using device: {device}")
         
         # Convert paths to absolute paths
+        print(f"Current working directory: {os.path.abspath(os.curdir)}")
+        print(f"Embeddings path: {embeddings_path}")
+        print(f"after join {os.path.join(os.path.abspath(os.curdir), embeddings_path)}")
+
         current_dir = os.path.abspath(os.curdir)
         model_path = os.path.join(current_dir, model_path)
         embeddings_path = os.path.join(current_dir, embeddings_path)
@@ -283,21 +287,20 @@ def main():
     """Initialize and run the Flask application."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
-    parser.add_argument("--data_dir", default="font_dataset_npz",
-                       help="Directory containing embeddings and label mapping")
-    parser.add_argument("--embedding_file", default="class_embeddings.npy")
+    parser.add_argument("--data_dir", required=True, help="Directory containing embeddings and label mapping")
+    parser.add_argument("--embeddings_path", required=True, help="Relative path to class_embeddings.npy")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     
     # Construct paths relative to data directory
-    embeddings_path = os.path.join(args.data_dir, args.embedding_file)
+    #embeddings_path = os.path.join(args.data_dir, args.embedding_file)
     label_mapping_path = os.path.join(args.data_dir, "label_mapping.npy")
     
     logger.info("\nInitializing Flask app...")
     logger.info(f"Port: {args.port}")
     logger.info(f"Model path: {args.model_path}")
     logger.info(f"Data directory: {args.data_dir}")
-    logger.info(f"Embeddings path: {embeddings_path}")
+    logger.info(f"Embeddings path: {args.embeddings_path}")
     logger.info(f"Label mapping path: {label_mapping_path}")
     
     # Verify required directories exist
@@ -311,7 +314,7 @@ def main():
     try:
         load_model_and_embeddings(
             args.model_path,
-            embeddings_path,
+            args.embeddings_path,
             label_mapping_path
         )
     except Exception as e:
@@ -330,51 +333,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-# def main():
-#     """Initialize and run the Flask application."""
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
-#     parser.add_argument("--embeddings_path", default="class_embeddings.npy",
-#                        help="Path to class embeddings .npy file")
-#     parser.add_argument("--label_mapping_path", default="font_dataset_npz/label_mapping.npy",
-#                        help="Path to label_mapping.npy file")
-#     parser.add_argument("--port", type=int, default=8080)
-#     args = parser.parse_args()
-    
-#     logger.info("\nInitializing Flask app...")
-#     logger.info(f"Port: {args.port}")
-#     logger.info(f"Model path: {args.model_path}")
-#     logger.info(f"Embeddings path: {args.embeddings_path}")
-#     logger.info(f"Label mapping path: {args.label_mapping_path}")
-    
-#     # Verify required directories exist
-#     for directory in ['templates', 'static']:
-#         dir_path = os.path.join(os.curdir, directory)
-#         if not os.path.exists(dir_path):
-#             logger.error(f"Required directory not found: {dir_path}")
-#             raise FileNotFoundError(f"Required directory not found: {dir_path}")
-    
-#     # Load model and embeddings
-#     try:
-#         load_model_and_embeddings(
-#             args.model_path,
-#             args.embeddings_path,
-#             args.label_mapping_path
-#         )
-#     except Exception as e:
-#         logger.error(f"Failed to initialize model: {str(e)}")
-#         logger.error(traceback.format_exc())
-#         raise
-    
-#     logger.info(f"\nStarting Flask server on port {args.port}...")
-#     logger.info("You can access the app at:")
-#     logger.info(f"  http://localhost:{args.port}")
-#     logger.info(f"  http://127.0.0.1:{args.port}")
-#     logger.info("Use Ctrl+C to stop the server\n")
-    
-#     # Start Flask app
-#     app.run(host='0.0.0.0', port=args.port, debug=True)
-
-# if __name__ == '__main__':
-#     main()

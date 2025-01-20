@@ -340,14 +340,20 @@ Note: All these commands should be run from the root of font-familiarity.
 - test-data
     - font-images
         - abeeze
-        - abel
+            - image0000.jpg
+            - ...
+            - image0010.jpg
         - ...
         - archivo narrow
+            - image0000.jpg
+            - ...
+            - image0010.jpg
     - font-images-npz
-        - label_mapping.npy
-        - train.npz
-        - test.npz
-        - fontCNN_BS64-ED128-IC16.pt
+        - label_mapping.npy ~1kb
+        - train.npz - few MB
+        - test.npz ~500kb
+        - fontCNN_BS64-ED128-IC16.pt ~5mb
+        - class_embeddings.test ~25kb
 
     - 
 

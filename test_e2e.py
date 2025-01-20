@@ -12,6 +12,8 @@ from PIL import Image
 import requests
 from typing import Optional
 from contextlib import contextmanager
+from ml.utils import get_model_path, get_embedding_path
+
 
 # Configure logging
 logging.basicConfig(
@@ -277,7 +279,7 @@ def test_frontend_server(model_path, dataset_dir, embeddings_path):
         f"python frontend_app.py "
         f"--model_path {model_path} "
         f"--data_dir {dataset_dir} "
-        f"--embedding_file {embeddings_path} "
+        f"--embeddings_path {embeddings_path} "
         f"--port {frontend_port}",
         frontend_port
     ):
@@ -293,19 +295,20 @@ def run_unit_tests():
         'resolution': 64,
         'initial_channels': 16,
     }
+    
     image_dir = Path("test-data/font-images")
     dataset_dir = Path("test-data/font-dataset-npz")
-    #test_image_generation(image_dir)
-    #test_dataset_prep(image_dir, dataset_dir)
-    from ml.utils import get_model_path
+    embeddings_path = get_embedding_path(dataset_dir, expected_params['embedding_dim'])
     model_path = get_model_path(dataset_dir, "fontCNN", 
             expected_params['batch_size'], expected_params['embedding_dim'],
             expected_params['initial_channels'])
+
     
-    # test_model_training(dataset_dir, model_path, expected_params)
-    embeddings_path = Path(os.path.join(dataset_dir, "class_embeddings_test.npy"))
+    test_image_generation(image_dir)
+    test_dataset_prep(image_dir, dataset_dir)
+    test_model_training(dataset_dir, model_path, expected_params)
     test_create_embeddings(dataset_dir, model_path, embeddings_path)
-    # test_frontend_server(model_path, dataset_dir, embeddings_path)
+    test_frontend_server(model_path, dataset_dir, embeddings_path)
 
 if __name__ == "__main__":
     run_unit_tests()
