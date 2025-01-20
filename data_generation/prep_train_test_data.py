@@ -119,7 +119,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prepare train/test datasets")
     parser.add_argument("--input_image_dir", default="data/font-images", help="Root directory of font images")
     parser.add_argument("--output_dir", default="font_dataset_npz", help="Output directory for processed datasets")
-    parser.add_argument("--test_size", type=float, default=0.2, help="Proportion of data to use for testing")
+    parser.add_argument("--test_size", type=float, default=0.1, help="Proportion of data to use for testing")
     args = parser.parse_args()
 
     process_dataset(args.input_image_dir, args.output_dir, args.test_size)

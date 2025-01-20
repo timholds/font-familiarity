@@ -198,9 +198,9 @@ def main():
     parser.add_argument("--data_dir", default="data/font_dataset_npz_test/")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--learning_rate", type=float, default=0.003)
+    parser.add_argument("--learning_rate", type=float, default=0.001)
     parser.add_argument("--weight_decay", type=float, default=0.01)
-    parser.add_argument("--embedding_dim", type=int, default=1024)
+    parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--initial_channels", type=int, default=16)
     

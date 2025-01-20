@@ -329,19 +329,25 @@ TODO delete extra create_embeddings.py file inside ml (or figure out which one i
 # Test workflow
 Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
 
-Note: All these commands should be run from the root of KH.
+Note: All these commands should be run from the root of font-familiarity.
+- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir data/font-images-test --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
+- `python data_generation/prep_train_test_data.py --input_image_dir data/font-images-test --output_dir data/font_dataset_npz_test --test_size .1`
+- `python ml/train.py --data_dir "data/font_dataset_npz_test" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
+- `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz_test --output_path class_embeddings_512.npy`
+- `python frontend_app.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz_test --embedding_file class_embeddings.npy --port 8080`
 
 # Workflow
 
 ## Data generation
-- generate data: `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts.txt --output_dir data/font-images --samples_per_class 100 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
+- generate data: `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/full_fonts_list.txt --output_dir data/font-images --samples_per_class 100 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
 TODO output_dir = input_image_dir = "data/font-images"  
 - prep data: `python data_generation/prep_train_test_data.py --input_image_dir data/font-images --output_dir data/font_dataset_npz --test_size .1`
 
 ## Train Model and Generate Embeddings
 TODO output_dir = data_dir = data/font_dataset_npz
-- train: `python ml/train.py --data_dir "data/font_dataset_npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`   
-- once you have a trained, saved pt model, use it to create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz --output_path class_embeddings_512.npy`
+- train: `python ml/train.py --data_dir "data/font_dataset_npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
+TODO how can i make the model name legible / get returned from the train script? is it in the pt file somewhere? or just look for the pt file in the directory and assume the directory is getting recreated everytime you run the script 
+- once you have a trained model, create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font_dataset_npz --output_path class_embeddings_512.npy`
 TODO model_path = model_path = 'fontCNN_BS64-ED512-IC16.pt'
 data_dir = data_dir = 'data/font_dataset_npz'  
 
