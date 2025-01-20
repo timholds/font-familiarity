@@ -297,12 +297,15 @@ class FontRenderer:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--text_file', default='data_generation/lorem_ipsum.txt')
-    parser.add_argument('--font_file', default='data_generation/fonts.txt')
-    parser.add_argument('--output_dir', default='font-images3')
+    parser.add_argument('--text_file', default='data_generation/lorem_ipsum.txt', help='Text to render in the various fonts')
+    parser.add_argument('--font_file', default='data_generation/fonts.txt', help='File containing list of fonts to render')
+    parser.add_argument('--output_dir', default='font-images3', help='Directory to save rendered images')
+    parser.add_argument('--samples_per_class', default=10, type=int, help='Number of images per font')
     parser.add_argument('--image_resolution', default=256, type=int)
-    parser.add_argument('--samples_per_class', default=10, type=int)
-    parser.add_argument('--image_quality', default=10, type=int)
+    parser.add_argument('--image_quality', default=10, type=int, help='JPEG quality (0-100)')
+    parser.add_argument('--port', default=5100, type=int)
+    parser.add_argument('--font_size', default=16, type=int)
+    parser.add_argument('--line_height', default=1.5, type=float)
     args = parser.parse_args()
 
     # suggest new arguments copilot!
@@ -311,9 +314,12 @@ def main():
         text_file=args.text_file,
         output_dir=args.output_dir,
         template_dir='templates',
+        port=args.port,
         image_size=(args.image_resolution, args.image_resolution),  # Smaller size
         image_quality=args.image_quality,
-        num_samples_per_font=args.samples_per_class
+        num_samples_per_font=args.samples_per_class,
+        font_size=args.font_size,
+        line_height=args.line_height
     )
     
     try:

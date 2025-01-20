@@ -326,14 +326,20 @@ https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekal
 
 TODO delete extra create_embeddings.py file inside ml (or figure out which one is useful)
 
-# Workflow
-generate data: `python3 data_generation/create_font_images.py --samples_per_class 100 --image_resolution 128 --font_size 35`
-prep data: `python data_generation/prep_train_test_data.py`
-train: `python ml/train.py --data_dir "font_dataset_npz" --embedding_dim 256 --batch_size 32`
+# Test workflow
+Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
 
-once you have a trained, saved pt model, use it to create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir font_dataset_npz/ --output_path class_embeddings_512.npy`
+# Workflow
+- generate data: `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts.txt --output_dir font-images3 --samples_per_class 100 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
+- prep data: `python data_generation/prep_train_test_data.py`
+- train: `python ml/train.py --data_dir "font_dataset_npz" --embedding_dim 256 --batch_size 32`
+- once you have a trained, saved pt model, use it to create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir font_dataset_npz/ --output_path class_embeddings_512.npy`
+- launch frontend
 
 
 Note: when running the frontend, the model pt passed in needs to have an embedding dimension that matches the class embeddings. The model file has the embedding dimension in the name. For example, fontCNN_BS64-ED512-IC16.pt has an embedding dimension of 512.
 
 TODO add test time fixed dataset visualizations so we can concretely see how the model is predicting
+
+TODO create some test scripts to create a few images per class, train 1 epoch and save the model, load the model and do inference
+- need a way to pass around class embedding file names
