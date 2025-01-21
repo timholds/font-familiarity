@@ -1,4 +1,4 @@
-# Quickstart
+## Quickstart
 Create a new virtual environment and install the requirements. I'm using Python 3.10.12, use other versions and YMMV
 ```
 python -m venv font-env
@@ -6,22 +6,30 @@ source font-env/bin/activate
 pip install -r requirements.txt
 ```
 
-# Overview (the What) 
-The readme is a project notes section for now.
+
+To run any of the individual components from the root of font-familiarity:
+- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
+- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`  
+- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`  
+- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --output_path class_embeddings_512.npy`  
+- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`  
+
+To run all of these commands in sequence: `python test_e2e.py` 
+
+It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. If running correctly, it should create a new folder `test-data` with images images and train/test data, as well as saving a model and embeddings. Finally, you should be go to the frontend at `localhost:8080`, upload one of the test images, and verify there are no errors. Note that we aren't expecting the model to actually perform well, but everything else should be working.
+
+# Overview  
 
 **Problem Statement**: If you see a font in the wild and want to use it yourself, how do you know the name of the font? If its a paid font, how do you find similar free fonts? The goal of this project is to build a tool that can take an image of a font and return the most similar fonts from a dataset of free fonts. We will do this in three steps: 1) generating the dataset of different fonts, 2) training a model to learn the features of each font, and 3) building a frontend to take in an image with some text and return the most similar fonts.
 
 
-
-
-# The How
 ## Main Software Pieces
 - dataset generation
     - html template to render the text into fonts
     - flask server to put the baked html onto a webpage
     - selenium scraper to takes screenshots of those webpages
     - script to orchestrate this and save the data to disk as npz or pkl files
-- train model
+- model training and font embedding creation
     - model architecture file
     - dataset file to load dataset into pytorch DataLoader
     - training file to handle the training loop, evaluation, metrics
@@ -29,15 +37,6 @@ The readme is a project notes section for now.
 - frontend
     - interface to take upload image, run it through the embedding model, do cosine similarity against and return the most similar fonts
 
-# Test workflow
-Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
-
-Note: All these commands should be run from the root of font-familiarity. The file `test_e2e.py` runs all of these commands in sequence.
-- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
-- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`
-- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
-- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --output_path class_embeddings_512.npy`
-- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
 
 ### Example file structure
 - test-data
@@ -221,34 +220,19 @@ TODO link to a huggingface download section
 [ ] overfit on one batch, launch it and make sure it works on the frontend too  
 
 
+# Project Notes
+## Notes
+## Experiments
+## Challenges
+## TODOs
+
+
+
+
 ## Questions
 How much does it matter if the model is trained on jpg images but someone inputs a png image? The png in theory is not lossy, but we will have to resize it to the same size as the training images, which will introduce some lossiness.
 
-## Image parameters vs filesize 
-|Filesize  | Compression    | Resolution     | Container | Quality      |
-| -------  | -------------- | -------------- | --------- | -------      |
-~1 kb      | compression 10 | image size 128 |    128    |  too zoomed  |
-2-3kb      | compression 10 | image size 256 |    128    |  too zoomed  |
-| | | | |
-1-2kb      | compression 10 | image size 128 |    256    |  too blurry  |
-3-4kb      | compression 50 | image size 128 |    256    |    blurry    |
-| | | | |
-4-5kb      | compression 10 | image size 256 |    256    |blur, passable|
-7-8kb      | compression 20 | image size 256 |    256    |    decent    |
-11-13kb    | compression 50 | image size 256 |    256    |     good     |
-| | | | |
-12-13kb    | compression 10 | image size 512 |    256    |              |
-15-16kb    | compression 20 | image size 512 |    256    |              |
-| | | | |
-4-5kb      | compression 10 | image size 256 |    512    |  too wide    |
-18-20kb    | compression 10 | image size 512 |    512    |  too wide    |
 
-
-ideally we want to add the downstream ML objective to this table since that is the actual tradeoff we care about 
-
-what if we increase the font size instead of increasing the resolution / amount of text in each image
-
-some blurring can actually be desirable for the ML task as it has a regularizing effect. in other words, blurring helps bias the parameters of the network to be closer to 0, which will lead to smoother loss landscapes and better generalization. in other words, small weights and biases mean less expressability but smoother interpolation between training points. this all reduces overfitting. 
 
 
 TODO make it so people can upload images of paid fonts to find most similar free fonts.
@@ -280,7 +264,7 @@ Pickling challenges
     - two options: numpy built in compression or more aggressive compression with gzip and pickle 
 
 
-# Compression
+## Compression
 How are we handling compression?
 What does image compression actually mean? Explain why it would be nonsensical to 
 
@@ -302,7 +286,7 @@ Imagine the space of image augmentations that would be helpful if we wanted to l
 
 .npz is a good choice here since it's more memory-efficient than .pkl for large arrays, and since the dataset is significantly larger than CIFAR.
 
-# Experiments
+## Experiments
 [ ] Try contrastive loss
 [ ] Try triplet loss
 [ ] Experiment with weight decay
@@ -310,7 +294,7 @@ Imagine the space of image augmentations that would be helpful if we wanted to l
 [ ] Add a wandb config file and sweep conv sizes
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
-# TODO 
+## TODO 
 [ ] move the class embedding generation into prep train test data.py? Otherwise go back to using a class embedding argument in the frontend_app.py instead of searching for it in the dataset folder 
 [ ] fix the error when uploading an image
 [ ] add some processing to resize images coming in and make them single channel
@@ -320,42 +304,31 @@ Imagine the space of image augmentations that would be helpful if we wanted to l
 
 
 [X] Figure out how to keep track of the model experiments - use weights and biases 
-
-Test my model on cifar dataset instead to sanity check that it is capable of learning anything
-
-[ ] Add a note about how the data is stored in the npz and the best way to access it
-- remove "Keys in NPZ file: ['images', 'labels']"
-
-[X] create a small test dataset for iterating on the model - font-dataset-npz_test
-
-[X] make it so that it only saves the class averages at the end of training instead of everytime a new best model gets saved
-[X] add a LR warmup and cosine learning rate
-[ ] clean up hardcoded flatten_dim
-        self.flatten_dim = 128 * 4 * 4 
-        self.embedding_layer = nn.Sequential(
-            nn.Linear(self.flatten_dim, 1024),
+[X]Test my model on cifar dataset instead to sanity check that it is capable of learning anything  
+[X] create a small test dataset for iterating on the model - font-dataset-npz_test  
+[X] make it so that it only saves the class averages at the end of training instead of everytime a new best model gets saved  
+[X] Establish simple conv baseline for the encoder
+[X] add a LR warmup and cosine learning rate  
+[ ] Test a resnet as the encoder
+[ ] Test a resnet with supervised contrastive loss (does it need to be a pretrain)
 
 
 
 
 
 -TODO some explaining about high dimensional representations where all the datapoints are super far from each other so being close in one dimension ends up being close in 
--TODO does it matter whether you take the class average over the train set vs the validation or test set?
+
+## Questions
+[ ] does it matter whether you take the class average over the train set vs the validation or test set?  
+
 
 
 # Misc
-what is the best way to store this dataset if I wanted to make it uber scalable? Store it on AWS S3 as compressed
--Add code to download dataset from a public bucket
 - try uploading to huggingface again
 
 Do I need to do any regularization?
 
-metrics are a clusterfuck right now. i really want probably 12 metrics right now, the most important being test validation 
 
-Establish a baaaaseline baseline with a one layer MLP
-Establish simple conv baseline for the encoder
-Test a resnet as the encoder
-Test a resnet with supervised contrastive loss (does it need to be a pretrain)
 
 figure out how to combine steps in one script for gathering data and training the model
 1) generate the data, save the data, prep_train_test_data.py     

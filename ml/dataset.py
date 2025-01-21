@@ -15,7 +15,6 @@ class FontDataset(Dataset):
         
         # Load data from NPZ file
         with np.load(data_file) as data:
-            print("Keys in NPZ file:", data.files)
             self.data = data['images']     # Shape: (N, 256, 256)
             self.targets = data['labels']   # Shape: (N,)
         
