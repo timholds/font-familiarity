@@ -119,7 +119,7 @@ class FontRenderer:
                  image_size: tuple = (256, 256),  # Reduced from 512x512
                  image_quality: int = 80, # JPEG quality (0-100))
                  num_samples_per_font: int = 10,
-                 font_size: int = 16,
+                 font_size: int = 24,
                  line_height: float = 1.5):       
         
         self.font_size = font_size
@@ -184,15 +184,17 @@ class FontRenderer:
                 font_config = FontConfig(
                     name=font_name,
                     output_path=self.output_dir / font_name.lower().replace(' ', '_'),
-                    # image_width=self.image_size[0],
-                    # image_height=self.image_size[1],
-                    # font_size=24,
-                    # samples_per_font=args.samples_per_class
+                    image_width=self.image_size[0],
+                    image_height=self.image_size[1],
+                    font_size=self.font_size,
+                    samples_per_font=self.num_samples_per_font
                 )
                 return render_template(
                     'single_font.html',
                     font=font_config,
-                    text=self.text
+                    text=self.text,
+                    font_size=self.font_size,
+                    line_height=self.line_height
                 )
             
             from threading import Thread
