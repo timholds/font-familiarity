@@ -1,4 +1,4 @@
-# TODO quickstart
+# Quickstart
 Create a new virtual environment and install the requirements. I'm using Python 3.10.12, use other versions and YMMV
 ```
 python -m venv font-env
@@ -6,25 +6,96 @@ source font-env/bin/activate
 pip install -r requirements.txt
 ```
 
-# Overview 
+# Overview (the What) 
 The readme is a project notes section for now.
 
 **Problem Statement**: If you see a font in the wild and want to use it yourself, how do you know the name of the font? If its a paid font, how do you find similar free fonts? The goal of this project is to build a tool that can take an image of a font and return the most similar fonts from a dataset of free fonts. We will do this in three steps: 1) generating the dataset of different fonts, 2) training a model to learn the features of each font, and 3) building a frontend to take in an image with some text and return the most similar fonts.
 
+
+
+
+# The How
 ## Main Software Pieces
-- html template to render the text into fonts
-- flask server to put the baked html onto a webpage
-- selenium scraper to takes screenshots of those webpages
-- (optional) compressing the data for storage 
-- saving the data to disk as npz or pkl files
-- model architecture file
-- file to load dataset into pytorch DataLoader
-- file to handle the training loop, evaluation, metrics
-- inference and calculating the most similar fonts, creating the font embeddings
-- frontend to take in an image and return the most similar fonts
+- dataset generation
+    - html template to render the text into fonts
+    - flask server to put the baked html onto a webpage
+    - selenium scraper to takes screenshots of those webpages
+    - script to orchestrate this and save the data to disk as npz or pkl files
+- train model
+    - model architecture file
+    - dataset file to load dataset into pytorch DataLoader
+    - training file to handle the training loop, evaluation, metrics
+    - create class-average font embeddings using the trained model and dataset
+- frontend
+    - interface to take upload image, run it through the embedding model, do cosine similarity against and return the most similar fonts
+
+# Test workflow
+Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
+
+Note: All these commands should be run from the root of font-familiarity. The file `test_e2e.py` runs all of these commands in sequence.
+- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
+- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`
+- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
+- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --output_path class_embeddings_512.npy`
+- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
+
+### Example file structure
+- test-data
+    - font-images
+        - abeeze
+            - image0000.jpg
+            - ...
+            - image0010.jpg
+        - ...
+        - archivo narrow
+            - image0000.jpg
+            - ...
+            - image0010.jpg
+    - font-images-npz
+        - label_mapping.npy ~1kb
+        - train.npz - few MB
+        - test.npz ~500kb
+        - fontCNN_BS64-ED128-IC16.pt ~5mb
+        - class_embeddings.test ~25kb
+
+    - 
+
+# Workflow
+
+## Data generation
+TODO retest data generation with the font_size and line_height args
+- generate data: `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/full_fonts_list.txt --output_dir data/font-images --samples_per_class 100 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
+TODO output_dir = input_image_dir = "data/font-images"  
+- prep data: `python data_generation/prep_train_test_data.py --input_image_dir data/font-images --output_dir data/font-dataset-npz --test_size .1`
+
+## Train Model and Generate Embeddings
+TODO output_dir = data_dir = data/font-dataset-npz
+- train: `python ml/train.py --data_dir data/font-dataset-npz --epochs 30 --batch_size 64 --learning_rate 0.0001 --weight_decay 0.01 --embedding_dim 128 --resolution 64 --initial_channels 16`
+
+- once you have a trained model, create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --output_path class_embeddings_512.npy`
+TODO model_path = model_path = 'fontCNN_BS64-ED512-IC16.pt'
+data_dir = data_dir = 'data/font-dataset-npz'  
+
+## Frontend
+TODO make sure I shouldn't be passing a different embeddings file
+- launch frontend `python frontend_app.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
 
 
-# Machine learning 
+Note: when running the frontend, the model pt passed in needs to have an embedding dimension that matches the class embeddings. The model file has the embedding dimension in the name. For example, fontCNN_BS64-ED512-IC16.pt has an embedding dimension of 512.
+
+
+## Machine learning 
+### Inference
+Our goal is to find which fonts are most similar to the unknown input font, so we need to have some idea of what all the *known* fonts look like in feature space and return the closest ones. 
+
+To find that, we can take the trained model and for each class, average the output embedding over all the training examples to give us a prototype average for each class. 
+
+For each font class (out of the ~700 fonts), we're:
+- Taking all images of that font (1000 images per class in this case)
+- Running each through the model to get its 1024-dimensional feature vector
+- Computing the average of all these vectors for that class
+
+So if Font_A with n images, we get one 1024-dim vector representing the "average characteristics" of Font_A
 
 ## Steps
 Simple baseline model
@@ -48,17 +119,15 @@ Try a more complex model with more data and more regularization and more data au
 
 Idea - what if I just generated the iamges of all the charcters in PIL and then do all the data augmentation to the images where each image has just one character in it
 
-## Quetions
+### ML Questions
 What if I framed my problem also as first a character recognition detection problem, and then used the sum of these 
 [ ] find a good open-source ocr character segmentation model and use it to generate 
 -> does a segmentation model help at all here? forcing the model to learn exactly which pixels are and aren't part of the font? caveat is that the low resolution images probably won't work
 
 [ ] Are there any ML strategies for doing CCE on a dataset with a large number of classes?
 
-
-# questions
-- how many datapoints per class do I want if I have around 700 classes? cifar1000 archs probably a good place to start
-- Is it better just to keep the classifier and return the top 5 classes or to omit the classifier and just use the get_embeddings() part of the model to extract the features and then compare that to the average features of each class?
+[ ] how many datapoints per class do I want if I have around 700 classes? cifar1000 archs probably a good place to start
+[ ] Is it better just to keep the classifier and return the top 5 classes or to omit the classifier and just use the get_embeddings() part of the model to extract the features and then compare that to the average features of each class?
 
 
 # TODO
@@ -140,24 +209,12 @@ At an average
 
 try some different text sizes for data augmentation
 
-# Process
-Used this website to generate a bunch of text https://lipsumhub.com/?type=paragraph&length=100
+TODO move more info about data generation to the README inside data_generation
+and link to it here 
+[Dataset Generation Readme](data_generation/README.md)
+TODO link to a huggingface download section 
 
-Did it a few times and grabbed some different text
-used this repo https://github.com/honeysilvas/google-fonts to get a full list of fonts and asked claude to put each font on it's own line, which handled the two word fonts pretty nicely
 
-challenge - 50GB of image data is too big to upload past Github 5GB limit
-- try 100 images per class instead of 1000
-- try resizing to 256x256 instead of 512
-- save the images out as jpeg instead of png and so some compression
-
-TODO experiment with different image sizes and compression levels
-TODO try saving images in greyscale
-
-# Dataset
-The images themselves are currently 256x256 grayscale. The code to generate the font images should create a balanced dataset with 1000 (configurable) images per class, saved as jpg files. 
-
-I choose jpg instead of png so we can compress the images more aggressively on disk. Basically, this is a personal project and I don't want to take up too much space on my hard drive. 
 
 
 [ ] get an input-independent baseline by zeroing out inputs and seeing how it performs   
@@ -279,17 +336,7 @@ Test my model on cifar dataset instead to sanity check that it is capable of lea
             nn.Linear(self.flatten_dim, 1024),
 
 
-# Inference
-Our goal is to find which fonts are most similar to the unknown input font, so we need to have some idea of what all the *known* fonts look like in feature space and return the closest ones. 
 
-To find that, we can take the trained model and for each class, average the output embedding over all the training examples to give us a prototype average for each class. 
-
-For each font class (out of the ~700 fonts), we're:
-- Taking all images of that font (1000 images per class in this case)
-- Running each through the model to get its 1024-dimensional feature vector
-- Computing the average of all these vectors for that class
-
-So if Font_A with n images, we get one 1024-dim vector representing the "average characteristics" of Font_A
 
 
 -TODO some explaining about high dimensional representations where all the datapoints are super far from each other so being close in one dimension ends up being close in 
@@ -332,61 +379,7 @@ https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekal
 [ X ] Write 5  tests that correspond to the 5 main files that create the data, train, and do the frontend
 [ X ] Disable wandb when im running the unit tests, unless needed
 [ ] TODO make sure the test command args in the readme correspond to the ones in teste2e
-# Test workflow
-Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
+[ ] TODO add test time fixed dataset visualizations so we can concretely see how the model is predicting
 
-Note: All these commands should be run from the root of font-familiarity. The file `test_e2e.py` runs all of these commands in sequence.
-- `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5` 
-- `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`
-- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`
-- `python create_embeddings.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --output_path class_embeddings_512.npy`
-- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
-
-### Example file structure
-- test-data
-    - font-images
-        - abeeze
-            - image0000.jpg
-            - ...
-            - image0010.jpg
-        - ...
-        - archivo narrow
-            - image0000.jpg
-            - ...
-            - image0010.jpg
-    - font-images-npz
-        - label_mapping.npy ~1kb
-        - train.npz - few MB
-        - test.npz ~500kb
-        - fontCNN_BS64-ED128-IC16.pt ~5mb
-        - class_embeddings.test ~25kb
-
-    - 
-
-# Workflow
-
-## Data generation
-TODO retest data generation with the font_size and line_height args
-- generate data: `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/full_fonts_list.txt --output_dir data/font-images --samples_per_class 100 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
-TODO output_dir = input_image_dir = "data/font-images"  
-- prep data: `python data_generation/prep_train_test_data.py --input_image_dir data/font-images --output_dir data/font-dataset-npz --test_size .1`
-
-## Train Model and Generate Embeddings
-TODO output_dir = data_dir = data/font-dataset-npz
-- train: `python ml/train.py --data_dir data/font-dataset-npz --epochs 30 --batch_size 64 --learning_rate 0.0001 --weight_decay 0.01 --embedding_dim 128 --resolution 64 --initial_channels 16`
-
-- once you have a trained model, create embeddings: `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --output_path class_embeddings_512.npy`
-TODO model_path = model_path = 'fontCNN_BS64-ED512-IC16.pt'
-data_dir = data_dir = 'data/font-dataset-npz'  
-
-## Frontend
-TODO make sure I shouldn't be passing a different embeddings file
-- launch frontend `python frontend_app.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --embedding_file class_embeddings.npy --port 8080`
-
-
-Note: when running the frontend, the model pt passed in needs to have an embedding dimension that matches the class embeddings. The model file has the embedding dimension in the name. For example, fontCNN_BS64-ED512-IC16.pt has an embedding dimension of 512.
-
-TODO add test time fixed dataset visualizations so we can concretely see how the model is predicting
-
-TODO create some test scripts to create a few images per class, train 1 epoch and save the model, load the model and do inference
+[ X ] create some test scripts to create a few images per class, train 1 epoch and save the model, load the model and do inference
 - need a way to pass around class embedding file names
