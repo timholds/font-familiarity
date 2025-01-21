@@ -15,8 +15,10 @@ class FontDataset(Dataset):
         
         # Load data from NPZ file
         with np.load(data_file) as data:
+            print(f"Loading {mode} dataset...")
             self.data = data['images']     # Shape: (N, 256, 256)
-            self.targets = data['labels']   # Shape: (N,)
+            # The labels start at 1: todo fix this so they are 0 indexed
+            self.targets = data['labels']-1   # Shape: (N,)
         
         # Load label mapping
         label_map_path = os.path.join(root_dir, 'label_mapping.npy')
@@ -25,6 +27,26 @@ class FontDataset(Dataset):
         print(f"Number of classes: {self.num_classes}")
         print(f"Label mapping loaded from {label_map_path}")
       
+    def _validate_targets(self):
+        """Validate that all targets are within the correct range."""
+        min_target = self.targets.min()
+        max_target = self.targets.max()
+        unique_targets = np.unique(self.targets)
+        
+        if min_target < 0 or max_target >= self.num_classes:
+            raise ValueError(
+                f"Invalid target values found!\n"
+                f"Number of classes: {self.num_classes}\n"
+                f"Target range: [{min_target}, {max_target}]\n"
+                f"Unique targets: {unique_targets}\n"
+                f"Label mapping size: {len(self.label_mapping)}"
+            )
+        
+        print(f"Target validation passed:\n"
+              f"- Number of classes: {self.num_classes}\n"
+              f"- Target range: [{min_target}, {max_target}]\n"
+              f"- Number of unique targets: {len(unique_targets)}")
+
     def __len__(self) -> int:
         return len(self.data)
 
@@ -32,7 +54,10 @@ class FontDataset(Dataset):
         img = self.data[idx].astype(np.float32) / 255.0  # Normalize to [0, 1]
         img = torch.from_numpy(img).unsqueeze(0)  # Add channel dimension
         target = self.targets[idx]
-        
+
+        if not (0 <= target < self.num_classes):
+            raise ValueError(f"Invalid target {target} at index {idx}")
+            
         return img, target
 
 def get_dataloaders(
@@ -54,7 +79,7 @@ def get_dataloaders(
     # Validate label mappings are identical
     assert train_dataset.label_mapping == test_dataset.label_mapping, (
         "Train and test datasets have different label mappings"
-    )
+    )    
     
     print(f"\nDataset Information:")
     print(f"Number of classes: {train_dataset.num_classes}")

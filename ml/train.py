@@ -81,7 +81,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             'acc': f'{current_acc:.2f}%',
             'lr': f'{optimizer.param_groups[0]["lr"]:.6f}'
         })
-    
+        
     # Compute final training metrics
     train_metrics = {
         'train/loss': running_loss,

@@ -119,7 +119,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
     parser.add_argument("--data_dir", required=True, help="Path to dataset directory with npz/npz files")
-    parser.add_argument("--embeddings_file", default="class_embeddings.npy", 
+    parser.add_argument("--embeddings_file", default="class_embeddings.npy file inside the data_dir", 
                        help="Path to save embeddings")
     parser.add_argument("--batch_size", type=int, default=64)
     args = parser.parse_args()
@@ -151,11 +151,9 @@ def main():
     class_embeddings = compute_class_embeddings(model, test_loader, test_dataset.num_classes, device)
     
     # Save embeddings
-    print(f"\nSaving embeddings to {args.embeddings_file}")
-    # concat the args.output_
-    #embedding_path = os.path.join(args.data_dir, args.embeddings_file)
-    #print(embedding_path, args.data_dir, args.embeddings_file)
-    np.save(args.embeddings_file, class_embeddings)
+    embeddings_path = os.path.join(args.data_dir, args.embeddings_file)
+    print(f"\nSaving embeddings to {embeddings_path}")
+    np.save(embeddings_path, class_embeddings)
 
 if __name__ == "__main__":
     main()
