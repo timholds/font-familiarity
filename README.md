@@ -324,9 +324,11 @@ The Font Finder Chrome plugin seems quite promising since it uses the informatio
 ![Font Plugin Example](font-plugin.png)
 https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekalahgha
 
-TODO delete extra create_embeddings.py file inside ml (or figure out which one is useful)
 
-[ X ] TODO disable wandb when im running the unit tests, unless needed
+----
+[ ] TODO delete extra create_embeddings.py file inside ml (or figure out which one is useful)
+[ X ] Write 5  tests that correspond to the 5 main files that create the data, train, and do the frontend
+[ X ] Disable wandb when im running the unit tests, unless needed
 [ ] TODO make sure the test command args in the readme correspond to the ones in teste2e
 # Test workflow
 Same as the regular workflow but intended to be used as an endtoend test. It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch, creates class embeddings, and runs the frontend. We aren't expecting the model to actually perform well, but everything else should be working. Namely, the 
