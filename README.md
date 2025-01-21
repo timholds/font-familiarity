@@ -1,5 +1,5 @@
 # TODO quickstart
-Create a new virtual environment and install the requirements. I'm using Python 3.10.12
+Create a new virtual environment and install the requirements. I'm using Python 3.10.12, use other versions and YMMV
 ```
 python -m venv font-env
 source font-env/bin/activate
