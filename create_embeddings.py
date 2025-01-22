@@ -78,7 +78,7 @@ def compute_class_embeddings(model: SimpleCNN,
     Returns:
         class_embeddings: Array of shape [num_classes, embedding_dim]
     """
-    embedding_dim = model.embedding_layer[0].out_features  # Should be 128
+    embedding_dim = model.embedding_layer[0].out_features  
     print(f"\nComputing {embedding_dim}-dimensional embeddings for {num_classes} classes...")
     
     # Initialize storage for embeddings and counts
@@ -113,14 +113,13 @@ def compute_class_embeddings(model: SimpleCNN,
     
     final_embeddings = class_embeddings.cpu().numpy()
     print(f"Final embeddings shape: {final_embeddings.shape}")
-    return final_embeddings
+    return final_embeddings, embedding_dim
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
     parser.add_argument("--data_dir", required=True, help="Path to dataset directory with npz/npz files")
-    parser.add_argument("--embeddings_file", default="class_embeddings.npy file inside the data_dir", 
-                       help="Path to save embeddings")
+    parser.add_argument("--embeddings_file", help="Path to save embeddings")
     parser.add_argument("--batch_size", type=int, default=64)
     args = parser.parse_args()
     
@@ -148,10 +147,14 @@ def main():
     
     
     # Compute embeddings
-    class_embeddings = compute_class_embeddings(model, test_loader, test_dataset.num_classes, device)
+    class_embeddings, embed_dim = compute_class_embeddings(model, test_loader, test_dataset.num_classes, device)
     
     # Save embeddings
-    embeddings_path = os.path.join(args.data_dir, args.embeddings_file)
+    if args.embeddings_file:
+        embeddings_path = os.path.join(args.data_dir, args.embeddings_file)
+    else:
+        embeddings_file = "class_embeddings_" + str(embed_dim) + ".npy"
+        embeddings_path = os.path.join(args.data_dir, embeddings_file)
     print(f"\nSaving embeddings to {embeddings_path}")
     np.save(embeddings_path, class_embeddings)
 
