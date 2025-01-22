@@ -1,4 +1,4 @@
-## Quickstart
+# Quickstart
 Create a new virtual environment and install the requirements. I'm using Python 3.10.12, use other versions and YMMV
 ```
 python -m venv font-env
