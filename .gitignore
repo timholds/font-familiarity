@@ -17,6 +17,6 @@ font-images*.zip
 *.pt
 *wandb*
 font_dataset_npz*/
-__pycache__/
+*__pycache__/
 *.pyc
 *.log
