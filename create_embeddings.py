@@ -36,21 +36,24 @@ def load_model(model_path: str) -> tuple[SimpleCNN, torch.device]:
     # Extract architecture parameters from state dict
     embedding_weight = state_dict['embedding_layer.0.weight']  # Shape: [embedding_dim, flatten_dim]
     classifier_weight = state_dict['classifier.weight']        # Shape: [num_classes, embedding_dim]
-    
+    initial_channels = state_dict['features.0.weight'].shape[0]  # e.g. 32
+
     # Get dimensions from the weights
     flatten_dim = embedding_weight.shape[1]    # 2048 (128 channels * 4 * 4)
     embedding_dim = embedding_weight.shape[0]  # 128 (dimension of learned features)
     num_classes = classifier_weight.shape[0]   # Number of font classes
     
     print("\nModel architecture from checkpoint:")
-    print(f"- Flattened CNN features: {flatten_dim} (128 channels * 4 * 4 spatial)")
+    print(f"- Initial channels: {initial_channels}")
+    print(f"- Flattened CNN features: {flatten_dim}")
     print(f"- Embedding dimension: {embedding_dim}")
     print(f"- Number of classes: {num_classes}")
     
     # Initialize model with correct parameters
     model = SimpleCNN(
         num_classes=num_classes,
-        embedding_dim=embedding_dim
+        embedding_dim=embedding_dim, 
+        initial_channels=initial_channels
     ).to(device)
     
     # Load the trained weights

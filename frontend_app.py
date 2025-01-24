@@ -83,6 +83,8 @@ def load_model_and_embeddings(model_path: str,
         embedding_dim = embedding_weight.shape[0]
         flatten_dim = embedding_weight.shape[1]
         num_classes = classifier_weight.shape[0]
+        initial_channels = state_dict['features.0.weight'].shape[0]  # e.g. 32
+
 
         print('In frontend, num classes:', num_classes)
         
@@ -90,6 +92,7 @@ def load_model_and_embeddings(model_path: str,
         logger.info(f"Embedding dim: {embedding_dim}")
         logger.info(f"Flatten dim: {flatten_dim}")
         logger.info(f"Number of classes: {num_classes}")
+        logger.info(f"Initial channels: {initial_channels}")
         
         # Check if model's number of classes matches label mapping
         if num_classes != len(label_mapping):
@@ -101,7 +104,8 @@ def load_model_and_embeddings(model_path: str,
         # Initialize model
         model = SimpleCNN(
             num_classes=num_classes,
-            embedding_dim=embedding_dim
+            embedding_dim=embedding_dim,
+            initial_channels=initial_channels
         ).to(device)
 
         print(f"Model classifier shape after init: {model.classifier.weight.shape}")
