@@ -1,0 +1,9 @@
+bind = '127.0.0.1:8000'
+workers = 2
+worker_class = 'gthread'
+threads = 4
+timeout = 30
+accesslog = '/var/log/freefontfinder/access.log'
+errorlog = '/var/log/freefontfinder/error.log'
+loglevel = 'info'
+preload_app = True

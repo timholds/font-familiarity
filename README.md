@@ -97,20 +97,10 @@ For each font class (out of the ~700 fonts), we're:
 So if Font_A with n images, we get one 1024-dim vector representing the "average characteristics" of Font_A
 
 
-## TODO
- 
-[ ] model experimentation: data augmentation - vary positioning/layout, font size and style, color and background color, text itself  
-[ ] try a clip model of same font different font?  
-[ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5  
-[ ] do we get anything out of top eigenvectors of the data covariance matrix  
-[ ] distance between their mean images 
-[ X ] how can i make the model name legible / get returned from the train script? the filename itself has some of the hyperparams baked in - for example `fontCNN_BS64-ED512-IC16.pt`  
-- solution: create a ml.utils file with get_model_path() a
-
-Idea - what if I just generated the iamges of all the charcters in PIL and then do all the data augmentation to the images where each image has just one character in it
-
 ### ML Questions
 What if I framed my problem also as first a character recognition detection problem, and then used the sum of these 
+- generated the images of all the charcters in PIL and then do all the data augmentation to the images where each image has just one character in it
+
 [ ] find a good open-source ocr character segmentation model and use it to generate 
 -> does a segmentation model help at all here? forcing the model to learn exactly which pixels are and aren't part of the font? caveat is that the low resolution images probably won't work
 

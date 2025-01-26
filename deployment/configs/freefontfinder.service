@@ -1,0 +1,15 @@
+[Unit]
+Description=Free Font Finder Gunicorn Application
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/freefontfinder
+Environment="PATH=/var/www/freefontfinder/venv/bin"
+ExecStart=/var/www/freefontfinder/venv/bin/gunicorn -c gunicorn.conf.py frontend_app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

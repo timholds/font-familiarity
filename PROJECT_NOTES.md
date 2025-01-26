@@ -29,20 +29,31 @@
 [ ] Test a resnet with supervised contrastive loss (does it need to be a pretrain)
 
 
+# Training on Alienware
+- ssh timholds@192.168.68.125
+    - setup ssh keys 
+    - Creating a simple shell script to automate the sync + train process
+- pull github repo with the latest model file 
+- use github DVC w/ free tier of S3?
+
 
 # Deployment
 [ ] get a digital ocean ubuntu 22.04 server, 1GB RAM
+- `ssh -i ~/.ssh/digitalocean root@137.184.232.187`
+
 [ ] figure out which files and requirements I need to have setup
 [ ] create a setup script to launch 
 [ ] get a domain
-
+[ ] setup a github actions to deploy to the server on push to main
+    - .github/workflows/deploy.yml
 ## TODO 
 [ ] figure out a workflow for deployment 
     - need to copy over the 
     - gather model file, embeddings file, 
     - what files do i need to copy over for the deployment? just the frontend_app - maybe make a frontend_requirements.txt? need flask, pytorch (pytroch lite?)
+[ ] add test_e2e.py to github actions when merging develop into main
+- update the script to automatically upload an image to the server and check the response
 
-`ssh -i ~/.ssh/digitalocean root@137.184.232.187`
 
 
 ## ML Steps
@@ -58,3 +69,13 @@ Try a more complex model with more data and more regularization and more data au
 
 ## Bugs
 [x] critical:  there's an off by one error in the labels mapping. When I try to use a super overfit model on the frontend, it returns the wrong class with super high certainty! Checking this out closer, I notice it's predicting the class 1 off from the correct class. For example, on an image of the "yesseva" font, the model predicts "yesteryear" with 99.5% certainty. 
+
+
+# ML TODO
+[ ] model experimentation: data augmentation - vary positioning/layout, font size and style, color and background color, text itself  
+[ ] try a clip model of same font different font?  
+[ ] train a classifier model and use the average class features to find which classes are closer or more similar to each other and return the top 5  
+[ ] do we get anything out of top eigenvectors of the data covariance matrix  
+[ ] distance between their mean images 
+[ X ] how can i make the model name legible / get returned from the train script? the filename itself has some of the hyperparams baked in - for example `fontCNN_BS64-ED512-IC16.pt`  
+- solution: create a ml.utils file with get_model_path() a
