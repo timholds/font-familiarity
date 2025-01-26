@@ -78,4 +78,157 @@ Try a more complex model with more data and more regularization and more data au
 [ ] do we get anything out of top eigenvectors of the data covariance matrix  
 [ ] distance between their mean images 
 [ X ] how can i make the model name legible / get returned from the train script? the filename itself has some of the hyperparams baked in - for example `fontCNN_BS64-ED512-IC16.pt`  
-- solution: create a ml.utils file with get_model_path() a
+- solution: create a ml.utils file with get_model_path()
+
+# Misc
+- try uploading to huggingface again
+
+Do I need to do any regularization?
+
+
+
+figure out how to combine steps in one script for gathering data and training the model
+1) generate the data, save the data, prep_train_test_data.py     
+2) train, generate class embeddings, save class embeddings, launch flask app  
+
+
+## Questions
+[ ] does it matter whether you take the class average over the train set vs the validation or test set?  
+
+
+
+## Questions
+[ ] does it matter whether you take the class average over the train set vs the validation or test set?  
+
+## Compression
+How are we handling compression?
+What does image compression actually mean? Explain why it would be nonsensical to 
+
+**On disk** We want the images compressed on disk so they don't take up too much space. If we were using cloud storage like AWS S3, having the images compressed will save money, since they charge based on the size of outgoing data rather than the number of transfer events.
+
+**At train time**, we want the data uncompressed on the GPU so that we have arrays 
+
+What kind of color space do we need for the training images?
+
+
+Imagine the space of image augmentations that would be helpful if we wanted to let people upload arbitrary photos of fonts?
+- font size
+- bold / italicized
+- font color, background color
+- background texture
+- text placement / centering
+
+.npz is for saving multiple numpy arrays, .npy is for saving single arrays
+
+.npz is a good choice here since it's more memory-efficient than .pkl for large arrays, and since the dataset is significantly larger than CIFAR.
+
+
+## Questions
+How much does it matter if the model is trained on jpg images but someone inputs a png image? The png in theory is not lossy, but we will have to resize it to the same size as the training images, which will introduce some lossiness.
+
+-TODO some explaining about high dimensional representations where all the datapoints are super far from each other so being close in one dimension ends up being close in 
+
+## Machine learning 
+### Inference
+
+
+
+### ML Questions
+What if I framed my problem also as first a character recognition detection problem, and then used the sum of these 
+- generated the images of all the charcters in PIL and then do all the data augmentation to the images where each image has just one character in it
+
+[ ] find a good open-source ocr character segmentation model and use it to generate 
+-> does a segmentation model help at all here? forcing the model to learn exactly which pixels are and aren't part of the font? caveat is that the low resolution images probably won't work
+
+[ ] Are there any ML strategies for doing CCE on a dataset with a large number of classes?
+
+[ ] how many datapoints per class do I want if I have around 700 classes? cifar1000 archs probably a good place to start
+[ ] Is it better just to keep the classifier and return the top 5 classes or to omit the classifier and just use the get_embeddings() part of the model to extract the features and then compare that to the average features of each class?
+
+
+# TODO
+[ ] figure out how to incorporate weight and width into the data augmentation and perhaps the model explicitly ala https://fonts.google.com/specimen/Roboto/tester  
+-> might involve downloading all the font files and rendering them differently  
+[ ]  update the data generation to something less crude than this original ugly hack - text = text * 10  # Repeat text to ensure enough content  
+[ X ] get the script reading the text from the lorum_ipsom.txt file  
+[ X ] get the fonts read in to the html page from fonts.txt  
+[ X ] get the script to render the text on an html page in the correct font  
+[ X ] figure out how much data I need - 100-10k images per class  
+[ X ] get the screenshots saving with minimal overlap  
+[ X ] collect a dataset of screenshots  
+[ X ] get the full sized model to train in colab on an A100  
+    - taking ~90/s per iteration  
+Make sure that the metrics look right and wandb   
+[  ] Get a sweep working on colab 
+[ ] Put a little demo of each of the fonts on the frontend 
+
+[ X ] get the flask app to launch for the frontend using the model and class embeddings
+[ ] make a simple frontend that is capable of taking in images of fonts and returning out similar fonts  
+[ ] make a pretty frontend - maybe pay someone or ask conor  
+[ ] start generating data augmentations  
+ 
+[ ] make the validation dataset smaller  
+[ ] add back model saving during the epochs instead of just at the end. i think there is a bug rn such that it saves the network state after the last epoch regardless of whether that's the best model or not.  
+[ ] write a script to run to generate class embeddings using the training data after generating and saving the best train model so i can have multiple models saved and each of them can generate their own class embeddings  
+[ ] figure out what data format to store the class embeddings in so that they can be used inside a flask app   
+[ ] figure out how a flask app is supposed to work  
+[ ] once the website it live, would be nice to be able to save the font images people are uploading so we can get a better idea of what kind of data augmentations to do
+
+
+# Training experiments
+First idea is just to get the loss to go down for train and test over a 30 epoch run with a tiny 3M parameter network.
+
+# ML steps and ideas
+[ ] train a distance model on cifar to make sure the idea works
+[ ] figure out how to get the mean image of a class
+[ ] how many examples per class do we need
+
+## Metrics TODO
+[ ] remove or debug empty classes metric
+[ ] remove acc std
+[ ] do I need step and epoch time charts?
+
+"Data Impressions: Mining Deep Models to
+Extract Samples for Data-free Applications" (2021)
+- probably makes sense to use this approach and existing vision model
+- use Dirichlet distribution to model prob(softmax output | class, trained model)
+- dir sample space is probability over the classes
+- "compute a normalized class similarity matrix (C) using the weights W connecting the final (softmax) and the pre-final layers"
+- "concentration parameter (α) of the Dirichlet distribution" is the main juice here
+
+no access to training data, "synthesizes pseudo samples from the underlying data
+distribution on which it is trained."
+
+do contrastive losses mean anything for us? could we classify the fonts into families and use that as an (additional) label?
+-"Metric learning: focuses on learning distance metrics between data points"
+
+[ ] figure out how to get the images into a nice shape for ML
+- what resolution should i use 
+- should i be using PIL to create the images directly and use the google fonts api to download the fonts files locally?
+
+Create a separate system for training the network once you have the data
+
+try some different text sizes for data augmentation
+
+
+[ ] get an input-independent baseline by zeroing out inputs and seeing how it performs   
+[ ] overfit on one batch, launch it and make sure it works on the frontend too  
+
+
+
+# Project Notes
+## Notes
+## Experiments
+## Challenges
+## TODOs
+[ ] get the results on the frontend to be rendered in the font themselves! this should help visually add a sanity check to the results
+
+[X] TODO delete extra create_embeddings.py file inside ml (or figure out which one is useful)
+[ X ] Write 5  tests that correspond to the 5 main files that create the data, train, and do the frontend
+[ X ] Disable wandb when im running the unit tests, unless needed
+[ ] TODO make sure the test command args in the readme correspond to the ones in teste2e
+[ ] TODO add test time fixed dataset visualizations so we can concretely see how the model is predicting
+
+[ X ] create some test scripts to create a few images per class, train 1 epoch and save the model, load the model and do inference
+- need a way to pass around class embedding file names
+
