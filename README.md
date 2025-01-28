@@ -22,8 +22,11 @@ It creates a tiny dataset, preprocesses the dataset, trains a model for an epoch
 
 **Problem Statement**: If you see a font in the wild and want to use it yourself, how do you know the name of the font? If its a paid font, how do you find similar free fonts? The goal of this project is to build a tool that can take an image of a font and return the most similar free fonts from Google's ~700 fonts. We will do this in three steps: 1) generating the dataset of different fonts, 2) training a model to learn the features of each font, and 3) building a frontend to take in an image with some text and return the most similar fonts.
 
-## Dataset 
+## Dataset
 Best to visit the data generation readme [Dataset Generation Readme](data_generation/README.md)
+
+A super rough, ~15GB font dataset is available to download on Huggingface https://huggingface.co/datasets/Timholds/Fonts/tree/main. The images are 256x256 grayscale jpg files with no data augmentation applied. 
+
 
 ## Model and embeddings
 Our goal is to find which fonts are most similar to the unknown input font, so we need to have some idea of what all the *known* fonts look like in feature space and return the closest ones. To find that, we can take the trained model and for each class, average the output embedding over all the training examples to give us a prototype average for each class. 
@@ -34,7 +37,7 @@ For each font class (out of the ~700 fonts), we're:
 - Computing the average of all these vectors for that class
 
 So if Font_A with n images, we get one 1024-dim vector representing the "average characteristics" of Font_A. When a user inputs their image, we run it through the trained model and use the activations as a query to find the closest font embeddings. 
- 
+
 ## Frontend
 
 
