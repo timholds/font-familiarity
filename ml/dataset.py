@@ -4,6 +4,26 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import Tuple
 
+def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Load NPZ file using memory mapping."""
+    with np.load(file_path) as data:
+        data = np.load(file_path, mmap_mode='r')
+
+        # Load data using memory mapping
+        images = data['images']
+        # Load labels and adjust indexing (convert from 1-based to 0-based)
+        # im sorry this is so fucked but the old data is 1 indexed. i fixed it to be 0 indexed in the new data
+        labels = data['labels'] 
+        if (labels == 0).any():
+            print("Labels file 0 indexed.")
+        else: # labels are 1 indexed
+            labels -= 1
+        
+        breakpoint()    
+        assert (labels >= 0).all(), f"Negative label indices found after converting to 0 index.\
+              Expecting riginal to be >= 1"
+        return images, labels
+
 class FontDataset(Dataset):
     """
     Dataset for loading font images from NPZ files.
@@ -14,11 +34,8 @@ class FontDataset(Dataset):
         data_file = os.path.join(root_dir, f'{mode}.npz')
         
         # Load data from NPZ file
-        with np.load(data_file) as data:
-            print(f"Loading {mode} dataset...")
-            self.data = data['images']     # Shape: (N, 256, 256)
-            # The labels start at 1: todo fix this so they are 0 indexed
-            self.targets = data['labels']-1   # Shape: (N,)
+        self.data, self.targets = load_npz_mmap(data_file)
+
         
         # Load label mapping
         label_map_path = os.path.join(root_dir, 'label_mapping.npy')

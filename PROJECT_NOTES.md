@@ -214,6 +214,8 @@ try some different text sizes for data augmentation
 [ ] get an input-independent baseline by zeroing out inputs and seeing how it performs   
 [ ] overfit on one batch, launch it and make sure it works on the frontend too  
 
+# Known issues
+The labels in the npz file are off by one, so we need to subtract by one in the `FontDataset`: `self.targets = data['labels']-1`
 
 
 # Project Notes
