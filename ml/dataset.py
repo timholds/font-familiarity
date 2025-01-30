@@ -19,7 +19,6 @@ def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
         else: # labels are 1 indexed
             labels -= 1
         
-        breakpoint()    
         assert (labels >= 0).all(), f"Negative label indices found after converting to 0 index.\
               Expecting riginal to be >= 1"
         return images, labels
