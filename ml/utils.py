@@ -7,9 +7,10 @@ def get_model_path(base_dir, prefix, batch_size, embedding_dim, initial_channels
     return model_path
 
 
-def get_embedding_path(base_dir, embedding_dim=None, embedding_file=None):
+def get_embedding_path(base_dir, embedding_file=None, embedding_dim=None):
     if embedding_file is not None:
         return Path(os.path.join(base_dir, embedding_file))
     else:
+        # TODO make sure this still works when embedding_dim is None
         embedding_file = f"class_embeddings_{embedding_dim}.npy"
         return Path(os.path.join(base_dir, embedding_file))

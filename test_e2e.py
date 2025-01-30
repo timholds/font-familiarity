@@ -258,20 +258,22 @@ def test_model_training(dataset_dir, model_path:Path, expected_params):
     validate_model(model_path, expected_params)
     return model_path
 
-def test_create_embeddings(dataset_dir, model_path, embeddings_path):
+def test_create_embeddings(dataset_dir, model_path, embedding_file):
     # dataset_dir = Path("data/font_dataset_npz_test")
     # model_path = Path("fontCNN_BS64-ED128-IC16.pt")
     # TODO 
     # embeddings_file = "class_embeddings.npy"
-    # embeddings_path = os.path.join(dataset_dir, embeddings_file)
+    # embedding_file = os.path.join(dataset_dir, embeddings_file)
+    embedding_path = get_embedding_path(dataset_dir, embedding_file)
     run_step(
         "python create_embeddings.py "
         f"--model_path {model_path} "
         f"--data_dir {dataset_dir} "
-        f"--embeddings_file {embeddings_path}",
+        f"--embeddings_file {embedding_file}",
         "Creating embeddings"
     )
-    validate_embeddings(embeddings_path, model_path)
+
+    validate_embeddings(embedding_path, model_path)
 
 def test_frontend_server(model_path, dataset_dir, embeddings_path):
     frontend_port = 8080
@@ -298,7 +300,8 @@ def run_unit_tests():
     
     image_dir = Path("test-data/font-images")
     dataset_dir = Path("test-data/font-dataset-npz")
-    embeddings_path = get_embedding_path(dataset_dir, expected_params['embedding_dim'])
+    embeddings_file = "class_embeddings_" + str(expected_params['embedding_dim']) +".npy"
+    embeddings_path = get_embedding_path(dataset_dir, embedding_dim=expected_params['embedding_dim'])
     model_path = get_model_path(dataset_dir, "fontCNN", 
             expected_params['batch_size'], expected_params['embedding_dim'],
             expected_params['initial_channels'])
@@ -307,7 +310,7 @@ def run_unit_tests():
     test_image_generation(image_dir)
     test_dataset_prep(image_dir, dataset_dir)
     test_model_training(dataset_dir, model_path, expected_params)
-    test_create_embeddings(dataset_dir, model_path, embeddings_path)
+    test_create_embeddings(dataset_dir, model_path, embeddings_file)
     test_frontend_server(model_path, dataset_dir, embeddings_path)
 
 if __name__ == "__main__":
