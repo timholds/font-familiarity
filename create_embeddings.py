@@ -154,10 +154,10 @@ def main():
     
     # Save embeddings
     if args.embeddings_file:
-        embeddings_path = os.path.join(args.data_dir, args.embeddings_file)
+        embeddings_path = get_embedding_path(args.data_dir, embedding_file=args.embeddings_file)
     else:
-        embeddings_file = "class_embeddings_" + str(embed_dim) + ".npy"
-        embeddings_path = os.path.join(args.data_dir, embeddings_file)
+        embeddings_path = get_embedding_path(args.data_dir, embedding_dim=embed_dim)
+
     print(f"\nSaving embeddings to {embeddings_path}")
     np.save(embeddings_path, class_embeddings)
 
