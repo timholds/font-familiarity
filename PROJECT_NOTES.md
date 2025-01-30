@@ -38,10 +38,31 @@
 
 
 # Deployment
-[ ] get a digital ocean ubuntu 22.04 server, 1GB RAM
-- `ssh -i ~/.ssh/digitalocean root@137.184.232.187`
+clear up confusion around the deployment steps
+create the deployment directory
+do i need to create the deployment directory with the script locally?
+what if i copy paste all the files needed to launch the server into a specific folder and then just copied the folder
+- need to copy the model folder into ml
 
-[ ] figure out which files and requirements I need to have setup
+[X] get a digital ocean ubuntu 22.04 server, 1GB RAM
+- `ssh -i ~/.ssh/digitalocean root@137.184.232.187` or just
+- `ssh root@137.184.232.187`
+[X] run the `deploy-structure.sh` script locally
+`chmod +x deployment/scripts/deploy-structure.sh`
+`./deployment/scripts/deploy-structure.sh`
+[ ] copy over the deployment
+[X] figure out which files and requirements I need to have setup
+``` 
+rsync -avz \
+    frontend_app.py \
+    frontend_requirements.txt \
+    root@137.184.232.187:/var/www/freefontfinder/
+
+rsync -avz \
+    data/font-dataset-npz/fontCNN_BS64-ED512-IC32.pt \
+    data/font-dataset-npz/class_embeddings_512.npy \ 
+    root@137.184.232.187:/var/www/freefontfinder/model/
+```
 [ ] create a setup script to launch 
 [ ] get a domain
 [ ] setup a github actions to deploy to the server on push to main
