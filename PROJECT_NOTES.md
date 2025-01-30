@@ -45,30 +45,35 @@ what if i copy paste all the files needed to launch the server into a specific f
 - need to copy the model folder into ml
 
 [X] get a digital ocean ubuntu 22.04 server, 1GB RAM
-- `ssh -i ~/.ssh/digitalocean root@137.184.232.187` or just
-- `ssh root@137.184.232.187`
-[X] run the `deploy-structure.sh` script locally
-`chmod +x deployment/scripts/deploy-structure.sh`
-`./deployment/scripts/deploy-structure.sh`
-[ ] copy over the deployment
-[X] figure out which files and requirements I need to have setup
+- `ssh -i ~/.ssh/digitalocean root@137.184.232.187` mac or just
+- `ssh root@137.184.232.187` from linux
+[X] run the `deploy-structure.sh` script locally  
+`chmod +x deployment/scripts/deploy-structure.sh`  
+`./deployment/scripts/deploy-structure.sh`  
+[X] copy over the deployment
+`sudo rsync -avz deployment/ root@137.184.232.187:/var/www/freefontfinder/deployment/`
+[X] copy of ml.model, class_embeddings, frontend_app.py,and frontend_requirements.txt.
 ``` 
 rsync -avz \
     frontend_app.py \
     frontend_requirements.txt \
     root@137.184.232.187:/var/www/freefontfinder/
-
+```
+```
 rsync -avz \
     data/font-dataset-npz/fontCNN_BS64-ED512-IC32.pt \
     data/font-dataset-npz/class_embeddings_512.npy \ 
     root@137.184.232.187:/var/www/freefontfinder/model/
 ```
-[ ] create a setup script to launch 
-[ ] get a domain
-[ ] setup a github actions to deploy to the server on push to main
+
+[ ] configure the setup script correctly install dependencies on server  
+[ ] (optional) find a lightweight version of pytorch  
+[X] get a domain  
+[ ] setup a github actions to deploy to the server on push to main  
     - .github/workflows/deploy.yml
+
 ## TODO 
-[ ] figure out a workflow for deployment 
+[X] figure out a workflow for deployment 
     - need to copy over the 
     - gather model file, embeddings file, 
     - what files do i need to copy over for the deployment? just the frontend_app - maybe make a frontend_requirements.txt? need flask, pytorch (pytroch lite?)
