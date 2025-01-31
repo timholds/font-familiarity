@@ -53,6 +53,11 @@ what if i copy paste all the files needed to launch the server into a specific f
 [X] copy over the deployment
 `sudo rsync -avz deployment/ root@137.184.232.187:/var/www/freefontfinder/deployment/`
 [X] copy of ml.model, class_embeddings, frontend_app.py,and frontend_requirements.txt. 
+```
+rsync -avz \
+    deployment/ \
+    root@137.184.232.187:/var/www/freefontfinder/deployment/
+```
 ``` 
 rsync -avz \
     frontend_app.py \
@@ -70,12 +75,41 @@ rsync -avz \
     data/font-dataset-npz/class_embeddings_512.npy \ 
     root@137.184.232.187:/var/www/freefontfinder/model/
 ```  
+make sure the setup script is executable on the server
+`chmod +x /var/www/freefontfinder/deployment/setup.sh`
 
-[ ] configure the setup script correctly install dependencies on server  
+[X] configure the setup script correctly install dependencies on server  
 [ ] (optional) find a lightweight version of pytorch  
-[X] get a domain  
+[X] get a domain and have it point to the server
+[X] get SSL working
 [ ] setup a github actions to deploy to the server on push to main  
     - .github/workflows/deploy.yml
+
+
+## Deployment Improvements 
+Frontend Enhancements
+-Add proper styling (the CSS file is missing)
+-Add error handling for failed predictions
+-Add loading states during image processing
+
+
+Monitoring & Maintenance
+-Set up proper application monitoring
+-Implement backup strategy
+-Add more comprehensive error logging
+
+
+Security Enhancements
+- Consider rate limiting
+-Add input validation
+-Implement file upload size limits
+-Consider adding request logging for security monitoring
+
+
+Performance Optimization
+-Add caching for static assets
+-Optimize model loading
+-Consider CDN for static files
 
 ## TODO 
 [X] figure out a workflow for deployment 
