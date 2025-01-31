@@ -13,6 +13,44 @@ log_step() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
+validate_nginx() {
+    if ! nginx -t; then
+        echo "ERROR: nginx configuration test failed"
+        return 1
+    fi
+    return 0
+}
+
+# Function to validate services are running
+validate_services() {
+    local services=("nginx" "freefontfinder")
+    for service in "${services[@]}"; do
+        if ! systemctl is-active --quiet "$service"; then
+            echo "ERROR: Service $service is not running"
+            return 1
+        fi
+    done
+    return 0
+}
+
+validate_gunicorn() {
+    local response=$(curl -s -w "%{http_code}" --max-time 10 http://localhost:8000/)
+    local status=$?
+    local http_code=${response: -3}
+    
+    if [ $status -ne 0 ]; then
+        echo "ERROR: Curl failed with status $status"
+        return 1
+    fi
+    
+    if [ "$http_code" != "200" ]; then
+        echo "ERROR: Gunicorn returned HTTP code $http_code instead of 200"
+        return 1
+    fi
+    
+    return 0
+}
+
 # 1. System Setup
 log_step "Setting up swap space..."
 if [ ! -f /swapfile ]; then
@@ -51,10 +89,18 @@ pip install --no-cache-dir -r frontend_requirements.txt
 
 # 5. Configuration Files
 log_step "Setting up configuration files..."
-#cp ../deployment/configs/nginx.conf /etc/nginx/sites-available/freefontfinder
+# Copy nginx config
 cp /var/www/freefontfinder/deployment/configs/nginx.conf /etc/nginx/sites-available/freefontfinder
+# create symbolic link between sites-available and sites-enabled
 ln -sf /etc/nginx/sites-available/freefontfinder /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
+
+# Validate nginx config
+log_step "Validating nginx configuration..."
+if ! validate_nginx; then
+    echo "ERROR: nginx configuration validation failed"
+    exit 1
+fi
 
 cp /var/www/freefontfinder/deployment/configs/gunicorn.conf.py /var/www/freefontfinder/
 cp /var/www/freefontfinder/deployment/configs/freefontfinder.service /etc/systemd/system/
@@ -74,15 +120,57 @@ systemctl enable freefontfinder
 systemctl restart freefontfinder
 systemctl restart nginx
 
-# 8. SSL Setup (only if domain is ready)
+# 8. SSL Setup
 if host freefontfinder.com > /dev/null 2>&1; then
-    log_step "Setting up SSL..."
-    certbot --nginx -d freefontfinder.com -d www.freefontfinder.com --non-interactive --agree-tos --email your-email@example.com
+    log_step "DNS check passed, proceeding with SSL setup..."
+    certbot --nginx \
+        -d freefontfinder.com \
+        -d www.freefontfinder.com \
+        --non-interactive \
+        --agree-tos \
+        --redirect \
+        --email your-email@example.com \
+        --post-hook "systemctl restart nginx"
+        
+    # Verify SSL setup
+    if curl -s -I https://freefontfinder.com | grep -q "200 OK"; then
+        log_step "SSL setup successful!"
+    else
+        log_step "Warning: SSL setup might not be complete. Please check configuration."
+    fi
 else
-    log_step "Skipping SSL setup - domain not ready"
+    log_step "DNS not yet configured for freefontfinder.com - skipping SSL setup"
+    log_step "Run: certbot --nginx -d freefontfinder.com -d www.freefontfinder.com once DNS is ready"
 fi
 
-# 9. Memory Monitoring
+# Setup auto-renewal
+log_step "Setting up SSL auto-renewal..."
+systemctl enable certbot.timer
+systemctl start certbot.timer
+
+
+
+# 9. Validate Services
+log_step "Validating services..."
+sleep 5  # Give services time to start
+if ! validate_services; then
+    echo "ERROR: Service validation failed"
+    # Show logs for debugging
+    echo "nginx error log:"
+    tail -n 20 /var/log/nginx/error.log
+    echo "freefontfinder error log:"
+    tail -n 20 /var/log/freefontfinder/error.log
+    exit 1
+fi
+
+# 10. Validate Gunicorn
+log_step "Validating Gunicorn..."
+if ! validate_gunicorn; then
+    echo "ERROR: Gunicorn validation failed"
+    exit 1
+fi
+
+# 11. Memory Monitoring
 log_step "Setting up memory monitoring..."
 cat > /usr/local/bin/monitor_memory.sh << 'INNEREOF'
 #!/bin/bash
@@ -98,5 +186,15 @@ chmod +x /usr/local/bin/monitor_memory.sh
 log_step "Setup completed successfully!"
 echo "Memory Usage After Setup:"
 free -h
-echo "Swap Status:"
-swapon --show
+
+# echo "Swap Status:"
+# swapon --show
+echo
+echo "Service Status:"
+systemctl status nginx --no-pager
+systemctl status freefontfinder --no-pager
+echo
+echo "Nginx Configuration Test:"
+nginx -t
+echo
+echo "You can now access your site at: https://freefontfinder.com"

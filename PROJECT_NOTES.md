@@ -52,19 +52,24 @@ what if i copy paste all the files needed to launch the server into a specific f
 `./deployment/scripts/deploy-structure.sh`  
 [X] copy over the deployment
 `sudo rsync -avz deployment/ root@137.184.232.187:/var/www/freefontfinder/deployment/`
-[X] copy of ml.model, class_embeddings, frontend_app.py,and frontend_requirements.txt.
+[X] copy of ml.model, class_embeddings, frontend_app.py,and frontend_requirements.txt. 
 ``` 
 rsync -avz \
     frontend_app.py \
     frontend_requirements.txt \
     root@137.184.232.187:/var/www/freefontfinder/
+```  
 ```
+rsync -avz \
+    templates/frontend.html \ 
+    root@137.184.232.187:/var/www/freefontfinder/templates/
+```   
 ```
 rsync -avz \
     data/font-dataset-npz/fontCNN_BS64-ED512-IC32.pt \
     data/font-dataset-npz/class_embeddings_512.npy \ 
     root@137.184.232.187:/var/www/freefontfinder/model/
-```
+```  
 
 [ ] configure the setup script correctly install dependencies on server  
 [ ] (optional) find a lightweight version of pytorch  
