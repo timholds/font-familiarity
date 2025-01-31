@@ -86,6 +86,9 @@ log_step "Setting up nginx configuration..."
 ln -sf /etc/nginx/sites-available/freefontfinder /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
+ln -sf /var/www/freefontfinder/deployment/configs/freefontfinder.service \
+ /etc/systemd/system/freefontfinder.service
+
 # Validate nginx configuration
 if ! validate_nginx; then
     echo "ERROR: nginx configuration validation failed"
