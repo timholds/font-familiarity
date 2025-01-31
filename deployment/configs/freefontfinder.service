@@ -7,7 +7,10 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/freefontfinder
 Environment="PATH=/var/www/freefontfinder/venv/bin"
-ExecStart=/var/www/freefontfinder/venv/bin/gunicorn -c gunicorn.conf.py frontend_app:app
+ExecStart=/var/www/freefontfinder/venv/bin/gunicorn \
+    -c gunicorn.conf.py \
+    "frontend_app:create_app('/var/www/freefontfinder/model/fontCNN_BS64-ED512-IC32.pt', '/var/www/freefontfinder/model', '/var/www/freefontfinder/model/class_embeddings_512.npy')"
+Restart=always_
 Restart=always
 RestartSec=5
 

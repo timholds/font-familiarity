@@ -73,6 +73,7 @@ rsync -avz \
 rsync -avz \
     data/font-dataset-npz/fontCNN_BS64-ED512-IC32.pt \
     data/font-dataset-npz/class_embeddings_512.npy \ 
+    data/font-dataset-npz/label_mapping.npy \
     root@137.184.232.187:/var/www/freefontfinder/model/
 ```  
 make sure the setup script is executable on the server
