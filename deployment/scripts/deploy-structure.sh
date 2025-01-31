@@ -2,9 +2,6 @@
 # Run this locally to set up deployment directory structure
 # Update this section in deployment/scripts/deploy-structure.sh
 #log_step "Creating initial directory structure..."
-mkdir -p /var/www
-mkdir -p /var/www/freefontfinder/{deployment,static,model,logs}
-cd /var/www/freefontfinder
 
 # Create deployment directory structure
 mkdir -p deployment/{scripts,configs}
@@ -81,88 +78,29 @@ systemctl enable freefontfinder
 systemctl restart freefontfinder
 systemctl restart nginx
 
-# 8. SSL Setup (only if domain is ready)
+# 8. SSL Setup
+log_step "Setting up SSL with certbot..."
+apt-get install -y certbot python3-certbot-nginx
+
+# Only proceed with SSL setup if DNS is properly configured
 if host freefontfinder.com > /dev/null 2>&1; then
-    log_step "Setting up SSL..."
-    certbot --nginx -d freefontfinder.com -d www.freefontfinder.com --non-interactive --agree-tos --email your-email@example.com
+    log_step "DNS check passed, proceeding with SSL setup..."
+    certbot --nginx \
+        -d freefontfinder.com \
+        -d www.freefontfinder.com \
+        --non-interactive \
+        --agree-tos \
+        --redirect \
+        --email your-email@example.com \
+        --post-hook "systemctl restart nginx"
+        
+    # Verify SSL setup
+    if curl -s -I https://freefontfinder.com | grep -q "200 OK"; then
+        log_step "SSL setup successful!"
+    else
+        log_step "Warning: SSL setup might not be complete. Please check configuration."
+    fi
 else
-    log_step "Skipping SSL setup - domain not ready"
+    log_step "DNS not yet configured for freefontfinder.com - skipping SSL setup"
+    log_step "Run: certbot --nginx -d freefontfinder.com -d www.freefontfinder.com once DNS is ready"
 fi
-
-# 9. Memory Monitoring
-log_step "Setting up memory monitoring..."
-cat > /usr/local/bin/monitor_memory.sh << 'INNEREOF'
-#!/bin/bash
-MEMORY_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0}')
-if (( $(echo "$MEMORY_USAGE > 90" | bc -l) )); then
-    echo "High memory usage alert: ${MEMORY_USAGE}%" | logger -t memory_monitor
-fi
-INNEREOF
-
-chmod +x /usr/local/bin/monitor_memory.sh
-(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/monitor_memory.sh") | crontab -
-
-log_step "Setup completed successfully!"
-echo "Memory Usage After Setup:"
-free -h
-echo "Swap Status:"
-swapon --show
-EOL
-
-# Create nginx config
-cat > deployment/configs/nginx.conf << 'EOL'
-server {
-    listen 80;
-    server_name freefontfinder.com www.freefontfinder.com;
-    
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        client_max_body_size 10M;
-    }
-
-    location /static {
-        alias /var/www/freefontfinder/static;
-        expires 30d;
-    }
-}
-EOL
-
-# Create gunicorn config
-cat > deployment/configs/gunicorn.conf.py << 'EOL'
-bind = '127.0.0.1:8000'
-workers = 2
-worker_class = 'gthread'
-threads = 4
-timeout = 30
-accesslog = '/var/log/freefontfinder/access.log'
-errorlog = '/var/log/freefontfinder/error.log'
-loglevel = 'info'
-preload_app = True
-EOL
-
-# Create systemd service file
-cat > deployment/configs/freefontfinder.service << 'EOL'
-[Unit]
-Description=Free Font Finder Gunicorn Application
-After=network.target
-
-[Service]
-User=www-data
-Group=www-data
-WorkingDirectory=/var/www/freefontfinder
-Environment="PATH=/var/www/freefontfinder/venv/bin"
-ExecStart=/var/www/freefontfinder/venv/bin/gunicorn -c gunicorn.conf.py frontend_app:app
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOL
-
-# Make scripts executable
-chmod +x deployment/scripts/setup.sh
-
-echo "Deployment directory structure created successfully!"
-echo "You can now rsync this to your server and run setup.sh"

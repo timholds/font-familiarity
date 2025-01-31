@@ -120,36 +120,6 @@ systemctl enable freefontfinder
 systemctl restart freefontfinder
 systemctl restart nginx
 
-# 8. SSL Setup
-if host freefontfinder.com > /dev/null 2>&1; then
-    log_step "DNS check passed, proceeding with SSL setup..."
-    certbot --nginx \
-        -d freefontfinder.com \
-        -d www.freefontfinder.com \
-        --non-interactive \
-        --agree-tos \
-        --redirect \
-        --email your-email@example.com \
-        --post-hook "systemctl restart nginx"
-        
-    # Verify SSL setup
-    if curl -s -I https://freefontfinder.com | grep -q "200 OK"; then
-        log_step "SSL setup successful!"
-    else
-        log_step "Warning: SSL setup might not be complete. Please check configuration."
-    fi
-else
-    log_step "DNS not yet configured for freefontfinder.com - skipping SSL setup"
-    log_step "Run: certbot --nginx -d freefontfinder.com -d www.freefontfinder.com once DNS is ready"
-fi
-
-# Setup auto-renewal
-log_step "Setting up SSL auto-renewal..."
-systemctl enable certbot.timer
-systemctl start certbot.timer
-
-
-
 # 9. Validate Services
 log_step "Validating services..."
 sleep 5  # Give services time to start
