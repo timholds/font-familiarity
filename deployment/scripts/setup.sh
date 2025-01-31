@@ -34,29 +34,35 @@ mkdir -p /var/www/freefontfinder/{static,model,logs}
 cd /var/www/freefontfinder
 
 # Clone repository if it doesn't exist
-if [ ! -d "/var/www/freefontfinder/.git" ]; then
-    git clone https://github.com/timholds/Font-Familiarity.git .
-else
-    git pull
-fi
+#if [ ! -d "/var/www/freefontfinder/.git" ]; then
+#    git clone https://github.com/timholds/Font-Familiarity.git .
+#else
+#    git pull
+#fi
 
 # 4. Python Environment
 log_step "Setting up Python environment..."
+if [ -d "venv" ]; then
+    rm -rf venv
+fi
 python3 -m venv venv
 source venv/bin/activate
-pip install --no-cache-dir -r requirements.txt
+pip install --no-cache-dir -r frontend_requirements.txt
 
 # 5. Configuration Files
 log_step "Setting up configuration files..."
-cp ../deployment/configs/nginx.conf /etc/nginx/sites-available/freefontfinder
+#cp ../deployment/configs/nginx.conf /etc/nginx/sites-available/freefontfinder
+cp /var/www/freefontfinder/deployment/configs/nginx.conf /etc/nginx/sites-available/freefontfinder
 ln -sf /etc/nginx/sites-available/freefontfinder /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
-cp ../deployment/configs/gunicorn.conf.py ./
-cp ../deployment/configs/freefontfinder.service /etc/systemd/system/
+cp /var/www/freefontfinder/deployment/configs/gunicorn.conf.py /var/www/freefontfinder/
+cp /var/www/freefontfinder/deployment/configs/freefontfinder.service /etc/systemd/system/
 
 # 6. Permissions
 log_step "Setting permissions..."
+mkdir -p /var/log/freefontfinder
+
 chown -R www-data:www-data /var/www/freefontfinder
 chown -R www-data:www-data /var/log/freefontfinder
 chmod -R 755 /var/www/freefontfinder
