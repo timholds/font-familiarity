@@ -115,61 +115,63 @@ jobs:
             chown -R www-data:www-data /var/www/freefontfinder
             chmod -R 755 /var/www/freefontfinder
           '
-
+      
       # Restart the application to pick up changes
       - name: Restart application
-        run: |
-          echo "Restarting application service..."
-          ssh root@137.184.232.187 'systemctl restart freefontfinder'
+      run: |
+        echo "Restarting application service..."
+        ssh root@137.184.232.187 '
+          # Stop the service
+          systemctl stop freefontfinder
+          
+          # Small delay to ensure clean shutdown
+          sleep 2
+          
+          # Start the service
+          systemctl start freefontfinder
+          
+          # Check immediate status
+          systemctl status freefontfinder --no-pager
+          
+          # Show listening ports for debugging
+          netstat -tulpn | grep 8000
+          
+          # Show recent logs
+          journalctl -u freefontfinder -n 20 --no-pager
+        '
 
       # Verify everything is working
       - name: Health check
-        run: |
-          echo "Performing health checks..."
-          # Wait for service to start
-          sleep 5
-          
-          # Check if service is running
-          ssh root@137.184.232.187 '
-            if ! systemctl is-active --quiet freefontfinder; then
-              echo "ERROR: Service failed to start"
-              # Show logs for debugging
-              echo "Service logs:"
-              journalctl -u freefontfinder -n 50
-              exit 1
-            fi
-          '
-
-          # Check if the application is listening on port 8080
-          ssh root@137.184.232.187 'netstat -tuln | grep 8080'
-          if [ $? -eq 0 ]; then
-            echo "Application is listening on port 8080."
-          else
-            echo "ERROR: Application is not listening on port 8080."
+      run: |
+        echo "Performing health checks..."
+        # Wait longer for service to fully start
+        sleep 10
+        
+        # Check if service is running
+        ssh root@137.184.232.187 '
+          if ! systemctl is-active --quiet freefontfinder; then
+            echo "ERROR: Service failed to start"
+            echo "Service logs:"
+            journalctl -u freefontfinder -n 50
             exit 1
           fi
           
-          # Optionally check if the application responds
-          curl --fail http://137.184.232.187:8080/test
-          if [ $? -eq 0 ]; then
-            echo Deepsek "Health check passed."
-          else
-            echo "Seepseek ERROR: Application health check failed."
-            exit 1
-          fi
-
-          # Check if gunicorn is responding locally
-          ssh -t root@137.184.232.187 "bash -c 'curl --fail --max-time 10 http://localhost:8000/test'" || {
+          # Direct curl check without -t flag
+          if ! curl --fail --max-time 10 http://localhost:8000/test; then
             echo "ERROR: Gunicorn health check failed"
-            ssh root@137.184.232.187 "tail -n 50 /var/log/freefontfinder/error.log"
+            echo "Gunicorn logs:"
+            tail -n 50 /var/log/freefontfinder/error.log
+            echo "Service status:"
+            systemctl status freefontfinder --no-pager
             exit 1
-          }
-          
-          # Check if nginx/SSL endpoint is responding
-          curl --fail --max-time 10 -k https://freefontfinder.com/test || {
-            echo "ERROR: HTTPS endpoint health check failed"
-            ssh root@137.184.232.187 "tail -n 50 /var/log/nginx/error.log"
-            exit 1
-          }
-          
-          echo "Deployment completed successfully!"
+          fi
+        '
+        
+        # Check if nginx/SSL endpoint is responding
+        if ! curl --fail --max-time 10 -k https://freefontfinder.com/test; then
+          echo "ERROR: HTTPS endpoint health check failed"
+          ssh root@137.184.232.187 "tail -n 50 /var/log/nginx/error.log"
+          exit 1
+        fi
+        
+        echo "Deployment completed successfully!"
