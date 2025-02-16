@@ -2,86 +2,7 @@
 <html>
 <head>
     <title>Font Similarity Search</title>
-    <style>
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .upload-section {
-            margin: 20px 0;
-            padding: 20px;
-            border: 2px dashed #ccc;
-            border-radius: 8px;
-            text-align: center;
-        }
-
-        #preview {
-            margin-top: 20px;
-            min-height: 200px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        #preview.loading {
-            background: #f5f5f5;
-        }
-
-        #preview img {
-            max-width: 100%;
-            max-height: 300px;
-            object-fit: contain;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .preview-container {
-            position: relative;
-            display: inline-block;
-        }
-
-        .preview-error {
-            color: #dc3545;
-            margin-top: 10px;
-        }
-
-        .results-section {
-            display: flex;
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .results-column {
-            flex: 1;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-
-        .result-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        /* Loading spinner */
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
@@ -109,87 +30,39 @@
     </div>
 
     <script>
-        const previewEl = document.getElementById('preview');
-        const uploadForm = document.getElementById('uploadForm');
-        const imageInput = document.getElementById('imageInput');
-
-        function showLoading() {
-            previewEl.innerHTML = '<div class="spinner"></div>';
-            previewEl.classList.add('loading');
-        }
-
-        function showError(message) {
-            previewEl.innerHTML = `<div class="preview-error">${message}</div>`;
-            previewEl.classList.remove('loading');
-        }
-
-        function validateImage(file) {
-            // Check file type
-            if (!file.type.startsWith('image/')) {
-                throw new Error('Please select an image file');
-            }
-            
-            // Check file size (max 5MB)
-            if (file.size > 5 * 1024 * 1024) {
-                throw new Error('Image size should be less than 5MB');
-            }
-        }
-
-        function createImagePreview(file) {
-            return new Promise((resolve, reject) => {
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Create preview
+                const preview = document.getElementById('preview');
                 const reader = new FileReader();
                 
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        previewEl.innerHTML = '';
-                        previewEl.classList.remove('loading');
-                        previewEl.appendChild(img);
-                        resolve();
-                    };
-                    img.onerror = () => {
-                        reject(new Error('Failed to load image'));
-                    };
-                    img.src = e.target.result;
+                reader.onload = function(e) {
+                    preview.innerHTML = `<img src="${e.target.result}" style="max-width: 300px; max-height: 200px;">`;
                 };
                 
-                reader.onerror = () => reject(new Error('Failed to read file'));
                 reader.readAsDataURL(file);
-            });
-        }
+            }
+        });
 
-        uploadForm.addEventListener('submit', async (e) => {
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const file = imageInput.files[0];
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
             if (!file) {
-                showError('Please select an image first');
+                alert('Please select an image first');
                 return;
             }
 
+            const formData = new FormData();
+            formData.append('image', file);
+
             try {
-                // Validate image
-                validateImage(file);
-                
-                // Show loading state
-                showLoading();
-                
-                // Create preview
-                await createImagePreview(file);
-
-                // Create form data for upload
-                const formData = new FormData();
-                formData.append('image', file);
-
-                // Send to server
                 const response = await fetch('/predict', {
                     method: 'POST',
                     body: formData
                 });
-                
-                if (!response.ok) {
-                    throw new Error('Server error: ' + response.statusText);
-                }
                 
                 const data = await response.json();
                 
@@ -211,48 +84,10 @@
                     </div>
                 `).join('');
             } catch (error) {
-                showError(error.message || 'Error processing image');
                 console.error('Error:', error);
+                alert('Error processing image');
             }
         });
-
-        // Add drag and drop support
-        const uploadSection = document.querySelector('.upload-section');
-
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            uploadSection.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults (e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            uploadSection.addEventListener(eventName, highlight, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            uploadSection.addEventListener(eventName, unhighlight, false);
-        });
-
-        function highlight(e) {
-            uploadSection.classList.add('highlight');
-        }
-
-        function unhighlight(e) {
-            uploadSection.classList.remove('highlight');
-        }
-
-        uploadSection.addEventListener('drop', handleDrop, false);
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const file = dt.files[0];
-            
-            imageInput.files = dt.files;
-            uploadForm.dispatchEvent(new Event('submit'));
-        }
     </script>
 </body>
 </html>
