@@ -12,6 +12,8 @@ on:
       - 'static/**'
       - 'frontend_requirements.txt'
       - 'deployment/scripts/**'
+      - '.github/workflows/deploy.yml'
+
 
 jobs:
   deploy:
