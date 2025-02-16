@@ -140,6 +140,24 @@ jobs:
             fi
           '
 
+          # Check if the application is listening on port 8080
+          ssh root@137.184.232.187 'netstat -tuln | grep 8080'
+          if [ $? -eq 0 ]; then
+            echo "Application is listening on port 8080."
+          else
+            echo "ERROR: Application is not listening on port 8080."
+            exit 1
+          fi
+          
+          # Optionally check if the application responds
+          curl --fail http://137.184.232.187:8080/test
+          if [ $? -eq 0 ]; then
+            echo Deepsek "Health check passed."
+          else
+            echo "Seepseek ERROR: Application health check failed."
+            exit 1
+          fi
+
           # Check if gunicorn is responding locally
           ssh -t root@137.184.232.187 "bash -c 'curl --fail --max-time 10 http://localhost:8000/test'" || {
             echo "ERROR: Gunicorn health check failed"
