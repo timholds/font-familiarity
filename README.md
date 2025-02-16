@@ -10,9 +10,10 @@ pip install -r requirements.txt
 To run any of the individual components from the root of font-familiarity:
 - `python data_generation/create_font_images.py --text_file data_generation/lorem_ipsum.txt --font_file data_generation/fonts_test.txt --output_dir test-data/font-images --samples_per_class 10 --image_resolution 128 --port 5100 --font_size 35 --line_height 1.5`  
 - `python data_generation/prep_train_test_data.py --input_image_dir test-data/font-images --output_dir test-data/font-dataset-npz --test_size .1`  
-- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 30 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`  
-- `python create_embeddings.py --model_path test-data/font-dataset-npz/fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embeddings_file class_embeddings_512.npy`  
-- `python frontend_app.py --model_path fontCNN_BS64-ED128-IC16.pt --data_dir test-data/font-dataset-npz --embeddings_path test-data/font-dataset-npz/class_embeddings.npy --port 8080`  
+- `python ml/train.py --data_dir "test-data/font-dataset-npz" --epochs 10 --batch_size 64 --learning_rate .001 --weight_decay .01 --embedding_dim 256 --resolution 64 --initial_channels 16`  
+- `python create_embeddings.py --model_path test-data/font-dataset-npz/fontCNN_BS64-ED256-IC16.pt --data_dir test-data/font-dataset-npz --embeddings_file class_embeddings_256.npy`  
+- `python frontend_app.py --model_path test-data/font-dataset-npz/fontCNN_BS64-ED256-IC16.pt --data_dir test-data/font-dataset-npz --embeddings_path test-data/font-dataset-npz/class_embeddings_256.npy --port 8080`  
+
 
 To run all of these commands in sequence: `python test_e2e.py` 
 
@@ -71,7 +72,7 @@ So if Font_A with n images, we get one 1024-dim vector representing the "average
 `python ml/train.py --data_dir data/font-dataset-npz --epochs 30 --batch_size 64 --learning_rate 0.0001 --weight_decay 0.01 --embedding_dim 128 --resolution 64 --initial_channels 16`
 
 ### Create embeddings with the trained model
-`python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz --output_path class_embeddings_512.npy`
+`python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz -- embeddings_file class_embeddings_512.npy --output_path data/font-dataset-npz` `
 
 
 # Frontend
