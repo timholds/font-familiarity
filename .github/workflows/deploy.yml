@@ -1,0 +1,147 @@
+name: Deploy to Production
+
+# Only run on pushes to main branch that modify relevant files
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend_app.py'
+      - 'ml/**'
+      - 'templates/**'
+      - 'static/**'
+      - 'frontend_requirements.txt'
+      - 'deployment/scripts/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DIGITAL_OCEAN_SSH_KEY }}
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+          
+      # First, verify server is reachable
+      - name: Check server connection
+        run: |
+          if ! ssh -q root@137.184.232.187 exit; then
+            echo "ERROR: Cannot connect to server"
+            exit 1
+          fi
+          
+      # Clean up any stale cache files before deployment
+      - name: Clean Python cache files
+        run: |
+          echo "Removing Python cache files..."
+          ssh root@137.184.232.187 '
+            find /var/www/freefontfinder -type d -name "__pycache__" -exec rm -rf {} +
+            find /var/www/freefontfinder -type f -name "*.pyc" -delete
+          '
+          
+      # Ensure all required directories exist
+      - name: Verify directory structure
+        run: |
+          echo "Verifying directory structure..."
+          ssh root@137.184.232.187 '
+            mkdir -p /var/www/freefontfinder/{ml,templates,static,logs,deployment/scripts}
+            
+            # Verify critical directories exist and have correct permissions
+            for dir in ml templates static logs deployment/scripts; do
+              if [ ! -d "/var/www/freefontfinder/$dir" ]; then
+                echo "ERROR: Failed to create directory: $dir"
+                exit 1
+              fi
+            done
+          '
+
+      # Deploy application files while carefully preserving server state
+      - name: Deploy application files
+        run: |
+          echo "Deploying application files..."
+          
+          # Core application files - exclude cache and preserve venv/model
+          rsync -avz \
+            --exclude 'venv/' \
+            --exclude 'model/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude 'logs/' \
+            frontend_app.py \
+            frontend_requirements.txt \
+            root@137.184.232.187:/var/www/freefontfinder/
+          
+          # ML code - exclude cache files
+          rsync -avz \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            ml/ \
+            root@137.184.232.187:/var/www/freefontfinder/ml/
+          
+          # Static assets and templates
+          rsync -avz \
+            templates/ \
+            root@137.184.232.187:/var/www/freefontfinder/templates/
+          
+          rsync -avz \
+            static/ \
+            root@137.184.232.187:/var/www/freefontfinder/static/
+          
+          # Deployment scripts
+          rsync -avz \
+            deployment/scripts/ \
+            root@137.184.232.187:/var/www/freefontfinder/deployment/scripts/
+
+      # Verify files were deployed correctly
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployed files..."
+          ssh root@137.184.232.187 '
+            # Check critical files exist
+            for file in frontend_app.py ml/model.py templates/frontend.html; do
+              if [ ! -f "/var/www/freefontfinder/$file" ]; then
+                echo "ERROR: Missing critical file: $file"
+                exit 1
+              fi
+            done
+            
+            # Ensure proper ownership
+            chown -R www-data:www-data /var/www/freefontfinder
+            chmod -R 755 /var/www/freefontfinder
+          '
+
+      # Restart the application to pick up changes
+      - name: Restart application
+        run: |
+          echo "Restarting application service..."
+          ssh root@137.184.232.187 'systemctl restart freefontfinder'
+
+      # Verify everything is working
+      - name: Health check
+        run: |
+          echo "Performing health checks..."
+          # Wait for service to start
+          sleep 5
+          
+          # Check if service is running
+          ssh root@137.184.232.187 '
+            if ! systemctl is-active --quiet freefontfinder; then
+              echo "ERROR: Service failed to start"
+              # Show logs for debugging
+              echo "Service logs:"
+              journalctl -u freefontfinder -n 50
+              exit 1
+            fi
+          '
+          
+          # Check if application responds
+          if ! curl --fail --max-time 10 http://137.184.232.187:8080/test; then
+            echo "ERROR: Application health check failed"
+            exit 1
+          fi
+          
+          echo "Deployment completed successfully!"
