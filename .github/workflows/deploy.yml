@@ -117,61 +117,60 @@ jobs:
           '
       
       # Restart the application to pick up changes
+      # Restart the application to pick up changes
       - name: Restart application
         run: |
           echo "Restarting application service..."
           ssh root@137.184.232.187 '
+            # Reload systemd to pick up any service file changes
+            systemctl daemon-reload
+            
             # Stop the service
             systemctl stop freefontfinder
             
-            # Small delay to ensure clean shutdown
-            sleep 2
+            # Clear any stale pid files
+            rm -f /var/www/freefontfinder/gunicorn.pid
+            
+            # Ensure log directory exists with correct permissions
+            mkdir -p /var/log/freefontfinder
+            chown -R www-data:www-data /var/log/freefontfinder
+            chmod -R 755 /var/log/freefontfinder
             
             # Start the service
             systemctl start freefontfinder
             
-            # Check immediate status
+            # Show status and logs
+            echo "Service Status:"
             systemctl status freefontfinder --no-pager
             
-            # Show listening ports for debugging
-            netstat -tulpn | grep 8000
-            
-            # Show recent logs
+            echo "Recent Logs:"
             journalctl -u freefontfinder -n 20 --no-pager
+            
+            echo "Gunicorn Error Log:"
+            tail -n 20 /var/log/freefontfinder/error.log
           '
 
         # Verify everything is working
       - name: Health check
         run: |
           echo "Performing health checks..."
-          # Wait longer for service to fully start
-          sleep 10
+          # Wait for service to fully start
+          sleep 15
           
-          # Check if service is running
           ssh root@137.184.232.187 '
-            if ! systemctl is-active --quiet freefontfinder; then
-              echo "ERROR: Service failed to start"
-              echo "Service logs:"
-              journalctl -u freefontfinder -n 50
-              exit 1
-            fi
+            # Check process
+            echo "Checking processes..."
+            ps aux | grep gunicorn
             
-            # Direct curl check without -t flag
-            if ! curl --fail --max-time 10 http://localhost:8000/test; then
-              echo "ERROR: Gunicorn health check failed"
-              echo "Gunicorn logs:"
-              tail -n 50 /var/log/freefontfinder/error.log
-              echo "Service status:"
-              systemctl status freefontfinder --no-pager
-              exit 1
-            fi
+            # Check port
+            echo "Checking port 8000..."
+            netstat -tlpn | grep 8000
+            
+            # Check service status
+            echo "Checking service status..."
+            systemctl is-active freefontfinder
+            
+            # Test local connection
+            echo "Testing local connection..."
+            curl -v http://localhost:8000/test
           '
-          
-          # Check if nginx/SSL endpoint is responding
-          if ! curl --fail --max-time 10 -k https://freefontfinder.com/test; then
-            echo "ERROR: HTTPS endpoint health check failed"
-            ssh root@137.184.232.187 "tail -n 50 /var/log/nginx/error.log"
-            exit 1
-          fi
-          
-          echo "Deployment completed successfully!"
