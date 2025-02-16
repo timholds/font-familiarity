@@ -141,21 +141,17 @@ jobs:
           '
 
           # Check if gunicorn is responding locally
-          ssh root@137.184.232.187 '
-            if ! curl --fail --max-time 10 http://localhost:8000/test; then
-              echo "ERROR: Gunicorn health check failed"
-              echo "Gunicorn logs:"
-              tail -n 50 /var/log/freefontfinder/error.log
-              exit 1
-            fi
-          '
+          ssh -t root@137.184.232.187 "bash -c 'curl --fail --max-time 10 http://localhost:8000/test'" || {
+            echo "ERROR: Gunicorn health check failed"
+            ssh root@137.184.232.187 "tail -n 50 /var/log/freefontfinder/error.log"
+            exit 1
+          }
           
           # Check if nginx/SSL endpoint is responding
-          if ! curl --fail --max-time 10 -k https://freefontfinder.com/test; then
+          curl --fail --max-time 10 -k https://freefontfinder.com/test || {
             echo "ERROR: HTTPS endpoint health check failed"
-            echo "Nginx logs:"
             ssh root@137.184.232.187 "tail -n 50 /var/log/nginx/error.log"
             exit 1
-          fi
+          }
           
           echo "Deployment completed successfully!"
