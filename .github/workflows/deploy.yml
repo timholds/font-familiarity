@@ -131,6 +131,52 @@ jobs:
             chmod -R 755 /var/www/freefontfinder
           '
 
+      # Create required SSL configuration files if they don't exist
+      - name: Setup SSL config files
+        run: |
+          ssh root@137.184.232.187 '
+            cd /var/www/freefontfinder
+            
+            # Create options-ssl-nginx.conf if it doesn't exist
+            if [ ! -f "certbot/conf/options-ssl-nginx.conf" ]; then
+              echo "Creating options-ssl-nginx.conf..."
+              cat > certbot/conf/options-ssl-nginx.conf << "EOL"
+            # This file contains important security parameters. If you modify this file
+            # manually, Certbot will be unable to automatically update it in the future!
+
+            ssl_session_cache shared:le_nginx_SSL:10m;
+            ssl_session_timeout 1440m;
+            ssl_session_tickets off;
+
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_prefer_server_ciphers off;
+
+            ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
+            EOL
+              chmod 644 certbot/conf/options-ssl-nginx.conf
+            else
+              echo "options-ssl-nginx.conf already exists"
+            fi
+
+            # Create ssl-dhparams.pem if it doesn't exist
+            if [ ! -f "certbot/conf/ssl-dhparams.pem" ]; then
+              echo "Creating ssl-dhparams.pem..."
+              cat > certbot/conf/ssl-dhparams.pem << "EOL"
+            -----BEGIN DH PARAMETERS-----
+            MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
+            +8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a
+            87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7
+            YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
+            7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
+            ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
+            -----END DH PARAMETERS-----
+            EOL
+              chmod 644 certbot/conf/ssl-dhparams.pem
+            else
+              echo "ssl-dhparams.pem already exists"
+            fi
+          '
+
       # Copy just the essential files to the server
       - name: Copy deployment files to server
         run: |
@@ -141,53 +187,6 @@ jobs:
           rsync -avz \
             static/ \
             root@137.184.232.187:/var/www/freefontfinder/static/
-
-      # Check if SSL certificates already exist, if not, create a temp nginx config
-      - name: Check and prepare SSL setup
-        run: |
-          ssh root@137.184.232.187 '
-            cd /var/www/freefontfinder
-            
-            # Check if certificates already exist
-            if [ ! -d "/var/www/freefontfinder/certbot/conf/live/freefontfinder.com" ]; then
-              echo "SSL certificates not found. Creating temporary nginx config for initial setup."
-              
-              # Create a temporary nginx config that works without SSL
-              cat > /var/www/freefontfinder/nginx.temp.conf << "TEMPCONF"
-          server {
-              listen 80;
-              listen [::]:80;
-              server_name freefontfinder.com www.freefontfinder.com;
-              
-              # Certbot verification
-              location /.well-known/acme-challenge/ {
-                  root /var/www/certbot;
-              }
-              
-              # Serve app on HTTP for initial setup
-              location / {
-                  proxy_pass http://web:8000;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_redirect off;
-              }
-              
-              location /static {
-                  alias /app/static;
-                  expires 30d;
-              }
-          }
-          TEMPCONF
-              
-              # Use the temporary config for initial deployment
-              cp /var/www/freefontfinder/nginx.temp.conf /var/www/freefontfinder/nginx.conf
-              echo "Using temporary nginx config for initial certificate acquisition."
-            else
-              echo "SSL certificates already exist. Using full SSL configuration."
-            fi
-          '
 
       # Deploy the application
       - name: Deploy with Docker Compose
@@ -226,50 +225,6 @@ jobs:
             # Give services time to start
             echo "Waiting for services to start..."
             sleep 10
-          '
-
-      # Get certificates if they don't exist
-      - name: Obtain SSL certificates if needed
-        run: |
-          ssh root@137.184.232.187 '
-            cd /var/www/freefontfinder
-            
-            # Check if certificates already exist
-            if [ ! -d "/var/www/freefontfinder/certbot/conf/live/freefontfinder.com" ]; then
-              echo "Obtaining SSL certificates..."
-              
-              # Stop certbot container (it will just keep renewing non-existent certs)
-              if command -v docker compose &> /dev/null; then
-                docker compose -f docker-compose.prod.yml stop certbot
-              else
-                docker-compose -f docker-compose.prod.yml stop certbot
-              fi
-              
-              # Run certbot in standalone mode to get initial certificates
-              docker run --rm \
-                -v /var/www/freefontfinder/certbot/conf:/etc/letsencrypt \
-                -v /var/www/freefontfinder/certbot/www:/var/www/certbot \
-                --network host \
-                certbot/certbot certonly --standalone \
-                -d freefontfinder.com -d www.freefontfinder.com \
-                --non-interactive --agree-tos \
-                --email email@example.com \
-                --no-eff-email
-              
-              # Copy the full nginx config back
-              cp /var/www/freefontfinder/nginx.orig.conf /var/www/freefontfinder/nginx.conf
-              
-              # Restart nginx to use the new certs
-              if command -v docker compose &> /dev/null; then
-                docker compose -f docker-compose.prod.yml restart nginx
-              else
-                docker-compose -f docker-compose.prod.yml restart nginx
-              fi
-              
-              echo "SSL certificates obtained and nginx restarted with SSL config."
-            else
-              echo "SSL certificates already exist. No need to obtain new ones."
-            fi
           '
 
       # Health check - run from server itself
