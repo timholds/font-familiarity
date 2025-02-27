@@ -1,6 +1,5 @@
 name: Deploy to Production
 
-# Only run on pushes to main branch that modify relevant files
 on:
   push:
     branches:
@@ -24,130 +23,119 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Login to GitHub Container Registry
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build and push the Docker image
+      - name: Build and push web container
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}/freefontfinder:latest
+
+      # Install SSH key for server access
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.DIGITAL_OCEAN_SSH_KEY }}
           known_hosts: ${{ secrets.KNOWN_HOST }}
           
-      # First, verify server is reachable
+      # Verify server connection
       - name: Check server connection
         run: |
           if ! ssh -q root@137.184.232.187 exit; then
             echo "ERROR: Cannot connect to server"
             exit 1
           fi
-          
-      # Ensure Docker is installed on the server
-      - name: Ensure Docker is installed
-        run: |
-          echo "Checking Docker installation..."
-          ssh root@137.184.232.187 '
-            if ! command -v docker &> /dev/null; then
-              echo "Installing Docker..."
-              apt-get update
-              apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-              add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-              apt-get update
-              apt-get install -y docker-ce docker-ce-cli containerd.io
-            fi
-            
-            if ! command -v docker-compose &> /dev/null; then
-              echo "Installing Docker Compose..."
-              curl -L "https://github.com/docker/compose/releases/download/v2.12.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-              chmod +x /usr/local/bin/docker-compose
-            fi
-            
-            echo "Docker version:"
-            docker --version
-            echo "Docker Compose version:"
-            docker-compose --version
-          '
-          
-      # Create required directories on the server
-      - name: Prepare server directories
-        run: |
-          echo "Creating required directories..."
-          ssh root@137.184.232.187 '
-            mkdir -p /var/www/freefontfinder/{model,logs,static,templates,ml}
-          '
 
-      # Copy Docker configuration files
-      - name: Copy Docker files
+      # Create a docker-compose.prod.yml file that uses the pre-built image
+      - name: Create production docker-compose file
         run: |
-          echo "Copying Docker configuration files..."
-          rsync -avz \
-            Dockerfile \
-            docker-compose.yml \
-            nginx.conf \
-            frontend_requirements.txt \
-            frontend_app.py \
-            root@137.184.232.187:/var/www/freefontfinder/
+          cat > docker-compose.prod.yml << 'EOL'
+          version: '3.8'
+          
+          services:
+            web:
+              image: ghcr.io/${{ github.repository }}/freefontfinder:latest
+              restart: always
+              volumes:
+                - model-data:/app/model
+                - ./logs:/app/logs
+              environment:
+                - PYTHONUNBUFFERED=1
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/test"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 20s
+          
+            nginx:
+              image: nginx:alpine
+              restart: always
+              ports:
+                - "80:80"
+              volumes:
+                - ./nginx.conf:/etc/nginx/conf.d/default.conf
+                - ./static:/app/static
+              depends_on:
+                - web
+          
+          volumes:
+            model-data:
+              driver: local
+              driver_opts:
+                type: 'none'
+                o: 'bind'
+                device: '/var/www/freefontfinder/model'
+          EOL
 
-      # Copy application code
-      - name: Copy application code
+      # Copy just the essential files to the server
+      - name: Copy deployment files to server
         run: |
-          echo "Copying application code..."
-          rsync -avz \
-            --exclude '__pycache__/' \
-            --exclude '*.pyc' \
-            ml/ \
-            root@137.184.232.187:/var/www/freefontfinder/ml/
+          scp docker-compose.prod.yml root@137.184.232.187:/var/www/freefontfinder/docker-compose.prod.yml
+          scp nginx.conf root@137.184.232.187:/var/www/freefontfinder/nginx.conf
           
-          rsync -avz \
-            templates/ \
-            root@137.184.232.187:/var/www/freefontfinder/templates/
-          
+          # Copy static files (always needed by nginx)
           rsync -avz \
             static/ \
             root@137.184.232.187:/var/www/freefontfinder/static/
 
-      # Copy model files if they don't exist (first deployment only)
-      - name: Copy model files if needed
-        run: |
-          echo "Checking model files..."
-          ssh root@137.184.232.187 '
-            if [ ! -f /var/www/freefontfinder/model/fontCNN_BS64-ED512-IC32.pt ]; then
-              echo "Model file missing. Please manually upload model files to the server."
-              echo "Required files:"
-              echo "- /var/www/freefontfinder/model/fontCNN_BS64-ED512-IC32.pt"
-              echo "- /var/www/freefontfinder/model/class_embeddings_512.npy"
-              echo "- /var/www/freefontfinder/model/label_mapping.npy"
-              exit 1
-            fi
-            
-            if [ ! -f /var/www/freefontfinder/model/class_embeddings_512.npy ] || [ ! -f /var/www/freefontfinder/model/label_mapping.npy ]; then
-              echo "Embedding or label mapping files missing. Please upload them manually."
-              exit 1
-            fi
-            
-            echo "All model files found."
-          '
-
-      # Deploy with Docker Compose
+      # Deploy the application
       - name: Deploy with Docker Compose
         run: |
-          echo "Deploying with Docker Compose..."
           ssh root@137.184.232.187 '
             cd /var/www/freefontfinder
             
-            # Create backup of logs before taking down containers
-            if [ -d logs ] && [ "$(ls -A logs)" ]; then
-              echo "Backing up logs..."
-              mkdir -p log_backups
-              tar -czvf "log_backups/logs_$(date +%Y%m%d_%H%M%S).tar.gz" logs/
+            # Ensure docker is installed
+            if ! command -v docker &> /dev/null; then
+              apt-get update
+              apt-get install -y docker.io docker-compose
             fi
             
-            # Stop existing containers
-            docker-compose down
+            # Create directories if they don't exist
+            mkdir -p model logs
             
-            # Build and start containers
-            docker-compose build --no-cache
-            docker-compose up -d
+            # Pull the latest images
+            docker-compose -f docker-compose.prod.yml pull
+            
+            # Stop existing containers
+            docker-compose -f docker-compose.prod.yml down
+            
+            # Start containers
+            docker-compose -f docker-compose.prod.yml up -d
             
             # Show container status
-            docker-compose ps
+            docker-compose -f docker-compose.prod.yml ps
           '
 
       # Health check
@@ -158,27 +146,14 @@ jobs:
           sleep 15
           
           ssh root@137.184.232.187 '
-            # Check container status
             cd /var/www/freefontfinder
-            docker-compose ps
             
-            # Check web container logs
-            echo "Web container logs:"
-            docker-compose logs web --tail 20
+            # Check container status
+            docker-compose -f docker-compose.prod.yml ps
             
-            # Check nginx container logs
-            echo "Nginx container logs:"
-            docker-compose logs nginx --tail 20
+            # Check logs
+            docker-compose -f docker-compose.prod.yml logs --tail 20
             
             # Test connection
-            echo "Testing connection..."
             curl -v http://localhost/test
-            
-            # Check if the service is actually working
-            if curl -s http://localhost/test | grep -q "Flask server is running!"; then
-              echo "Health check passed! Application is running correctly."
-            else
-              echo "WARNING: Application health check failed!"
-              exit 1
-            fi
           '
