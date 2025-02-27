@@ -138,16 +138,16 @@ jobs:
             mkdir -p model logs
             
             # Pull the latest images
-            docker-compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml pull
             
             # Stop existing containers
-            docker-compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml down
             
             # Start containers
-            docker-compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml up -d
             
             # Show container status
-            docker-compose -f docker-compose.prod.yml ps
+            docker compose -f docker-compose.prod.yml ps
           '
 
       # Health check
@@ -161,10 +161,10 @@ jobs:
             cd /var/www/freefontfinder
             
             # Check container status
-            docker-compose -f docker-compose.prod.yml ps
+            docker compose -f docker-compose.prod.yml ps
             
             # Check logs
-            docker-compose -f docker-compose.prod.yml logs --tail 20
+            docker compose -f docker-compose.prod.yml logs --tail 20
             
             # Test connection
             curl -v http://localhost/test
