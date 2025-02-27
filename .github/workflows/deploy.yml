@@ -73,8 +73,8 @@ jobs:
               image: ghcr.io/${{ github.repository }}/freefontfinder:latest
               restart: always
               volumes:
-                - model-data:/app/model
-                - ./logs:/app/logs
+                - /var/www/freefontfinder/model:/app/model
+                - /var/www/freefontfinder/logs:/app/logs
               environment:
                 - PYTHONUNBUFFERED=1
               healthcheck:
@@ -94,14 +94,6 @@ jobs:
                 - ./static:/app/static
               depends_on:
                 - web
-          
-          volumes:
-            model-data:
-              driver: local
-              driver_opts:
-                type: 'none'
-                o: 'bind'
-                device: '/var/www/freefontfinder/model'
           EOL
 
       # Copy just the essential files to the server
@@ -136,6 +128,19 @@ jobs:
             
             # Create directories if they don't exist
             mkdir -p model logs
+            
+            # Create directories with proper permissions
+            mkdir -p /var/www/freefontfinder/model
+            mkdir -p /var/www/freefontfinder/logs
+            chmod -R 755 /var/www/freefontfinder
+            
+            # Verify if model files exist
+            if [ ! -f "/var/www/freefontfinder/model/fontCNN_BS64-ED512-IC32.pt" ]; then
+              echo "WARNING: Model file not found. Please upload it manually to /var/www/freefontfinder/model/"
+            else
+              echo "Model files found."
+              ls -la /var/www/freefontfinder/model/
+            fi
             
             # Pull the latest images
             docker compose -f docker-compose.prod.yml pull
