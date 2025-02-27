@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    init: true 
     restart: always
     volumes:
       - model-data:/app/model
