@@ -55,10 +55,32 @@
                 return;
             }
 
-            const formData = new FormData();
-            formData.append('image', file);
+            // Initialize preview area with loading message
+            const preview = document.getElementById('preview');
+            preview.innerHTML = '<p>Loading preview...</p>';
 
             try {
+                // First, load the image preview
+                await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            preview.innerHTML = `<img src="${e.target.result}" alt="Preview" style="max-height: 200px; max-width: 100%;">`;
+                            console.log("Preview image loaded");
+                            resolve();
+                        } catch (err) {
+                            reject(err);
+                        }
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                // Then send the API request
+                console.log("Sending prediction request...");
+                const formData = new FormData();
+                formData.append('image', file);
+                
                 const response = await fetch('/predict', {
                     method: 'POST',
                     body: formData
@@ -83,8 +105,10 @@
                         <span class="score">${(result.probability * 100).toFixed(1)}%</span>
                     </div>
                 `).join('');
+                
             } catch (error) {
                 console.error('Error:', error);
+                preview.innerHTML = '<p style="color: red;">Error displaying or processing image</p>';
                 alert('Error processing image');
             }
         });
