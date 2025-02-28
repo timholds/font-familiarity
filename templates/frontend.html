@@ -55,28 +55,39 @@
                 return;
             }
 
-            // Initialize preview area with loading message
+            // Clear previous results
             const preview = document.getElementById('preview');
             preview.innerHTML = '<p>Loading preview...</p>';
-
+            
             try {
-                // First, load the image preview
-                await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            preview.innerHTML = `<img src="${e.target.result}" alt="Preview" style="max-height: 200px; max-width: 100%;">`;
-                            console.log("Preview image loaded");
-                            resolve();
-                        } catch (err) {
-                            reject(err);
-                        }
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-
-                // Then send the API request
+                // Create object URL for preview (more reliable than data URLs)
+                const objectUrl = URL.createObjectURL(file);
+                console.log("Created object URL:", objectUrl);
+                
+                // Create image element manually with detailed error handling
+                const img = new Image();
+                
+                // Set up debugging for image loading
+                img.onload = () => {
+                    console.log("Image loaded successfully:", img.width, "x", img.height);
+                };
+                
+                img.onerror = (err) => {
+                    console.error("Error loading image:", err);
+                    preview.innerHTML = '<p style="color: red;">Failed to load image preview</p>';
+                };
+                
+                // Set image styling
+                img.style.maxHeight = "200px";
+                img.style.maxWidth = "100%";
+                img.alt = "Preview";
+                
+                // Set the source and add to preview
+                img.src = objectUrl;
+                preview.innerHTML = '';
+                preview.appendChild(img);
+                
+                // Process the image
                 console.log("Sending prediction request...");
                 const formData = new FormData();
                 formData.append('image', file);
@@ -106,9 +117,12 @@
                     </div>
                 `).join('');
                 
+                // Clean up object URL to avoid memory leaks
+                URL.revokeObjectURL(objectUrl);
+                
             } catch (error) {
                 console.error('Error:', error);
-                preview.innerHTML = '<p style="color: red;">Error displaying or processing image</p>';
+                preview.innerHTML = '<p style="color: red;">Error processing image</p>';
                 alert('Error processing image');
             }
         });
