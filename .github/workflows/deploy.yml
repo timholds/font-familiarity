@@ -91,6 +91,20 @@ jobs:
             static/ \
             root@${{ env.SERVER_IP }}:/var/www/freefontfinder/static/
 
+           # Verify SSL certificate files exist
+          ssh root@${{ env.SERVER_IP }} '
+            if [ ! -f "/etc/ssl/font.crt" ] || [ ! -f "/etc/ssl/font.key" ]; then
+              echo "ERROR: SSL certificate files not found at /etc/ssl/font.crt and /etc/ssl/font.key"
+              echo "Please ensure these files exist on the server"
+              exit 1
+            else
+              echo "SSL certificate files verified"
+              # Ensure permissions are correct
+              chmod 644 /etc/ssl/font.crt
+              chmod 600 /etc/ssl/font.key
+            fi
+          '
+
       # Deploy the application
       - name: Deploy with Docker Compose
         run: |
