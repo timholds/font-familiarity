@@ -9,7 +9,7 @@ on:
   push:
     branches:
       - main
-      - docker
+      - image_upload
     paths:
       - 'frontend_app.py'
       - 'ml/**'

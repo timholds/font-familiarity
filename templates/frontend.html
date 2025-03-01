@@ -1,131 +1,52 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Font Similarity Search</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>Font Similarity Search</h1>
+        <header>
+            <h1>Font Similarity Search</h1>
+            <p class="intro">Upload an image containing text to find similar fonts. Works best with clear, high-contrast text.</p>
+        </header>
         
-        <div class="upload-section">
+        <div class="upload-section" id="uploadArea">
             <form id="uploadForm">
-                <input type="file" id="imageInput" accept="image/*">
-                <button type="submit">Analyze Font</button>
+                <div class="file-input-container">
+                    <input type="file" id="imageInput" accept="image/*" aria-label="Select an image file">
+                    <label for="imageInput" class="file-drop-area">
+                        <div class="drop-message">Drag & drop an image here or click to browse</div>
+                    </label>
+                </div>
+                <div class="button-row">
+                    <button type="submit" id="analyzeBtn" disabled>Analyze Font</button>
+                    <button type="button" id="resetBtn" class="secondary">Reset</button>
+                </div>
             </form>
-            <div id="preview"></div>
+            <div id="preview" aria-live="polite"></div>
         </div>
 
-        <div class="results-section">
+        <div id="loadingIndicator" class="hidden">
+            <div class="spinner"></div>
+            <p>Analyzing font...</p>
+        </div>
+
+        <div class="results-section" id="resultsContainer">
             <div class="results-column">
                 <h2>Similar Fonts by Embedding</h2>
-                <div id="embeddingResults"></div>
+                <div id="embeddingResults" class="results-list"></div>
             </div>
             
             <div class="results-column">
                 <h2>Classifier Predictions</h2>
-                <div id="classifierResults"></div>
+                <div id="classifierResults" class="results-list"></div>
             </div>
         </div>
     </div>
 
-    <script>
-        document.getElementById('imageInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                // Create preview
-                const preview = document.getElementById('preview');
-                const reader = new FileReader();
-                
-                reader.onload = function(e) {
-                    preview.innerHTML = `<img src="${e.target.result}" style="max-width: 300px; max-height: 200px;">`;
-                };
-                
-                reader.readAsDataURL(file);
-            }
-        });
-
-        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const fileInput = document.getElementById('imageInput');
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Please select an image first');
-                return;
-            }
-
-            // Clear previous results
-            const preview = document.getElementById('preview');
-            preview.innerHTML = '<p>Loading preview...</p>';
-            
-            try {
-                // Create object URL for preview (more reliable than data URLs)
-                const objectUrl = URL.createObjectURL(file);
-                console.log("Created object URL:", objectUrl);
-                
-                // Create image element manually with detailed error handling
-                const img = new Image();
-                
-                // Set up debugging for image loading
-                img.onload = () => {
-                    console.log("Image loaded successfully:", img.width, "x", img.height);
-                };
-                
-                img.onerror = (err) => {
-                    console.error("Error loading image:", err);
-                    preview.innerHTML = '<p style="color: red;">Failed to load image preview</p>';
-                };
-                
-                // Set image styling
-                img.style.maxHeight = "200px";
-                img.style.maxWidth = "100%";
-                img.alt = "Preview";
-                
-                // Set the source and add to preview
-                img.src = objectUrl;
-                preview.innerHTML = '';
-                preview.appendChild(img);
-                
-                // Process the image
-                console.log("Sending prediction request...");
-                const formData = new FormData();
-                formData.append('image', file);
-                
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                // Display results
-                const embeddingResults = document.getElementById('embeddingResults');
-                const classifierResults = document.getElementById('classifierResults');
-                
-                embeddingResults.innerHTML = data.embedding_similarity.map(result => `
-                    <div class="result-item">
-                        <span class="font-name">${result.font}</span>
-                        <span class="score">${(result.similarity * 100).toFixed(1)}%</span>
-                    </div>
-                `).join('');
-                
-                classifierResults.innerHTML = data.classifier_predictions.map(result => `
-                    <div class="result-item">
-                        <span class="font-name">${result.font}</span>
-                        <span class="score">${(result.probability * 100).toFixed(1)}%</span>
-                    </div>
-                `).join('');
-                
-                // Clean up object URL to avoid memory leaks
-                URL.revokeObjectURL(objectUrl);
-                
-            } catch (error) {
-                console.error('Error:', error);
-                preview.innerHTML = '<p style="color: red;">Error processing image</p>';
-                alert('Error processing image');
-            }
-        });
-    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
