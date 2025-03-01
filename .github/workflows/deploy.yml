@@ -130,79 +130,11 @@ jobs:
             # Ensure proper permissions
             chmod -R 755 /var/www/freefontfinder
           '
-
-      # Create required SSL configuration files if they don't exist
-      - name: Setup SSL config files
-        run: |
-          # Create the files locally first
-          mkdir -p certbot_temp/conf
-          
-          # Create options-ssl-nginx.conf
-          cat > certbot_temp/conf/options-ssl-nginx.conf << 'EOL'
-          # This file contains important security parameters. If you modify this file
-          # manually, Certbot will be unable to automatically update it in the future!
-
-          ssl_session_cache shared:le_nginx_SSL:10m;
-          ssl_session_timeout 1440m;
-          ssl_session_tickets off;
-
-          ssl_protocols TLSv1.2 TLSv1.3;
-          ssl_prefer_server_ciphers off;
-
-          ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
-          EOL
-          
-          # Create ssl-dhparams.pem
-          cat > certbot_temp/conf/ssl-dhparams.pem << 'EOL'
-          -----BEGIN DH PARAMETERS-----
-          MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
-          +8yTnc4kmz75fS/jY2MMddj2gbICrsRhetPfHtXV/WVhJDP1H18GbtCFY2VVPe0a
-          87VXE15/V8k1mE8McODmi3fipona8+/och3xWKE2rec1MKzKT0g6eXq8CrGCsyT7
-          YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
-          7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
-          ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
-          -----END DH PARAMETERS-----
-          EOL
-          
-          # Create a script to check and copy files on the server
-          cat > setup_ssl_files.sh << 'EOL'
-          #!/bin/bash
-          cd /var/www/freefontfinder
-          
-          # Check for options-ssl-nginx.conf
-          if [ ! -f "certbot/conf/options-ssl-nginx.conf" ]; then
-            echo "Installing options-ssl-nginx.conf..."
-            cp /tmp/certbot_temp/options-ssl-nginx.conf certbot/conf/
-            chmod 644 certbot/conf/options-ssl-nginx.conf
-          else
-            echo "options-ssl-nginx.conf already exists"
-          fi
-          
-          # Check for ssl-dhparams.pem
-          if [ ! -f "certbot/conf/ssl-dhparams.pem" ]; then
-            echo "Installing ssl-dhparams.pem..."
-            cp /tmp/certbot_temp/ssl-dhparams.pem certbot/conf/
-            chmod 644 certbot/conf/ssl-dhparams.pem
-          else
-            echo "ssl-dhparams.pem already exists"
-          fi
-          EOL
-          
-          # Make the script executable
-          chmod +x setup_ssl_files.sh
-          
-          # Copy the files to the server
-          ssh root@137.184.232.187 'mkdir -p /tmp/certbot_temp'
-          scp certbot_temp/conf/* root@137.184.232.187:/tmp/certbot_temp/
-          scp setup_ssl_files.sh root@137.184.232.187:/tmp/
-          
-          # Execute the script on the server
-          ssh root@137.184.232.187 'bash /tmp/setup_ssl_files.sh'
       
       # Copy just the essential files to the server
       - name: Copy deployment files to server
         run: |
-          scp docker-compose.prod.yml root@137.184.232.187:/var/www/freefontfinder/docker-compose.prod.yml
+          scp docker-compose.prod.yml root@137.184.232.187:/var/www/freefontfinder/docker-compose.yml
           scp nginx.conf root@137.184.232.187:/var/www/freefontfinder/nginx.conf
           
           # Copy static files (always needed by nginx)
@@ -236,13 +168,13 @@ jobs:
             fi
             
             # Pull the latest images
-            $DOCKER_COMPOSE -f docker-compose.prod.yml pull
+            $DOCKER_COMPOSE -f docker-compose.yml pull
             
             # Stop existing containers
-            $DOCKER_COMPOSE -f docker-compose.prod.yml down
+            $DOCKER_COMPOSE -f docker-compose.yml down
             
             # Start containers
-            $DOCKER_COMPOSE -f docker-compose.prod.yml up -d
+            $DOCKER_COMPOSE -f docker-compose.yml up -d
             
             # Give services time to start
             echo "Waiting for services to start..."
@@ -268,11 +200,11 @@ jobs:
             
             # Check if containers are running
             echo "===== Container Status ====="
-            $DOCKER_COMPOSE -f docker-compose.prod.yml ps
+            $DOCKER_COMPOSE -f docker-compose.yml ps
             
             # Check web service logs for errors
             echo "===== Web Service Logs ====="
-            $DOCKER_COMPOSE -f docker-compose.prod.yml logs --tail 20 web
+            $DOCKER_COMPOSE -f docker-compose.yml logs --tail 20 web
             
             # Test connection locally from the server itself
             echo "===== Testing API Endpoint ====="

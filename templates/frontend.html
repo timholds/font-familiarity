@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Font Similarity Search</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Stricter CSP without unsafe-inline for scripts -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob:; style-src 'self';">
 </head>
 <body>
     <div class="container">
@@ -14,16 +16,17 @@
         </header>
         
         <div class="upload-section" id="uploadArea">
-            <form id="uploadForm">
+            <!-- Add CSRF token as a data attribute if available -->
+            <form id="uploadForm" enctype="multipart/form-data" {% if csrf_token() is defined %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
                 <div class="file-input-container">
-                    <input type="file" id="imageInput" accept="image/*" aria-label="Select an image file">
+                    <input type="file" id="imageInput" name="image" accept="image/png, image/jpeg, image/gif" aria-label="Select an image file">
                     <label for="imageInput" class="file-drop-area">
                         <div class="drop-message">Drag & drop an image here or click to browse</div>
                     </label>
                 </div>
                 <div class="button-row">
                     <button type="submit" id="analyzeBtn" disabled>Analyze Font</button>
-                    <button type="button" id="resetBtn" class="secondary">Reset</button>
+                    <button type="reset" id="resetBtn" class="secondary">Reset</button>
                 </div>
             </form>
             <div id="preview" aria-live="polite"></div>
@@ -34,7 +37,7 @@
             <p>Analyzing font...</p>
         </div>
 
-        <div class="results-section" id="resultsContainer">
+        <div class="results-section hidden" id="resultsContainer">
             <div class="results-column">
                 <h2>Similar Fonts by Embedding</h2>
                 <div id="embeddingResults" class="results-list"></div>
