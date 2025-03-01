@@ -13,14 +13,15 @@
             <p class="intro">Upload an image containing text to find similar fonts. Works best with clear, high-contrast text.</p>
         </header>
         
-        <div class="upload-section" id="uploadArea">
-            <!-- Using a simple button approach instead of a form -->
-            <div class="upload-button-container">
-                <input type="file" id="imageInput" name="image" accept="image/png, image/jpeg, image/gif" aria-label="Select an image file">
-                <label for="imageInput" class="upload-button">
-                    <span class="upload-icon">📷</span>
-                    <span>Select Font Image to Analyze</span>
-                </label>
+        <div class="upload-area" id="dropArea">
+            <!-- Hidden file input -->
+            <input type="file" id="imageInput" name="image" accept="image/png, image/jpeg, image/gif" aria-label="Select an image file">
+            
+            <!-- Upload button and drop area combined -->
+            <div class="upload-prompt">
+                <div class="upload-icon">📷</div>
+                <label for="imageInput" class="upload-button">Select Font Image to Analyze</label>
+                <p class="drag-instructions">or drag and drop an image file here</p>
             </div>
             
             <div id="preview" aria-live="polite"></div>

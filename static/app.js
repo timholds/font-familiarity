@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
+    const dropArea = document.getElementById('dropArea');
     const imageInput = document.getElementById('imageInput');
     const preview = document.getElementById('preview');
     const loadingIndicator = document.getElementById('loadingIndicator');
@@ -11,14 +12,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     const VALID_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif'];
     
-    // Handle file selection - this now triggers analysis automatically
+    // Setup drag and drop
+    setupDragAndDrop();
+    
+    // Handle file selection from input
     imageInput.addEventListener('change', function(e) {
         const file = e.target.files[0];
-        if (file) {
-            if (validateFile(file)) {
-                showPreview(file);
-                analyzeImage(file);
-            }
+        if (file && validateFile(file)) {
+            processSelectedFile(file);
         }
     });
     
@@ -36,6 +37,53 @@ document.addEventListener('DOMContentLoaded', function() {
         // Scroll back to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+    
+    function setupDragAndDrop() {
+        // Prevent default behavior for these events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        // Highlight drop area when dragging over it
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+        
+        // Remove highlight when dragging stops
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            dropArea.classList.add('highlight');
+        }
+        
+        function unhighlight() {
+            dropArea.classList.remove('highlight');
+        }
+        
+        // Handle dropped files
+        dropArea.addEventListener('drop', handleDrop, false);
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const file = dt.files[0]; // Get the first file
+            
+            if (file && validateFile(file)) {
+                processSelectedFile(file);
+            }
+        }
+    }
+    
+    function processSelectedFile(file) {
+        showPreview(file);
+        analyzeImage(file);
+    }
     
     function validateFile(file) {
         // Check file type
