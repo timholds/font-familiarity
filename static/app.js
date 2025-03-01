@@ -1,160 +1,99 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const uploadForm = document.getElementById('uploadForm');
     const imageInput = document.getElementById('imageInput');
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    const resetBtn = document.getElementById('resetBtn');
     const preview = document.getElementById('preview');
     const loadingIndicator = document.getElementById('loadingIndicator');
     const resultsContainer = document.getElementById('resultsContainer');
     const embeddingResults = document.getElementById('embeddingResults');
     const classifierResults = document.getElementById('classifierResults');
-    const uploadArea = document.getElementById('uploadArea');
+    const resetBtn = document.getElementById('resetBtn');
     
     // Constants for validation
     const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     const VALID_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif'];
     
-    // Setup drag and drop
-    setupDragAndDrop();
-    
-    // Handle file selection
-    imageInput.addEventListener('change', handleFileSelection);
-    
-    // Handle form submission
-    uploadForm.addEventListener('submit', handleFormSubmit);
-    
-    // Handle form reset
-    uploadForm.addEventListener('reset', function() {
-        // Additional cleanup beyond the form reset
-        preview.innerHTML = '';
-        resultsContainer.classList.add('hidden');
-        analyzeBtn.disabled = true;
-        
-        // Clear any object URLs
-        if (window.objectUrlToRevoke) {
-            URL.revokeObjectURL(window.objectUrlToRevoke);
-            window.objectUrlToRevoke = null;
+    // Handle file selection - this now triggers analysis automatically
+    imageInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            if (validateFile(file)) {
+                showPreview(file);
+                analyzeImage(file);
+            }
         }
     });
     
-    function setupDragAndDrop() {
-        const dropArea = document.querySelector('.file-drop-area');
+    // Handle reset button
+    resetBtn.addEventListener('click', function() {
+        // Clear file input
+        imageInput.value = '';
         
-        // Handle drag events
-        dropArea.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.classList.add('highlight');
-        });
+        // Clear preview
+        preview.innerHTML = '';
         
-        dropArea.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.classList.remove('highlight');
-        });
+        // Hide results
+        resultsContainer.classList.add('hidden');
         
-        dropArea.addEventListener('drop', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.classList.remove('highlight');
-            
-            // Handle the dropped files
-            if (e.dataTransfer.files && e.dataTransfer.files.length) {
-                // Setting files property directly works in modern browsers
-                imageInput.files = e.dataTransfer.files;
-                
-                // Trigger change event
-                const event = new Event('change', { bubbles: true });
-                imageInput.dispatchEvent(event);
-            }
-        });
-    }
-    
-    function handleFileSelection() {
-        const file = imageInput.files[0];
-        
-        // Clear any existing object URL
-        if (window.objectUrlToRevoke) {
-            URL.revokeObjectURL(window.objectUrlToRevoke);
-            window.objectUrlToRevoke = null;
-        }
-        
-        if (file) {
-            // Validate file
-            if (!validateFile(file)) {
-                return;
-            }
-            
-            // Enable analyze button
-            analyzeBtn.disabled = false;
-            
-            // Clear previous preview
-            preview.innerHTML = '';
-            
-            // Create object URL for preview
-            const objectUrl = URL.createObjectURL(file);
-            window.objectUrlToRevoke = objectUrl;
-            
-            // Create preview image
-            const img = new Image();
-            img.onload = function() {
-                // Image loaded successfully
-            };
-            
-            img.onerror = function() {
-                preview.innerHTML = '<p class="error">Failed to load image preview</p>';
-                analyzeBtn.disabled = true;
-                URL.revokeObjectURL(objectUrl);
-                window.objectUrlToRevoke = null;
-            };
-            
-            img.classList.add('preview-image');
-            img.alt = "Preview of selected image";
-            img.src = objectUrl;
-            
-            preview.appendChild(img);
-            
-            // Add file info
-            const fileInfo = document.createElement('p');
-            fileInfo.textContent = `${file.name} (${formatFileSize(file.size)})`;
-            fileInfo.classList.add('file-info');
-            preview.appendChild(fileInfo);
-        } else {
-            analyzeBtn.disabled = true;
-            preview.innerHTML = '';
-        }
-    }
+        // Scroll back to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     
     function validateFile(file) {
         // Check file type
         if (!VALID_FILE_TYPES.includes(file.type)) {
             showError('Please select a valid image file (JPEG, PNG, or GIF)');
-            imageInput.value = ''; // Clear the file input
             return false;
         }
         
         // Check file size
         if (file.size > MAX_FILE_SIZE) {
             showError(`File size exceeds limit (${formatFileSize(MAX_FILE_SIZE)})`);
-            imageInput.value = ''; // Clear the file input
             return false;
         }
         
         return true;
     }
     
-    async function handleFormSubmit(e) {
-        e.preventDefault();
+    function showPreview(file) {
+        // Clear previous preview
+        preview.innerHTML = '';
         
-        const file = imageInput.files[0];
-        if (!file) {
-            showError('Please select an image first');
-            return;
-        }
+        // Create object URL for preview
+        const objectUrl = URL.createObjectURL(file);
         
+        // Create preview container
+        const previewContainer = document.createElement('div');
+        previewContainer.className = 'preview-container';
+        
+        // Create preview image
+        const img = new Image();
+        img.onload = function() {
+            // Image loaded successfully
+            URL.revokeObjectURL(objectUrl); // Clean up the URL
+        };
+        
+        img.onerror = function() {
+            preview.innerHTML = '<p class="error">Failed to load image preview</p>';
+            URL.revokeObjectURL(objectUrl);
+        };
+        
+        img.classList.add('preview-image');
+        img.alt = "Preview of selected image";
+        img.src = objectUrl;
+        
+        // Create file info label
+        const fileInfo = document.createElement('p');
+        fileInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+        fileInfo.classList.add('file-info');
+        
+        // Append elements
+        previewContainer.appendChild(img);
+        previewContainer.appendChild(fileInfo);
+        preview.appendChild(previewContainer);
+    }
+    
+    async function analyzeImage(file) {
         // Show loading indicator
         loadingIndicator.classList.remove('hidden');
-        analyzeBtn.disabled = true;
         
         // Clear previous results
         embeddingResults.innerHTML = '';
@@ -166,26 +105,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('image', file);
             
-            // Add CSRF token if available (from data attribute)
-            const csrfToken = uploadForm.dataset.csrfToken;
-            if (csrfToken) {
-                formData.append('csrf_token', csrfToken);
-                // Also set it as a header for APIs that expect it there
-                const headers = {
-                    'X-CSRFToken': csrfToken
-                };
-            }
-            
             // Send request
             const response = await fetch('/predict', {
                 method: 'POST',
-                body: formData,
-                headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+                body: formData
             });
             
             // Handle non-200 responses
             if (!response.ok) {
-                throw new Error('Server error occurred');
+                throw new Error(`Server error: ${response.status}`);
             }
             
             const data = await response.json();
@@ -205,13 +133,12 @@ document.addEventListener('DOMContentLoaded', function() {
             resultsContainer.scrollIntoView({ behavior: 'smooth' });
             
         } catch (error) {
-            // Only log detailed error to console, show generic message to user
+            // Log detailed error to console, show generic message to user
             console.error('Error:', error);
             showError('An error occurred while processing the image');
         } finally {
             // Hide loading indicator
             loadingIndicator.classList.add('hidden');
-            analyzeBtn.disabled = false;
         }
     }
     
@@ -235,8 +162,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function createResultItem(fontName, score) {
         const percentage = (score * 100).toFixed(1);
         
-        // Sanitize font name for safe DOM insertion by creating a text node
-        // and then getting its content (browser handles the sanitization)
+        // Sanitize font name for safe DOM insertion
         const sanitizedFontName = document.createTextNode(fontName).textContent;
         
         return `

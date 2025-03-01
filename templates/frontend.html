@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Font Similarity Search</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <!-- Stricter CSP without unsafe-inline for scripts -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob:; style-src 'self';">
 </head>
 <body>
     <div class="container">
@@ -16,19 +14,15 @@
         </header>
         
         <div class="upload-section" id="uploadArea">
-            <!-- Add CSRF token as a data attribute if available -->
-            <form id="uploadForm" enctype="multipart/form-data" {% if csrf_token() is defined %}data-csrf-token="{{ csrf_token() }}"{% endif %}>
-                <div class="file-input-container">
-                    <input type="file" id="imageInput" name="image" accept="image/png, image/jpeg, image/gif" aria-label="Select an image file">
-                    <label for="imageInput" class="file-drop-area">
-                        <div class="drop-message">Drag & drop an image here or click to browse</div>
-                    </label>
-                </div>
-                <div class="button-row">
-                    <button type="submit" id="analyzeBtn" disabled>Analyze Font</button>
-                    <button type="reset" id="resetBtn" class="secondary">Reset</button>
-                </div>
-            </form>
+            <!-- Using a simple button approach instead of a form -->
+            <div class="upload-button-container">
+                <input type="file" id="imageInput" name="image" accept="image/png, image/jpeg, image/gif" aria-label="Select an image file">
+                <label for="imageInput" class="upload-button">
+                    <span class="upload-icon">📷</span>
+                    <span>Select Font Image to Analyze</span>
+                </label>
+            </div>
+            
             <div id="preview" aria-live="polite"></div>
         </div>
 
@@ -47,6 +41,8 @@
                 <h2>Classifier Predictions</h2>
                 <div id="classifierResults" class="results-list"></div>
             </div>
+            
+            <button id="resetBtn" class="reset-button">Analyze another image</button>
         </div>
     </div>
 
