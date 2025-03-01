@@ -83,18 +83,18 @@ jobs:
       # Copy just the essential files to the server
       - name: Copy deployment files to server
         run: |
-          scp docker-compose.yml root@{{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
-          scp nginx.conf root@{{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
+          scp docker-compose.yml root@${{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
+          scp nginx.conf root@${{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
           
           # Copy static files (always needed by nginx)
           rsync -avz \
             static/ \
-            root@{{ env.SERVER_IP }}:/var/www/freefontfinder/static/
+            root@${{ env.SERVER_IP }}:/var/www/freefontfinder/static/
 
       # Deploy the application
       - name: Deploy with Docker Compose
         run: |
-          ssh root@{{ env.SERVER_IP }} '
+          ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             
             # Ensure docker is installed
@@ -137,7 +137,7 @@ jobs:
           # Wait for services to fully start
           sleep 30
           
-          ssh root@{{ env.SERVER_IP }} '
+          ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             
             # Determine docker compose command
