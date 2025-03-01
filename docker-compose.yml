@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/timholds/font-familiarity/freefontfinder:latest
+    image: ghcr.io/${{ github.repository }}/freefontfinder:latest
     build:
       context: .
       dockerfile: Dockerfile
