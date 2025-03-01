@@ -8,45 +8,41 @@
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Font Similarity Search</h1>
-            <p class="intro">Upload an image containing text to find similar fonts. Works best with clear, high-contrast text.</p>
-        </header>
+        <h1>Font Similarity Search</h1>
         
-        <div class="upload-area" id="dropArea">
-            <!-- Hidden file input -->
-            <input type="file" id="imageInput" name="image" accept="image/png, image/jpeg, image/gif" aria-label="Select an image file">
+        <div class="upload-container" id="dropArea">
+            <!-- This is the actual file input that the browser will use -->
+            <input type="file" id="fileInput" class="file-input" accept="image/*">
             
-            <!-- Upload button and drop area combined -->
-            <div class="upload-prompt">
-                <div class="upload-icon">📷</div>
-                <label for="imageInput" class="upload-button">Select Font Image to Analyze</label>
-                <p class="drag-instructions">or drag and drop an image file here</p>
-            </div>
+            <!-- This is the visible button that will trigger the file input when clicked -->
+            <label for="fileInput" class="upload-button">Select Font Image to Analyze</label>
             
-            <div id="preview" aria-live="polite"></div>
+            <p class="drop-text">or drag and drop an image here</p>
         </div>
-
-        <div id="loadingIndicator" class="hidden">
+        
+        <div id="preview"></div>
+        
+        <div id="loading" class="loading-indicator hidden">
             <div class="spinner"></div>
             <p>Analyzing font...</p>
         </div>
-
+        
         <div class="results-section hidden" id="resultsContainer">
             <div class="results-column">
                 <h2>Similar Fonts by Embedding</h2>
-                <div id="embeddingResults" class="results-list"></div>
+                <div id="embeddingResults"></div>
             </div>
             
             <div class="results-column">
                 <h2>Classifier Predictions</h2>
-                <div id="classifierResults" class="results-list"></div>
+                <div id="classifierResults"></div>
             </div>
             
             <button id="resetBtn" class="reset-button">Analyze another image</button>
         </div>
     </div>
 
+    <!-- External JavaScript file -->
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
