@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   web:
+    image: ghcr.io/${{ github.repository }}/freefontfinder:latest
     build:
       context: .
       dockerfile: Dockerfile

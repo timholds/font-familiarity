@@ -17,13 +17,15 @@ on:
       - 'static/**'
       - 'frontend_requirements.txt'
       - 'Dockerfile'
-      - 'docker-compose.yml'
+      - 'docker-compose.env'
       - 'nginx.conf'
       - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SERVER_IP: 137.184.232.187
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -57,75 +59,22 @@ jobs:
       # Verify server connection
       - name: Check server connection
         run: |
-          if ! ssh -q root@137.184.232.187 exit; then
+          if ! ssh -q root@${{ env.SERVER_IP }} exit; then
             echo "ERROR: Cannot connect to server"
             exit 1
           fi
 
-      # Create a docker-compose.prod.yml file that uses the pre-built image
-      - name: Create production docker-compose file
-        run: |
-          cat > docker-compose.prod.yml << 'EOL'
-          version: '3.8'
-          
-          services:
-            web:
-              image: ghcr.io/${{ github.repository }}/freefontfinder:latest
-              restart: always
-              volumes:
-                - model-data:/app/model
-                - ./logs:/app/logs
-              environment:
-                - PYTHONUNBUFFERED=1
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8000/test"]
-                interval: 30s
-                timeout: 10s
-                retries: 3
-                start_period: 20s
-            
-            nginx:
-              image: nginx:alpine
-              restart: always
-              ports:
-                - "80:80"
-                - "443:443"
-              volumes:
-                - ./nginx.conf:/etc/nginx/conf.d/default.conf
-                - ./static:/app/static
-                - ./certbot/conf:/etc/letsencrypt
-                - ./certbot/www:/var/www/certbot
-              depends_on:
-                - web
-            
-            certbot:
-              image: certbot/certbot
-              restart: unless-stopped
-              volumes:
-                - ./certbot/conf:/etc/letsencrypt
-                - ./certbot/www:/var/www/certbot
-              entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-          
-          volumes:
-            model-data:
-              driver: local
-              driver_opts:
-                type: 'none'
-                o: 'bind'
-                device: '/var/www/freefontfinder/model'
-          EOL
+      
 
       # Setup server directories and permissions
       - name: Setup server directories
         run: |
-          ssh root@137.184.232.187 '
+          ssh root@${{ env.SERVER_IP }} '
             # Create parent directories with proper permissions
             mkdir -p /var/www/freefontfinder
             mkdir -p /var/www/freefontfinder/model
             mkdir -p /var/www/freefontfinder/logs
             mkdir -p /var/www/freefontfinder/static
-            mkdir -p /var/www/freefontfinder/certbot/conf
-            mkdir -p /var/www/freefontfinder/certbot/www
             
             # Ensure proper permissions
             chmod -R 755 /var/www/freefontfinder
@@ -134,18 +83,18 @@ jobs:
       # Copy just the essential files to the server
       - name: Copy deployment files to server
         run: |
-          scp docker-compose.prod.yml root@137.184.232.187:/var/www/freefontfinder/docker-compose.yml
-          scp nginx.conf root@137.184.232.187:/var/www/freefontfinder/nginx.conf
+          scp docker-compose.yml root@{{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
+          scp nginx.conf root@{{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
           
           # Copy static files (always needed by nginx)
           rsync -avz \
             static/ \
-            root@137.184.232.187:/var/www/freefontfinder/static/
+            root@{{ env.SERVER_IP }}:/var/www/freefontfinder/static/
 
       # Deploy the application
       - name: Deploy with Docker Compose
         run: |
-          ssh root@137.184.232.187 '
+          ssh root@{{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             
             # Ensure docker is installed
@@ -160,7 +109,7 @@ jobs:
               apt-get install -y docker-compose-plugin
             fi
             
-            # Check docker compose version and use appropriate syntax
+            # Determine docker compose command
             if command -v docker compose &> /dev/null; then
               DOCKER_COMPOSE="docker compose"
             else
@@ -168,13 +117,13 @@ jobs:
             fi
             
             # Pull the latest images
-            $DOCKER_COMPOSE -f docker-compose.yml pull
+            $DOCKER_COMPOSE pull
             
             # Stop existing containers
-            $DOCKER_COMPOSE -f docker-compose.yml down
+            $DOCKER_COMPOSE down
             
             # Start containers
-            $DOCKER_COMPOSE -f docker-compose.yml up -d
+            $DOCKER_COMPOSE up -d
             
             # Give services time to start
             echo "Waiting for services to start..."
@@ -188,7 +137,7 @@ jobs:
           # Wait for services to fully start
           sleep 30
           
-          ssh root@137.184.232.187 '
+          ssh root@{{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             
             # Determine docker compose command
@@ -200,11 +149,11 @@ jobs:
             
             # Check if containers are running
             echo "===== Container Status ====="
-            $DOCKER_COMPOSE -f docker-compose.yml ps
+            $DOCKER_COMPOSE ps
             
             # Check web service logs for errors
             echo "===== Web Service Logs ====="
-            $DOCKER_COMPOSE -f docker-compose.yml logs --tail 20 web
+            $DOCKER_COMPOSE logs --tail 20 web
             
             # Test connection locally from the server itself
             echo "===== Testing API Endpoint ====="
