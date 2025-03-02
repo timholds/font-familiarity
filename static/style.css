@@ -308,13 +308,13 @@ button.secondary:hover {
     padding: 20px;
 }
 
-.preview-container {
+/* .preview-container {
     background-color: white;
     border-radius: var(--border-radius);
     padding: 15px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
-}
+} */
 
 .ready-indicator {
     color: #28a745;
@@ -360,7 +360,7 @@ button.secondary:hover {
     z-index: -1;
 }
 
-.preview-container {
+/* .preview-container {
     background-color: white;
     border-radius: var(--border-radius);
     padding: 15px;
@@ -368,30 +368,96 @@ button.secondary:hover {
     margin: 20px auto;
     max-width: 400px;
     text-align: center;
-}
+} */
 
-.preview-image {
-    max-width: 100%;
-    max-height: 300px;
-    border-radius: 4px;
-}
 
 .file-info {
     margin-top: 10px;
     color: #666;
 }
 
-.reset-button {
-    display: block;
-    margin: 30px auto 10px;
+/* Hide the default file input text */
+.file-input-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.file-input {
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+
+/* Style the custom file button */
+.custom-file-button {
+    display: inline-block;
     padding: 10px 20px;
-    background-color: #6c757d;
+    background-color: #4a6baf;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.custom-file-button:hover {
+    background-color: #3a559f;
+}
+
+/* Upload container styling */
+.upload-container {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 25px;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.3s;
+    max-width: 800px;
+    margin: 30px auto;
+}
+
+.upload-container.highlight, .upload-container:hover {
+    border-color: #4a6baf;
+    background-color: #f0f4ff;
+}
+
+.upload-label {
+    font-size: 18px;
+    color: #333;
+    margin: 15px 0 5px;
+    display: block;
+}
+
+.upload-instructions {
+    display: block;
+    color: #666;
+    margin-top: 10px;
+}
+
+/* Reset button styling */
+.reset-button {
+    background-color: #4a6baf;
     color: white;
     border: none;
-    border-radius: var(--border-radius);
+    padding: 10px 20px;
+    border-radius: 4px;
     cursor: pointer;
+    margin-top: 20px;
+    transition: background-color 0.3s;
 }
 
 .reset-button:hover {
-    background-color: #5a6268;
+    background-color: #3a559f;
+}
+
+/* Preview container styling */
+.preview-container {
+    margin: 20px auto;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-width: 600px;
 }

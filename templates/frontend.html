@@ -11,14 +11,19 @@
         <h1>Font Similarity Search</h1>
         
         <div class="upload-container" id="dropArea">
-            <!-- This is the actual file input that the browser will use -->
-            <input type="file" id="fileInput" class="file-input" accept="image/*">
+            <div class="file-input-wrapper">
+                <input type="file" id="fileInput" name="image" class="file-input" accept="image/*">
+                <label for="fileInput" class="custom-file-button">Choose File</label>
+            </div>
+            <span class="upload-label">Select Font Image to Analyze</span>
+            <span class="upload-instructions">or drag and drop an image here</span>
             
-            <!-- This is the visible button that will trigger the file input when clicked -->
-            <label for="fileInput" class="upload-button">Select Font Image to Analyze</label>
-            
-            <p class="drop-text">or drag and drop an image here</p>
+            <!-- Reset button will be shown after upload -->
+            <div id="resetButtonContainer" class="hidden">
+                <button id="resetBtn" class="reset-button">Analyze another image</button>
+            </div>
         </div>
+
         
         <div id="preview"></div>
         
@@ -38,7 +43,6 @@
                 <div id="classifierResults"></div>
             </div>
             
-            <button id="resetBtn" class="reset-button">Analyze another image</button>
         </div>
     </div>
 
