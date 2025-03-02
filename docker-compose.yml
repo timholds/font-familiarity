@@ -1,3 +1,4 @@
+name: font-familiarity
 services:
   web:
     # image: ghcr.io/${{ github.repository }}/freefontfinder:latest
