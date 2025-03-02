@@ -120,22 +120,16 @@ jobs:
               apt-get install -y docker-compose-plugin
             fi
             
-            # Determine docker compose command
-            if command -v docker compose &> /dev/null; then
-              DOCKER_COMPOSE="docker compose"
-            else
-              DOCKER_COMPOSE="docker-compose"
-            fi
-
-            echo $DOCKER_COMPOSE
-            
             # Pull the latest images explicitly (with output)
             echo "=== PULLING LATEST IMAGE ==="
-            $DOCKER_COMPOSE -f docker-compose.yml pull web
+            docker compose pull 
+
+            echo "After pull:"
+            docker images | grep freefontfinder
             
             # Stop existing containers
             echo "=== STOPPING CONTAINERS ==="
-            $DOCKER_COMPOSE -f docker-compose.yml down
+            docker compose down
             
             # Remove any old containers to be sure
             echo "=== REMOVING OLD CONTAINERS ==="
@@ -143,7 +137,7 @@ jobs:
             
             # Start containers with force-recreate
             echo "=== STARTING NEW CONTAINERS ==="
-            $DOCKER_COMPOSE -f docker-compose.yml up -d --force-recreate
+            docker compose up -d 
             
             # Show final state
             echo "=== AFTER DEPLOYMENT ==="
@@ -164,20 +158,13 @@ jobs:
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             
-            # Determine docker compose command
-            if command -v docker compose &> /dev/null; then
-              DOCKER_COMPOSE="docker compose"
-            else
-              DOCKER_COMPOSE="docker-compose"
-            fi
-            
             # Check if containers are running
             echo "===== Container Status ====="
-            $DOCKER_COMPOSE ps
+            docker compose ps
             
             # Check web service logs for errors
             echo "===== Web Service Logs ====="
-            $DOCKER_COMPOSE logs --tail 20 web
+            docker compose logs --tail 20 web
             
             # Test connection locally from the server itself
             echo "===== Testing API Endpoint ====="
