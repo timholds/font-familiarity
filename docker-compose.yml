@@ -1,6 +1,7 @@
 services:
   web:
-    image: ghcr.io/${{ github.repository }}/freefontfinder:latest
+    # image: ghcr.io/${{ github.repository }}/freefontfinder:latest
+    image: ghcr.io/timholds/font-familiarity/freefontfinder:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -17,7 +18,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    user: 1000:1000  # Non-root user
+    #user: 1000:1000  # Non-root user
 
   nginx:
     image: nginx:alpine
