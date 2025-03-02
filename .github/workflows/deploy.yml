@@ -143,9 +143,6 @@ jobs:
             echo "=== AFTER DEPLOYMENT ==="
             docker ps
             
-            # Check image details
-            echo "=== DEPLOYED IMAGE DETAILS ==="
-            docker inspect $(docker ps -q --filter name=freefontfinder_web) | grep -E "Image|Created"
           '
 
       # Health check - run from server itself
