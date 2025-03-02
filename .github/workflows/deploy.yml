@@ -86,11 +86,6 @@ jobs:
           scp docker-compose.yml root@${{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
           scp nginx.conf root@${{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
           
-          # Copy static files (always needed by nginx)
-          rsync -avz \
-            static/ \
-            root@${{ env.SERVER_IP }}:/var/www/freefontfinder/static/
-
           # Verify SSL certificate files exist
           ssh root@${{ env.SERVER_IP }} '
             if [ ! -f "/etc/ssl/font.crt" ] || [ ! -f "/etc/ssl/font.key" ]; then
