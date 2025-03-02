@@ -105,6 +105,8 @@ jobs:
         run: |
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
+
+            docker ps
             
             # Ensure docker is installed
             if ! command -v docker &> /dev/null; then
@@ -124,19 +126,32 @@ jobs:
             else
               DOCKER_COMPOSE="docker-compose"
             fi
+
+            echo $DOCKER_COMPOSE
             
-            # Pull the latest images
-            $DOCKER_COMPOSE pull
+            # Pull the latest images explicitly (with output)
+            echo "=== PULLING LATEST IMAGE ==="
+            $DOCKER_COMPOSE -f docker-compose.yml pull web
             
             # Stop existing containers
-            $DOCKER_COMPOSE down
+            echo "=== STOPPING CONTAINERS ==="
+            $DOCKER_COMPOSE -f docker-compose.yml down
             
-            # Start containers
-            $DOCKER_COMPOSE up -d --force-recreate --pull always
+            # Remove any old containers to be sure
+            echo "=== REMOVING OLD CONTAINERS ==="
+            docker rm -f $(docker ps -a -q --filter name=freefontfinder_web) || true
             
-            # Give services time to start
-            echo "Waiting for services to start..."
-            sleep 10
+            # Start containers with force-recreate
+            echo "=== STARTING NEW CONTAINERS ==="
+            $DOCKER_COMPOSE -f docker-compose.yml up -d --force-recreate
+            
+            # Show final state
+            echo "=== AFTER DEPLOYMENT ==="
+            docker ps
+            
+            # Check image details
+            echo "=== DEPLOYED IMAGE DETAILS ==="
+            docker inspect $(docker ps -q --filter name=freefontfinder_web) | grep -E "Image|Created"
           '
 
       # Health check - run from server itself
