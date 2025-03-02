@@ -132,7 +132,7 @@ jobs:
             $DOCKER_COMPOSE down
             
             # Start containers
-            $DOCKER_COMPOSE up -d --force-recreate
+            $DOCKER_COMPOSE up -d --force-recreate --pull always
             
             # Give services time to start
             echo "Waiting for services to start..."
