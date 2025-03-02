@@ -91,28 +91,6 @@ jobs:
             static/ \
             root@${{ env.SERVER_IP }}:/var/www/freefontfinder/static/
 
-          rsync -avz \
-            --exclude 'venv/' \
-            --exclude 'model/' \
-            --exclude '__pycache__/' \
-            --exclude '*.pyc' \
-            --exclude 'logs/' \
-            frontend_app.py \
-            frontend_requirements.txt \
-            root@137.184.232.187:/var/www/freefontfinder/
-          
-          # ML code - exclude cache files
-          rsync -avz \
-            --exclude '__pycache__/' \
-            --exclude '*.pyc' \
-            ml/ \
-            root@137.184.232.187:/var/www/freefontfinder/ml/
-          
-          # Static assets and templates
-          rsync -avz \
-            templates/ \
-            root@137.184.232.187:/var/www/freefontfinder/templates/
-
           # Verify SSL certificate files exist
           ssh root@${{ env.SERVER_IP }} '
             if [ ! -f "/etc/ssl/font.crt" ] || [ ! -f "/etc/ssl/font.key" ]; then
