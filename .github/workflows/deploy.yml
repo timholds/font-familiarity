@@ -91,7 +91,29 @@ jobs:
             static/ \
             root@${{ env.SERVER_IP }}:/var/www/freefontfinder/static/
 
-           # Verify SSL certificate files exist
+          rsync -avz \
+            --exclude 'venv/' \
+            --exclude 'model/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude 'logs/' \
+            frontend_app.py \
+            frontend_requirements.txt \
+            root@137.184.232.187:/var/www/freefontfinder/
+          
+          # ML code - exclude cache files
+          rsync -avz \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            ml/ \
+            root@137.184.232.187:/var/www/freefontfinder/ml/
+          
+          # Static assets and templates
+          rsync -avz \
+            templates/ \
+            root@137.184.232.187:/var/www/freefontfinder/templates/
+
+          # Verify SSL certificate files exist
           ssh root@${{ env.SERVER_IP }} '
             if [ ! -f "/etc/ssl/font.crt" ] || [ ! -f "/etc/ssl/font.key" ]; then
               echo "ERROR: SSL certificate files not found at /etc/ssl/font.crt and /etc/ssl/font.key"
@@ -137,7 +159,7 @@ jobs:
             $DOCKER_COMPOSE down
             
             # Start containers
-            $DOCKER_COMPOSE up -d
+            $DOCKER_COMPOSE up -d --force-recreate
             
             # Give services time to start
             echo "Waiting for services to start..."
