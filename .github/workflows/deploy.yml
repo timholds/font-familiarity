@@ -87,6 +87,8 @@ jobs:
         run: |
           scp docker-compose.prod.yml root@${{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
           scp nginx.conf root@${{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
+          scp -r static root@${{ env.SERVER_IP }}:/var/www/freefontfinder/static_nginx/
+
           
           # Verify SSL certificate files exist
           ssh root@${{ env.SERVER_IP }} '

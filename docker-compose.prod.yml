@@ -11,9 +11,6 @@ services:
     volumes:
       - model-data:/app/model
       - ./logs:/app/logs
-      - ./templates:/app/templates
-      - ./static:/app/static
-
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:
@@ -31,7 +28,6 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./static:/app/static
       - /etc/ssl/font.crt:/etc/ssl/font.crt:ro
       - /etc/ssl/font.key:/etc/ssl/font.key:ro
     depends_on:
