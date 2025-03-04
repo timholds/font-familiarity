@@ -83,7 +83,7 @@ jobs:
       # Copy just the essential files to the server
       - name: Copy deployment files to server
         run: |
-          scp docker-compose.yml root@${{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
+          scp docker-compose.prod.yml root@${{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
           scp nginx.conf root@${{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
           
           # Verify SSL certificate files exist

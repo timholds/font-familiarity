@@ -101,21 +101,76 @@ document.addEventListener('DOMContentLoaded', function() {
         analyzeImage(file);
     }
     
-    // Show image preview
     function showPreview(file) {
-        const reader = new FileReader();
+        // Clear previous preview
+        preview.innerHTML = '';
         
-        reader.onload = function(e) {
-            preview.innerHTML = `
-                <div class="preview-container">
-                    <img src="${e.target.result}" class="preview-image" alt="Selected image">
-                    <p class="file-info">${file.name} (${formatSize(file.size)})</p>
-                </div>
-            `;
+        // Show the reset button
+        document.getElementById('resetButtonContainer').classList.remove('hidden');
+        
+        // Create object URL for preview
+        const objectUrl = URL.createObjectURL(file);
+        
+        // Create preview container
+        const previewContainer = document.createElement('div');
+        previewContainer.className = 'preview-container';
+        
+        // Create preview image
+        const img = new Image();
+        img.onload = function() {
+            URL.revokeObjectURL(objectUrl);
         };
         
-        reader.readAsDataURL(file);
+        img.onerror = function() {
+            preview.innerHTML = '<p class="error">Failed to load image preview</p>';
+            URL.revokeObjectURL(objectUrl);
+        };
+        
+        img.classList.add('preview-image');
+        img.alt = "Preview of selected image";
+        img.src = objectUrl;
+        
+        // Create file info label
+        const fileInfo = document.createElement('p');
+        fileInfo.textContent = `${file.name} (${formatSize(file.size)})`;
+        fileInfo.classList.add('file-info');
+        
+        // Append elements
+        previewContainer.appendChild(img);
+        previewContainer.appendChild(fileInfo);
+        preview.appendChild(previewContainer);
     }
+    
+    // Update reset button handler
+    resetBtn.addEventListener('click', function() {
+        // Clear file input
+        fileInput.value = '';
+        
+        // Clear preview
+        preview.innerHTML = '';
+        
+        // Hide results
+        resultsContainer.classList.add('hidden');
+        
+        // Hide reset button
+        document.getElementById('resetButtonContainer').classList.add('hidden');
+    });
+    
+    // Show image preview
+    // function showPreview(file) {
+    //     const reader = new FileReader();
+        
+    //     reader.onload = function(e) {
+    //         preview.innerHTML = `
+    //             <div class="preview-container">
+    //                 <img src="${e.target.result}" class="preview-image" alt="Selected image">
+    //                 <p class="file-info">${file.name} (${formatSize(file.size)})</p>
+    //             </div>
+    //         `;
+    //     };
+        
+    //     reader.readAsDataURL(file);
+    // }
     
     // Analyze the image
     async function analyzeImage(file) {
