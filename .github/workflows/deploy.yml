@@ -75,6 +75,8 @@ jobs:
             mkdir -p /var/www/freefontfinder/model
             mkdir -p /var/www/freefontfinder/logs
             mkdir -p /var/www/freefontfinder/static
+            mkdir -p /var/www/freefontfinder/templates
+            mkdir -p /var/www/freefontfinder/ml
             
             # Ensure proper permissions
             chmod -R 755 /var/www/freefontfinder
