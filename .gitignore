@@ -21,3 +21,4 @@ font_dataset_npz*/
 *.pyc
 *.log
 *env/
+*.env*

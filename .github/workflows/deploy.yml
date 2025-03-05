@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SERVER_IP: 137.184.232.187
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -91,6 +92,9 @@ jobs:
           scp docker-compose.prod.yml root@${{ env.SERVER_IP }}:/var/www/freefontfinder/docker-compose.yml
           scp nginx.conf root@${{ env.SERVER_IP }}:/var/www/freefontfinder/nginx.conf
           
+          echo "IMAGE_TAG=${{ env.IMAGE_TAG }}" > .env
+          scp .env root@${{ env.SERVER_IP }}:/var/www/freefontfinder/.env
+          
           # Verify SSL certificate files exist
           ssh root@${{ env.SERVER_IP }} '
             if [ ! -f "/etc/ssl/font.crt" ] || [ ! -f "/etc/ssl/font.key" ]; then
@@ -111,9 +115,6 @@ jobs:
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             echo "IMAGE_TAG=${{ github.sha }}" > .env
-            docker compose pull
-
-            docker ps
             
             # Ensure docker is installed
             if ! command -v docker &> /dev/null; then
@@ -127,28 +128,28 @@ jobs:
               apt-get install -y docker-compose-plugin
             fi
             
-            # Pull the latest images explicitly (with output)
-            echo "=== PULLING LATEST IMAGE ==="
-            docker compose pull 
-
-            echo "After pull:"
-            docker images | grep freefontfinder
-            
             # Stop existing containers
             echo "=== STOPPING CONTAINERS ==="
-            docker compose down
+            docker compose down --remove-orphans
+
+            # Force pull the latest images
+            docker compose pull --quiet
+
+            # Show which images we have
+            echo "=== AVAILABLE IMAGES ==="
+            docker images | grep freefontfinder
             
-            # Remove any old containers to be sure
-            echo "=== REMOVING OLD CONTAINERS ==="
-            docker rm -f $(docker ps -a -q --filter name=freefontfinder_web) || true
-            
-            # Start containers with force-recreate
+            # Start containers with new image
             echo "=== STARTING NEW CONTAINERS ==="
-            docker compose up -d 
+            docker compose up -d
+            
+            # Clean up old images but only for our project
+            echo "=== CLEANING UP OLD IMAGES ==="
+            docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/timholds/font-familiarity"
             
             # Show final state
-            echo "=== AFTER DEPLOYMENT ==="
-            docker ps
+            echo "=== DEPLOYMENT COMPLETE ==="
+            docker ps | grep font-familiarity
             
           '
 
