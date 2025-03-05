@@ -46,7 +46,7 @@ jobs:
       - name: Build and push web container
         uses: docker/build-push-action@v4
         with:
-          context: .
+          context: ./source
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/freefontfinder:latest
@@ -87,7 +87,7 @@ jobs:
         # Ensure Docker and Docker Compose are installed
       - name: Install Docker and Docker Compose
         run: |
-          ssh root@137.184.232.187 '
+          ssh root@${{ env.SERVER_IP }}'
             if ! command -v docker &> /dev/null; then
               echo "Installing Docker..."
               apt-get update
@@ -126,7 +126,7 @@ jobs:
       # Increase wait time for service startup
       - name: Deploy with Docker Compose
         run: |
-          ssh root@137.184.232.187 '
+          ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
             docker compose -f docker-compose.yml down --remove-orphans
             docker compose -f docker-compose.yml pull --quiet
