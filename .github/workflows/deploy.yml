@@ -114,7 +114,6 @@ jobs:
         run: |
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
-            echo "IMAGE_TAG=${{ github.sha }}" > .env
             
             # Ensure docker is installed
             if ! command -v docker &> /dev/null; then
@@ -148,7 +147,7 @@ jobs:
             docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/timholds/font-familiarity"
                         
             # Keep only the 3 most recent images
-            docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
+            # docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
     
             # Show final state
             echo "=== DEPLOYMENT COMPLETE ==="
