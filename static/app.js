@@ -156,21 +156,64 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('resetButtonContainer').classList.add('hidden');
     });
     
-    // Show image preview
-    // function showPreview(file) {
-    //     const reader = new FileReader();
+    // Function to format font name from model format (lowercase_with_underscores) to display format (Title Case)
+    function formatFontName(modelFontName) {
+        // Convert underscores to spaces
+        let formattedName = modelFontName.replace(/_/g, ' ');
         
-    //     reader.onload = function(e) {
-    //         preview.innerHTML = `
-    //             <div class="preview-container">
-    //                 <img src="${e.target.result}" class="preview-image" alt="Selected image">
-    //                 <p class="file-info">${file.name} (${formatSize(file.size)})</p>
-    //             </div>
-    //         `;
-    //     };
+        // Capitalize each word
+        formattedName = formattedName.split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+            
+        // Handle special cases
+        const specialCases = {
+            'Pt Sans': 'PT Sans',
+            'Pt Serif': 'PT Serif',
+            'Ibm Plex': 'IBM Plex',
+            'Dm Sans': 'DM Sans',
+            'Dm Serif': 'DM Serif',
+            'Eb Garamond': 'EB Garamond'
+        };
         
-    //     reader.readAsDataURL(file);
-    // }
+        // Check if the formatted name starts with any special case key
+        for (const [special, correct] of Object.entries(specialCases)) {
+            if (formattedName.startsWith(special)) {
+                formattedName = formattedName.replace(special, correct);
+                break;
+            }
+        }
+        
+        return formattedName;
+    }
+    
+    // Preload Google Fonts
+    async function preloadGoogleFont(modelFontName) {
+        // Get properly formatted name 
+        const displayName = formatFontName(modelFontName);
+        
+        // Create Google Fonts URL
+        const googleFontParam = displayName.replace(/\s+/g, '+');
+        const fontUrl = `https://fonts.googleapis.com/css2?family=${googleFontParam}&display=swap`;
+        
+        // Check if we already loaded this font
+        const existingLink = document.getElementById(`font-${googleFontParam}`);
+        if (existingLink) {
+            return displayName; // Font already requested
+        }
+        
+        // Add link element
+        const link = document.createElement('link');
+        link.id = `font-${googleFontParam}`;
+        link.rel = 'stylesheet';
+        link.href = fontUrl;
+        document.head.appendChild(link);
+        
+        console.log(`Loading font: ${displayName} (URL: ${fontUrl})`);
+        
+        // Return the display name
+        return displayName;
+    }
     
     // Analyze the image
     async function analyzeImage(file) {
@@ -198,6 +241,23 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.error) {
                 throw new Error(data.error);
             }
+            
+            // Preload all fonts before displaying results
+            const fontPromises = [];
+            
+            // Collect all unique fonts from both result sets
+            const allFonts = new Set();
+            
+            data.embedding_similarity.forEach(result => allFonts.add(result.font));
+            data.classifier_predictions.forEach(result => allFonts.add(result.font));
+            
+            // Preload all fonts in parallel
+            for (const fontName of allFonts) {
+                fontPromises.push(preloadGoogleFont(fontName));
+            }
+            
+            // Wait for all fonts to load
+            await Promise.all(fontPromises);
             
             // Display results
             displayResults(data);
@@ -228,22 +288,28 @@ document.addEventListener('DOMContentLoaded', function() {
         ).join('');
     }
     
-    function createResultItemHTML(fontName, score) {
+    function createResultItemHTML(modelFontName, score) {
         const percentage = (score * 100).toFixed(1);
         
-        // Create a temporary element to safely escape the font name
-        const tempDiv = document.createElement('div');
-        tempDiv.textContent = fontName;
-        const safeFontName = tempDiv.innerHTML;
+        // Format the font name for display
+        const displayFontName = formatFontName(modelFontName);
+        
+        // Create the font-family CSS value
+        const fontFamily = `'${displayFontName}', sans-serif`;
         
         return `
             <div class="result-item">
-                <span class="font-name">${safeFontName}</span>
-                <span class="score">${percentage}%</span>
-                <div class="font-sample">
-                    The quick brown fox jumps over the lazy dog
+                <div class="result-header">
+                    <span class="font-name" style="font-family: ${fontFamily};">${displayFontName}</span>
+                    <span class="score">${percentage}%</span>
                 </div>
-                <button class="copy-btn" onclick="navigator.clipboard.writeText('${safeFontName}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
+                <div class="font-sample" style="font-family: ${fontFamily};">
+                    The quick brown fox jumps over the lazy dog 1234567890
+                </div>
+                <div class="font-actions">
+                    <button class="copy-btn" onclick="navigator.clipboard.writeText('${displayFontName}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
+                    <a href="https://fonts.google.com/specimen/${displayFontName.replace(/\s+/g, '+')}" target="_blank" class="font-link">View on Google Fonts</a>
+                </div>
             </div>
         `;
     }
