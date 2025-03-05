@@ -146,7 +146,10 @@ jobs:
             # Clean up old images but only for our project
             echo "=== CLEANING UP OLD IMAGES ==="
             docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/timholds/font-familiarity"
-            
+                        
+            # Keep only the 3 most recent images
+            docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
+    
             # Show final state
             echo "=== DEPLOYMENT COMPLETE ==="
             docker ps | grep font-familiarity
