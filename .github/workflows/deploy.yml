@@ -48,6 +48,7 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository }}/freefontfinder:latest
+          no-cache: true
 
       # Install SSH key for server access
       - name: Install SSH key
