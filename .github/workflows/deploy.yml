@@ -68,8 +68,6 @@ jobs:
             exit 1
           fi
 
-      
-
       # Setup server directories and permissions
       - name: Setup server directories
         run: |
@@ -84,6 +82,22 @@ jobs:
             
             # Ensure proper permissions
             chmod -R 755 /var/www/freefontfinder
+          '
+    
+        # Ensure Docker and Docker Compose are installed
+      - name: Install Docker and Docker Compose
+        run: |
+          ssh root@137.184.232.187 '
+            if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
+              apt-get update
+              apt-get install -y docker.io
+            fi
+            if ! command -v docker-compose &> /dev/null && ! command -v docker compose &> /dev/null; then
+              echo "Installing Docker Compose..."
+              apt-get update
+              apt-get install -y docker-compose-plugin
+            fi
           '
       
       # Copy just the essential files to the server
@@ -109,54 +123,73 @@ jobs:
             fi
           '
 
-      # Deploy the application
+      # Increase wait time for service startup
       - name: Deploy with Docker Compose
         run: |
-          ssh root@${{ env.SERVER_IP }} '
+          ssh root@137.184.232.187 '
             cd /var/www/freefontfinder
+            docker compose -f docker-compose.yml down --remove-orphans
+            docker compose -f docker-compose.yml pull --quiet
+            docker compose -f docker-compose.yml up -d
+            echo "Waiting for services to start..."
+            sleep 20  # Increase wait time as needed
             
-            # Ensure docker is installed
-            if ! command -v docker &> /dev/null; then
-              apt-get update
-              apt-get install -y docker.io
-            fi
-            
-            # Install docker-compose using apt
-            if ! command -v docker-compose &> /dev/null && ! command -v docker compose &> /dev/null; then
-              apt-get update
-              apt-get install -y docker-compose-plugin
-            fi
-            
-            # Stop existing containers
-            echo "=== STOPPING CONTAINERS ==="
-            docker compose down --remove-orphans
-
-            # Force pull the latest images
-            docker compose pull --quiet
-
-            # Start containers with new image
-            echo "=== STARTING NEW CONTAINERS ==="
-            docker compose up -d
-            
-            # Clean up old images but only for our project
-            echo "=== CLEANING UP OLD IMAGES ==="
-            docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/timholds/font-familiarity"
-                        
-            # Keep only the 3 most recent images
-            # docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
-            # Use a different approach for cleanup
-            # docker images | grep freefontfinder | awk 'NR>3 {print $1":"$2}' | xargs -r docker rmi
             COUNT=$(docker images | grep freefontfinder | wc -l)
             if [ "$COUNT" -gt 3 ]; then
               docker images | grep freefontfinder | tail -n +4 | while read -r repo tag rest; do
                 docker rmi "$repo:$tag" || true
               done
             fi
-            # Show final state
-            echo "=== DEPLOYMENT COMPLETE ==="
-            docker ps | grep font-familiarity
-            
           '
+
+      # # Deploy the application
+      # - name: Deploy with Docker Compose
+      #   run: |
+      #     ssh root@${{ env.SERVER_IP }} '
+      #       cd /var/www/freefontfinder  
+            
+      #       # Ensure docker is installed
+      #       if ! command -v docker &> /dev/null; then
+      #         apt-get update
+      #         apt-get install -y docker.io
+      #       fi
+            
+      #       # Install docker-compose using apt
+      #       if ! command -v docker-compose &> /dev/null && ! command -v docker compose &> /dev/null; then
+      #         apt-get update
+      #         apt-get install -y docker-compose-plugin
+      #       fi
+            
+      #       # Stop existing containers
+      #       echo "=== STOPPING CONTAINERS ==="
+      #       docker compose down --remove-orphans
+
+      #       # Force pull the latest images
+      #       docker compose pull --quiet
+
+      #       # Start containers with new image
+      #       echo "=== STARTING NEW CONTAINERS ==="
+      #       docker compose up -d
+            
+      #       # Clean up old images but only for our project
+      #       echo "=== CLEANING UP OLD IMAGES ==="
+      #       docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/timholds/font-familiarity"
+                        
+      #       # Keep only the 3 most recent images
+      #       # docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
+      #       # Use a different approach for cleanup
+      #       # docker images | grep freefontfinder | awk 'NR>3 {print $1":"$2}' | xargs -r docker rmi
+      #       COUNT=$(docker images | grep freefontfinder | wc -l)
+      #       if [ "$COUNT" -gt 3 ]; then
+      #         docker images | grep freefontfinder | tail -n +4 | while read -r repo tag rest; do
+      #           docker rmi "$repo:$tag" || true
+      #         done
+      #       fi
+      #       # Show final state
+      #       echo "=== DEPLOYMENT COMPLETE ==="
+      #       docker ps | grep font-familiarity
+            
+      #     '
 
       # Health check - run from server itself
       - name: Health check
@@ -171,7 +204,7 @@ jobs:
             # Check if containers are running
             echo "===== Container Status ====="
             docker compose ps
-            
+             
             # Check web service logs for errors
             echo "===== Web Service Logs ====="
             docker compose logs --tail 20 web
