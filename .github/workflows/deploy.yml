@@ -134,12 +134,12 @@ jobs:
             echo "Waiting for services to start..."
             sleep 20  # Increase wait time as needed
             
-            COUNT=$(docker images | grep freefontfinder | wc -l)
-            if [ "$COUNT" -gt 3 ]; then
-              docker images | grep freefontfinder | tail -n +4 | while read -r repo tag rest; do
-                docker rmi "$repo:$tag" || true
-              done
-            fi
+            docker image ls "ghcr.io/timholds/font-familiarity/freefontfinder" --format "{{{{.ID}} {{{{.CreatedAt}}}}" | 
+              sort -k2,3 -r | 
+              awk '\''NR>3 {print $1}'\'' | 
+              xargs -r docker rmi 2>/dev/null || true
+            docker system prune -f
+
           '
 
       # # Deploy the application
