@@ -134,10 +134,6 @@ jobs:
             # Force pull the latest images
             docker compose pull --quiet
 
-            # Show which images we have
-            echo "=== AVAILABLE IMAGES ==="
-            docker images | grep freefontfinder
-            
             # Start containers with new image
             echo "=== STARTING NEW CONTAINERS ==="
             docker compose up -d
@@ -149,8 +145,13 @@ jobs:
             # Keep only the 3 most recent images
             # docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
             # Use a different approach for cleanup
-            docker images | grep freefontfinder | awk 'NR>3 {print $1":"$2}' | xargs -r docker rmi
-
+            # docker images | grep freefontfinder | awk 'NR>3 {print $1":"$2}' | xargs -r docker rmi
+            COUNT=$(docker images | grep freefontfinder | wc -l)
+            if [ "$COUNT" -gt 3 ]; then
+              docker images | grep freefontfinder | tail -n +4 | while read -r repo tag rest; do
+                docker rmi "$repo:$tag" || true
+              done
+            fi
             # Show final state
             echo "=== DEPLOYMENT COMPLETE ==="
             docker ps | grep font-familiarity
