@@ -47,7 +47,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}/freefontfinder:latest
+          tags: |
+            ghcr.io/${{ github.repository }}/freefontfinder:latest
+            ghcr.io/${{ github.repository }}/freefontfinder:${{ github.sha }}
           no-cache: true
 
       # Install SSH key for server access
@@ -108,6 +110,8 @@ jobs:
         run: |
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
+            echo "IMAGE_TAG=${{ github.sha }}" > .env
+            docker compose pull
 
             docker ps
             
