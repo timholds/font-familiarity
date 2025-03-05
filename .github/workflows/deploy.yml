@@ -148,7 +148,9 @@ jobs:
                         
             # Keep only the 3 most recent images
             # docker images --format "{{.Repository}}:{{.Tag}}" | grep freefontfinder | tail -n +4 | xargs -r docker rmi
-    
+            # Use a different approach for cleanup
+            docker images | grep freefontfinder | awk 'NR>3 {print $1":"$2}' | xargs -r docker rmi
+
             # Show final state
             echo "=== DEPLOYMENT COMPLETE ==="
             docker ps | grep font-familiarity
