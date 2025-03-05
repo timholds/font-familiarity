@@ -17,7 +17,7 @@ on:
       - 'static/**'
       - 'frontend_requirements.txt'
       - 'Dockerfile'
-      - 'docker-compose.yml'
+      - 'docker-compose.prod.yml'
       - 'nginx.conf'
       - '.github/workflows/deploy.yml'
 
