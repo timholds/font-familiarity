@@ -47,6 +47,7 @@
     </div>
 
     <!-- External JavaScript file -->
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v={{ css_version }}"></script>
+
 </body>
 </html>
