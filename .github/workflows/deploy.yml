@@ -128,30 +128,63 @@ jobs:
         run: |
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
-
-            # Debug - check what image tag we have
-            echo "Using image tag from .env: $(cat .env | grep IMAGE_TAG)"
-      
+            
+            # Print full environment for debugging
+            echo "===== Environment Variables ====="
+            cat .env
+            
+            # Stop existing containers
+            echo "===== Stopping existing containers ====="
             docker compose -f docker-compose.yml down --remove-orphans
-
-            # Explicitly pull the SHA-tagged image first
+            
+            # Get image tag from env file
             IMAGE_TAG=$(grep IMAGE_TAG .env | cut -d= -f2)
             echo "Pulling image with tag: $IMAGE_TAG"
+            
+            # Pull the specific image
             docker pull ghcr.io/timholds/font-familiarity/freefontfinder:$IMAGE_TAG
             
-            # Then start with docker-compose as normal
-            docker compose -f docker-compose.yml up -d
+            # Check if image exists after pull
+            echo "===== Verifying image ====="
+            docker image ls | grep $IMAGE_TAG
             
-            echo "Waiting for services to start..."
-            sleep 20
-            docker ps
+            # Print compose file contents
+            echo "===== Docker Compose file contents ====="
+            cat docker-compose.yml
             
-            # Clean up old images
-            docker image ls "ghcr.io/timholds/font-familiarity/freefontfinder" --format "{{{{.ID}} {{{{.CreatedAt}}}}" | 
-              sort -k2,3 -r | 
-              awk '\''NR>3 {print $1}'\'' | 
-              xargs -r docker rmi 2>/dev/null || true
-            docker system prune -f
+            # Try running with explicit image reference
+            echo "===== Starting containers ====="
+            COMPOSE_HTTP_TIMEOUT=300 IMAGE_TAG=$IMAGE_TAG docker compose -f docker-compose.yml up -d
+            
+            # Check immediate status
+            echo "===== Immediate container status ====="
+            docker ps -a
+            
+            # Check logs even if container exited
+            echo "===== Container logs (even if exited) ====="
+            for container in $(docker ps -aq --filter "name=font-familiarity"); do
+              echo "Logs for container $container:"
+              docker logs $container
+            done
+            
+            # Check for any docker events that might indicate problems
+            echo "===== Recent Docker events ====="
+            docker events --since 5m --until 0m
+            
+            # Try running the container directly to see startup issues
+            echo "===== Running container directly to debug ====="
+            docker run --rm -v "$(pwd)/model:/app/model" ghcr.io/timholds/font-familiarity/freefontfinder:$IMAGE_TAG echo "Container starts successfully"
+            
+            # Check health of system
+            echo "===== System health ====="
+            df -h
+            free -m
+            
+            echo "===== Restarting service ====="
+            docker compose -f docker-compose.yml restart
+            
+            echo "===== Final container status ====="
+            docker ps -a
           '
 
       # Health check - run from server itself
