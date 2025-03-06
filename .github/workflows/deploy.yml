@@ -152,8 +152,9 @@ jobs:
             # Clean up old images
             docker image ls "ghcr.io/timholds/font-familiarity/freefontfinder" --format "{{.ID}} {{.CreatedAt}}" | 
               sort -k2,3 -r | 
-              awk 'NR>1 {print $1}' | 
-              xargs -r docker rmi -f 2>/dev/null || true
+              awk "NR>3 {print \$1}" | 
+              xargs -r docker rmi 2>/dev/null || true
+            
             docker system prune -af --volumes
           '
 
