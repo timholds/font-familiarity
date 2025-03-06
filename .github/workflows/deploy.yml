@@ -67,7 +67,7 @@ jobs:
             echo "ERROR: Cannot connect to server"
             exit 1
           fi
-
+          
       # Setup server directories and permissions
       - name: Setup server directories
         run: |
