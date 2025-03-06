@@ -128,18 +128,30 @@ jobs:
         run: |
           ssh root@${{ env.SERVER_IP }} '
             cd /var/www/freefontfinder
+
+            # Debug - check what image tag we have
+            echo "Using image tag from .env: $(cat .env | grep IMAGE_TAG)"
+      
             docker compose -f docker-compose.yml down --remove-orphans
-            docker compose -f docker-compose.yml pull --quiet
-            docker compose -f docker-compose.yml up -d
-            echo "Waiting for services to start..."
-            sleep 20  # Increase wait time as needed
+
+            # Explicitly pull the SHA-tagged image first
+            IMAGE_TAG=$(grep IMAGE_TAG .env | cut -d= -f2)
+            echo "Pulling image with tag: $IMAGE_TAG"
+            docker pull ghcr.io/timholds/font-familiarity/freefontfinder:$IMAGE_TAG
             
+            # Then start with docker-compose as normal
+            docker compose -f docker-compose.yml up -d
+            
+            echo "Waiting for services to start..."
+            sleep 20
+            docker ps
+            
+            # Clean up old images
             docker image ls "ghcr.io/timholds/font-familiarity/freefontfinder" --format "{{{{.ID}} {{{{.CreatedAt}}}}" | 
               sort -k2,3 -r | 
               awk '\''NR>3 {print $1}'\'' | 
               xargs -r docker rmi 2>/dev/null || true
             docker system prune -f
-
           '
 
       # Health check - run from server itself
