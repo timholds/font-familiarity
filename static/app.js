@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return `
             <div class="result-item">
                 <div class="result-header">
-                    <span class="font-name" style="font-family: ${fontFamily};">${displayFontName}</span>
+                    <span class="font-name">${displayFontName}</span>
                     <span class="score">${percentage}%</span>
                 </div>
                 <div class="font-sample" style="font-family: ${fontFamily};">
