@@ -1,8 +1,9 @@
-FROM python:3.9-slim
+# Build stage
+FROM python:3.9-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies (for PyTorch and other ML libraries)
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libjpeg-dev \
@@ -13,6 +14,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python dependencies
 COPY frontend_requirements.txt .
 RUN pip install --no-cache-dir -r frontend_requirements.txt
+
+# Runtime stage
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install only runtime dependencies (no dev packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libjpeg62-turbo \
+    libpng16-16 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY frontend_app.py .
