@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import traceback
 import logging
 import argparse
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -150,7 +151,8 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None):
     @app.route('/')
     def index():
         """Serve the main page."""
-        return render_template('frontend.html')
+        css_version = int(time.time())
+        return render_template('frontend.html', css_version=css_version)
 
     @app.route('/predict', methods=['POST'])
     def predict():
