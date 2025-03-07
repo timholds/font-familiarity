@@ -8,7 +8,10 @@
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
 
-
+# Deployment 
+Adding a makefile for local development (builds whatever is currently in the codebase)
+https://claude.ai/chat/eb0fce0e-7b73-455e-8d6e-6472738188e4
+otherwise need to push a commit through GH actions for the image to be made
 
 
 [ ] move the class embedding generation into prep train test data.py? Otherwise go back to using a class embedding argument in the frontend_app.py instead of searching for it in the dataset folder 
