@@ -7,6 +7,8 @@ import time
 import os
 from PIL import Image
 import io
+import json
+import random
 
 from flask import Flask, render_template
 from selenium import webdriver
@@ -190,7 +192,7 @@ class FontRenderer:
                     samples_per_font=self.num_samples_per_font
                 )
                 return render_template(
-                    'single_font.html',
+                    'single_font_detection.html',
                     font=font_config,
                     text=self.text,
                     font_size=self.font_size,
@@ -226,63 +228,133 @@ class FontRenderer:
             else:
                 raise ValueError(f"Unsupported format: {format}")
             
+
+   
     def _capture_font_screenshots(self, font: str, num_samples: int = 10) -> None:
-        """Capture screenshots for a single font with scrolling"""
+        """Capture screenshots for a single font with improved annotation coverage"""
         driver = None
         try:
             driver = self._setup_webdriver()
             font_dir = self.output_dir / font.lower().replace(' ', '_')
             font_dir.mkdir(parents=True, exist_ok=True)
             
+            # Create directories
+            images_dir = font_dir / "images"
+            annotations_dir = font_dir / "annotations"
+            images_dir.mkdir(exist_ok=True)
+            annotations_dir.mkdir(exist_ok=True)
+            
             url = f"http://localhost:{self.port}/font/{font.replace(' ', '%20')}"
             logger.info(f"Loading URL: {url}")
             driver.get(url)
             
-            wait = WebDriverWait(driver, 10, .1)
+            # Wait for elements and fonts to load
+            wait = WebDriverWait(driver, 10, 0.1)
             container = wait.until(
-                EC.presence_of_element_located((By.CLASS_NAME, 'container'))
+                EC.presence_of_element_located((By.ID, 'container'))
             )
             text_block = wait.until(
-                EC.presence_of_element_located((By.CLASS_NAME, 'text-block'))
+                EC.presence_of_element_located((By.ID, 'text-block'))
             )
             
-            # Get total height of text
+            # Wait additional time for fonts to load
+            time.sleep(1)
+            
+            # Get total height of text content
             total_height = driver.execute_script(
-                "return document.querySelector('.text-block').scrollHeight"
+                "return document.getElementById('text-block').scrollHeight"
             )
             
-            content_height = total_height - self.image_size[1]
-            if content_height <= 0:
-                raise ValueError(f"Not enough text content for font {font}")
-                
-            scroll_step = content_height / (num_samples - 1)
+            # Calculate visible area and scroll requirements
+            viewport_height = self.image_size[1]
+            content_height = total_height
             
-            for i in range(num_samples):
+            if content_height <= viewport_height:
+                logger.warning(f"Content for font '{font}' fits in one screen, will generate fewer samples")
+                # Even if content fits, we can still generate multiple samples with different parts visible
+                scroll_step = viewport_height / (num_samples + 1)  # Smaller steps to show different parts
+            else:
+                # Calculate how much we can scroll
+                scrollable_height = content_height - viewport_height
+                logger.info(f"Content height: {content_height}px, Viewport: {viewport_height}px, Scrollable: {scrollable_height}px")
+                scroll_step = scrollable_height / (num_samples - 1) if num_samples > 1 else 0
+            
+            # Track which samples succeeded
+            successful_samples = 0
+            max_attempts = num_samples * 2  # Allow extra attempts if needed
+            attempt = 0
+            
+            while successful_samples < num_samples and attempt < max_attempts:
                 try:
-                    # Calculate scroll position
-                    scroll_position = int(i * scroll_step)
+                    # Calculate scroll position with some jitter to avoid duplicates
+                    base_position = (attempt % num_samples) * scroll_step
+                    jitter = random.randint(-10, 10) if attempt >= num_samples else 0
+                    scroll_position = max(0, int(base_position + jitter))
                     
-                    # Scroll to position
+                    # Apply scroll with translateY transform
                     driver.execute_script(
-                        f"document.querySelector('.text-block').style.transform = 'translateY(-{scroll_position}px)';"
+                        f"document.getElementById('text-block').style.transform = 'translateY(-{scroll_position}px)'"
                     )
-                    time.sleep(0.1)
                     
-                    # Take and save optimized screenshot
-                    filename = font_dir / f"sample_{i:04d}.jpg"  # Using .jpg extension
+                    # Allow time for rendering after scroll
+                    time.sleep(0.3)
+                    
+                    # Take screenshot
+                    sample_idx = successful_samples  # Use successful count as index
+                    filename = images_dir / f"sample_{sample_idx:04d}.jpg"
+                    
+                    # IMPORTANT: Make sure any debug boxes are removed before taking screenshot
+                    driver.execute_script(
+                        "document.querySelectorAll('.debug-box').forEach(box => box.remove())"
+                    )
+                    
                     self._save_optimized_screenshot(container, filename)
                     
-                    if i % 100 == 0:
-                        logger.info(f"Generated {i}/{num_samples} samples for font {font}")
-                        
+                    # Collect character positions
+                    char_positions = driver.execute_script("return window.getCharPositions()")
+                    
+                    # CHANGED: Accept images with any number of characters, but log warnings
+                    if not char_positions:
+                        logger.warning(f"No characters detected for {font} sample {sample_idx}, but keeping the image")
+                    elif len(char_positions) < 5:
+                        logger.warning(f"Only {len(char_positions)} characters detected for {font} sample {sample_idx}")
+                    
+                    # Save annotation even with few characters
+                    annotation_file = annotations_dir / f"sample_{sample_idx:04d}.json"
+                    with open(annotation_file, 'w') as f:
+                        json.dump({
+                            'font': font,
+                            'image': filename.name,
+                            'image_width': self.image_size[0],
+                            'image_height': self.image_size[1],
+                            'scroll_position': scroll_position,
+                            'characters': char_positions if char_positions else []
+                        }, f, indent=2)
+                    
+                    logger.info(f"Generated sample {sample_idx+1}/{num_samples} for font {font} with {len(char_positions) if char_positions else 0} characters")
+                    
+                    # Optional: Debug the first sample to verify positioning
+                    if sample_idx == 0 and logger.level <= logging.DEBUG:
+                        driver.execute_script("return window.debugCharBoxes()")
+                        debug_screenshot = annotations_dir / f"debug_sample_{sample_idx:04d}.jpg"
+                        self._save_optimized_screenshot(container, debug_screenshot)
+                        logger.debug(f"Saved debug screenshot for {font}")
+                    
+                    successful_samples += 1
+                    
                 except Exception as e:
-                    logger.error(f"Error capturing screenshot {i} for font {font}: {e}")
-                    raise
+                    logger.error(f"Error processing attempt {attempt} for font {font}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                
+                attempt += 1
+                
+            if successful_samples < num_samples:
+                logger.warning(f"Only generated {successful_samples}/{num_samples} samples for font {font}")
                     
         finally:
             if driver:
                 driver.quit()
-
     def generate_dataset(self) -> None:
         logger.info("Starting dataset generation")
         self.start_flask()

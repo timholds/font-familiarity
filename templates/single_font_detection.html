@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Font Rendering: {{ font.name }}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: white;
+        }
+        .container {
+            width: {{ font.image_width }}px;
+            height: {{ font.image_height }}px;
+            overflow: hidden;
+            position: relative;
+        }
+        .text-block {
+            font-family: "{{ font.name }}", sans-serif;
+            font-size: {{ font_size }}px;
+            line-height: {{ line_height }};
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+        }
+        .char {
+            display: inline-block;
+        }
+        /* No predefined debug boxes in stylesheet */
+    </style>
+</head>
+<body>
+    <div class="container" id="container">
+        <div class="text-block" id="text-block">
+            {% for char in text %}
+                <span class="char" data-char="{{ char }}">{{ char }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        // Wait for fonts to load
+        document.fonts.ready.then(() => {
+            console.log("Fonts loaded");
+        });
+        
+        // Function to get character positions in container coordinates
+        function getCharPositions() {
+            const container = document.getElementById('container');
+            const containerRect = container.getBoundingClientRect();
+            const textBlock = document.getElementById('text-block');
+            const characters = [];
+            
+            // Get transform value
+            const style = window.getComputedStyle(textBlock);
+            const transform = style.transform || style.webkitTransform || '';
+            
+            // Parse the scroll offset from the transform
+            let scrollY = 0;
+            if (transform !== 'none') {
+                const matrix = transform.match(/matrix\(([^)]+)\)/);
+                if (matrix) {
+                    const values = matrix[1].split(',');
+                    scrollY = parseFloat(values[5]);
+                } else {
+                    const translateY = transform.match(/translateY\(([^)]+)px\)/);
+                    if (translateY) {
+                        scrollY = parseFloat(translateY[1]);
+                    }
+                }
+            }
+            
+            // Process each character
+            const charElements = textBlock.querySelectorAll('.char');
+            charElements.forEach((charElement) => {
+                const charRect = charElement.getBoundingClientRect();
+                
+                // Convert screen coordinates to container-relative coordinates
+                const x = charRect.left - containerRect.left;
+                const y = charRect.top - containerRect.top;
+                
+                // Apply scroll offset (negative since scrolling up moves content down)
+                const adjustedY = y - scrollY;
+                
+                // Only include characters that are visible in the container
+                if (x >= 0 && x < containerRect.width && 
+                    adjustedY >= 0 && adjustedY < containerRect.height &&
+                    charRect.width > 0 && charRect.height > 0) {
+                    
+                    characters.push({
+                        char: charElement.dataset.char,
+                        x: Math.round(x),
+                        y: Math.round(adjustedY),
+                        width: Math.round(charRect.width),
+                        height: Math.round(charRect.height)
+                    });
+                }
+            });
+            
+            return characters;
+        }
+        
+        // Make function available to Selenium
+        window.getCharPositions = getCharPositions;
+        
+        // Debug function (only used when explicitly called)
+        window.debugCharBoxes = function() {
+            // Remove any existing debug elements
+            document.querySelectorAll('.debug-box').forEach(box => box.remove());
+            
+            const characters = getCharPositions();
+            const container = document.getElementById('container');
+            
+            characters.forEach(char => {
+                const box = document.createElement('div');
+                box.className = 'debug-box';
+                box.style.position = 'absolute';
+                box.style.left = char.x + 'px';
+                box.style.top = char.y + 'px';
+                box.style.width = char.width + 'px';
+                box.style.height = char.height + 'px';
+                box.style.border = '1px solid red';
+                box.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+                box.style.zIndex = 1000;
+                box.style.pointerEvents = 'none';
+                
+                container.appendChild(box);
+            });
+            
+            return characters.length;
+        };
+    </script>
+</body>
+</html>
