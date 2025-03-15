@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Font: {{ font.name }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family={{ font.name.replace(' ', '+') }}:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+        }
+        
+        .container {
+            width: {{ font.image_width }}px;
+            height: {{ font.image_height }}px;
+            overflow: hidden;
+            position: relative;
+            background: white;
+        }
+        
+        .character-grid {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat({{ grid_cols }}, 1fr);
+            grid-template-rows: repeat({{ grid_rows }}, 1fr);
+            padding: 10px;
+            box-sizing: border-box;
+            font-family: '{{ font.name }}', sans-serif;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .char-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: {{ font_size }}px;
+            color: black;
+            line-height: 1;
+            margin: 2px;
+            border: 1px solid #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="character-grid">
+            {% for char in characters %}
+            <div class="char-cell" data-char="{{ char }}">
+                {{ char }}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
