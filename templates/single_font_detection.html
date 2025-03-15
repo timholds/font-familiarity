@@ -38,15 +38,21 @@
 
         /* Style for character spans */
         .char-span {
-            display: inline-block;
+            display: inline;
             position: relative;
+            white-space: pre;
         }
 
-        /* Highlight for debugging (uncomment to see bounding boxes) */
-        /*.char-span:hover {
+        /* Debug styles - uncomment to see character boundaries */
+        /*
+        .char-span {
+            outline: 1px solid rgba(255, 0, 0, 0.3);
+        }
+        .char-span:hover {
             background-color: rgba(255, 0, 0, 0.2);
             outline: 1px solid red;
-        }*/
+        }
+        */
     </style>
 </head>
 <body>
@@ -65,32 +71,36 @@
             characters: []
         };
 
-        // Function to wrap characters in spans and collect their positions
+        // Function to wrap text in character spans
         function initializeCharacterDetection() {
             const textBlock = document.getElementById('text-block');
+            const containerRect = document.querySelector('.container').getBoundingClientRect();
             const text = `{{ text|safe }}`;
             
             // Replace text content with wrapped spans
             textBlock.innerHTML = '';
             
+            // Process text character by character
+            let currentHTML = '';
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
                 
-                // Create span for each character
-                const span = document.createElement('span');
-                span.className = 'char-span';
-                span.textContent = char;
-                span.dataset.charIndex = i;
-                span.dataset.char = char;
-                
-                textBlock.appendChild(span);
+                // Create span for non-whitespace characters
+                if (char.trim() !== '') {
+                    currentHTML += `<span class="char-span" data-char-index="${i}" data-char="${char}">${char}</span>`;
+                } else {
+                    // Preserve whitespace exactly as is
+                    currentHTML += char;
+                }
             }
             
-            // Give time for rendering before measuring
+            textBlock.innerHTML = currentHTML;
+            
+            // Wait for rendering to complete
             setTimeout(measureCharacterPositions, 500);
         }
 
-        // Function to measure all character positions
+        // Function to measure all character positions with improved accuracy
         function measureCharacterPositions() {
             const spans = document.querySelectorAll('.char-span');
             const container = document.querySelector('.container');
@@ -99,9 +109,10 @@
             detectionData.characters = [];
             
             spans.forEach(span => {
-                if (span.textContent.trim() === '') return; // Skip whitespace
-                
                 const rect = span.getBoundingClientRect();
+                
+                // Skip if empty
+                if (!span.textContent || span.textContent.trim() === '') return;
                 
                 // Calculate relative coordinates within container
                 const x = rect.left - containerRect.left;
@@ -110,27 +121,70 @@
                 const height = rect.height;
                 
                 // Skip if character is outside visible container
-                if (y < 0 || y > {{ font.image_height }} || x < 0 || x > {{ font.image_width }}) {
+                if (y < 0 || 
+                    y > {{ font.image_height }} || 
+                    x < 0 || 
+                    x > {{ font.image_width }}) {
                     return;
                 }
                 
-                // Add to detection data
-                detectionData.characters.push({
-                    char: span.dataset.char,
-                    x: x,
-                    y: y,
-                    width: width,
-                    height: height
-                });
+                // Only add if width and height are reasonable
+                if (width > 0 && height > 0) {
+                    // Add to detection data
+                    detectionData.characters.push({
+                        char: span.dataset.char,
+                        x: Math.max(0, Math.round(x)),
+                        y: Math.max(0, Math.round(y)),
+                        width: Math.round(width),
+                        height: Math.round(height)
+                    });
+                }
             });
             
             // Make data accessible to Selenium
             window.detectionData = detectionData;
             console.log('Detection data ready:', window.detectionData);
+            
+            // For debugging - can be removed in production
+            if (window.detectionDebug) {
+                showDebugOverlay();
+            }
         }
+
+        // Add debug visualization for development - can be removed in production
+        function showDebugOverlay() {
+            const container = document.querySelector('.container');
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.pointerEvents = 'none';
+            
+            detectionData.characters.forEach(char => {
+                const box = document.createElement('div');
+                box.style.position = 'absolute';
+                box.style.left = `${char.x}px`;
+                box.style.top = `${char.y}px`;
+                box.style.width = `${char.width}px`;
+                box.style.height = `${char.height}px`;
+                box.style.border = '1px solid rgba(255,0,0,0.5)';
+                box.style.backgroundColor = 'rgba(255,0,0,0.1)';
+                box.textContent = char.char;
+                box.style.fontSize = '10px';
+                box.style.color = 'red';
+                overlay.appendChild(box);
+            });
+            
+            container.appendChild(overlay);
+        }
+
+        // Enable this for visual debugging in the browser
+        window.detectionDebug = false;
 
         // Initialize on load
         window.addEventListener('load', initializeCharacterDetection);
     </script>
 </body>
-</html> 
+</html>
