@@ -116,15 +116,13 @@ class FontRenderer:
                  output_dir: str = 'font-images',
                  template_dir: str = 'templates',
                  port: int = 5100,
-                 image_size: tuple = (256, 256),  # Reduced from 512x512
-                 image_quality: int = 80, # JPEG quality (0-100))
+                 image_size: tuple = (256, 256),  
+                 image_quality: int = 80, 
                  num_samples_per_font: int = 10,
                  font_size: int = 24,
                  line_height: float = 1.5,
-                 character_mode: bool = False):       
-        
-        print(f"DEBUG: Init called with character_mode={character_mode}")
-
+                 detection_mode: bool = False):  
+    
         self.font_size = font_size
         self.line_height = line_height
         self.image_size = image_size
@@ -136,63 +134,29 @@ class FontRenderer:
         self.output_dir = Path(output_dir)
         self.template_dir = Path(template_dir)
         self.port = port
-        self.character_mode = character_mode
-
-        # Define grid dimensions for character mode
-        self.grid_rows = 6
-        self.grid_cols = 6
+        self.detection_mode = detection_mode
         
-        # Initialize characters with default set to ensure it always exists
-        self.characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:;!?\"'(){}[]<>+-*/=@#$%&"
-        
-
         self.fonts = self._load_fonts(fonts_file)
-        # Load text content from file for both modes
-        raw_text = ""
+        
+        # Load text content from file
         try:
             with open(text_file, 'r', encoding='utf-8') as f:
                 raw_text = f.read().strip()
             if not raw_text:
                 raise ValueError("Text file is empty")
         except FileNotFoundError:
-            logger.warning(f"Text file not found: {text_file}, using default character set")
-            # Default character set if file not found
-            raw_text = self.characters
-            
-        if self.character_mode:
-            # For character mode, extract unique characters from the text
-            all_chars = list(raw_text)
-            
-            # Get unique characters while preserving order of first appearance
-            unique_chars = []
-            seen = set()
-            for char in all_chars:
-                if char not in seen and not char.isspace():
-                    seen.add(char)
-                    unique_chars.append(char)
-            
-            # Add any missing essential characters (optional)
-            essential_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-            for char in essential_chars:
-                if char not in seen:
-                    unique_chars.append(char)
-                    seen.add(char)
-            
-            # Trim to fit in grid
-            max_chars = self.grid_rows * self.grid_cols
-            self.characters = unique_chars[:max_chars]
-            logger.info(f"Using {len(self.characters)} unique characters for grid")
-        else:
-            # For text mode, prepare content with potential repetition
-            self.text = prepare_text_content(
-                text_file,
-                font_size=self.font_size,
-                line_height=self.line_height,
-                container_height=self.image_size[1],
-                samples_per_class=self.num_samples_per_font
-            )
-        #self.text = self._load_text(text_file)
+            logger.warning(f"Text file not found: {text_file}, using default text")
+            raw_text = "The quick brown fox jumps over the lazy dog. " * 20
         
+        # Process text content with potential repetition for scrolling
+        self.text = prepare_text_content(
+            text_file,
+            font_size=self.font_size,
+            line_height=self.line_height,
+            container_height=self.image_size[1],
+            samples_per_class=self.num_samples_per_font
+        )
+            
         # Ensure output directory exists
         if os.path.exists(self.output_dir):
             import shutil
@@ -200,7 +164,6 @@ class FontRenderer:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    
     def _load_fonts(self, filename: str) -> List[str]:
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -229,7 +192,7 @@ class FontRenderer:
             app = Flask(__name__, template_folder=str(self.template_dir.absolute()))
             self.flask_app = app
             
-            # Store class instance as app config variable to access it in routes
+            # Store class instance as app config variable
             app.config['RENDERER'] = self
             
             @app.route('/font/<font_name>')
@@ -246,18 +209,17 @@ class FontRenderer:
                     samples_per_font=renderer.num_samples_per_font
                 )
                 
-                if renderer.character_mode:
-                    # For character grid
+                if renderer.detection_mode:
+                    # For detection mode with annotations
                     return render_template(
                         'single_font_detection.html',
                         font=font_config,
-                        characters=renderer.characters,
+                        text=renderer.text,
                         font_size=renderer.font_size,
-                        grid_rows=renderer.grid_rows,
-                        grid_cols=renderer.grid_cols
+                        line_height=renderer.line_height
                     )
                 else:
-                    # For text block
+                    # For standard text mode
                     return render_template(
                         'single_font.html',
                         font=font_config,
@@ -271,7 +233,7 @@ class FontRenderer:
             self.server_thread.daemon = True
             self.server_thread.start()
             time.sleep(2)  # Wait for server to start
-            logger.info("Flask server started")       
+            logger.info("Flask server started")
 
     def _save_optimized_screenshot(self, element, filename: Path, format='JPEG') -> None:
         """Take and save an optimized screenshot"""
@@ -295,70 +257,8 @@ class FontRenderer:
             else:
                 raise ValueError(f"Unsupported format: {format}")
             
-    def start_flask(self):
-        """Start Flask server in a completely different way to avoid scope issues"""
-        if self.flask_app is None:
-            app = Flask(__name__, template_folder=str(self.template_dir.absolute()))
-            
-            # Store all needed variables in function-local scope
-            # This avoids relying on class instance attributes in the route
-            character_mode = self.character_mode
-            output_dir = self.output_dir
-            image_size = self.image_size
-            font_size = self.font_size
-            num_samples_per_font = self.num_samples_per_font
-            
-            # Store these conditionally based on mode
-            if character_mode:
-                characters = self.characters
-                grid_rows = self.grid_rows
-                grid_cols = self.grid_cols
-            else:
-                text_content = self.text
-                line_height = self.line_height
-            
-            # Define route with explicit access to captured variables
-            @app.route('/font/<font_name>')
-            def render_font(font_name):
-                font_config = FontConfig(
-                    name=font_name,
-                    output_path=output_dir / font_name.lower().replace(' ', '_'),
-                    image_width=image_size[0],
-                    image_height=image_size[1],
-                    font_size=font_size,
-                    samples_per_font=num_samples_per_font
-                )
-                
-                # Use the captured character_mode variable, not self.character_mode
-                if character_mode:
-                    return render_template(
-                        'single_font_detection.html',
-                        font=font_config,
-                        characters=characters,
-                        font_size=font_size,
-                        grid_rows=grid_rows,
-                        grid_cols=grid_cols
-                    )
-                else:
-                    return render_template(
-                        'single_font.html',
-                        font=font_config,
-                        text=text_content,
-                        font_size=font_size,
-                        line_height=line_height
-                    )
-            
-            # Store app instance and start server
-            self.flask_app = app
-            from threading import Thread
-            self.server_thread = Thread(target=lambda: app.run(port=self.port, debug=False))
-            self.server_thread.daemon = True
-            self.server_thread.start()
-            time.sleep(2)
-            logger.info("Flask server started")
-
     def _capture_font_screenshots(self, font: str, num_samples: int = 10) -> None:
-        """Capture screenshots for a single font"""
+        """Capture screenshots for a single font using the standard approach"""
         driver = None
         try:
             driver = self._setup_webdriver()
@@ -373,69 +273,215 @@ class FontRenderer:
             container = wait.until(
                 EC.presence_of_element_located((By.CLASS_NAME, 'container'))
             )
+            text_block = wait.until(
+                EC.presence_of_element_located((By.CLASS_NAME, 'text-block'))
+            )
             
-            if self.character_mode:
-                # Character grid mode
-                # First, take a screenshot of the entire grid
-                filename = font_dir / f"grid.jpg"
-                self._save_optimized_screenshot(container, filename)
+            # Get total height of text
+            total_height = driver.execute_script(
+                "return document.querySelector('.text-block').scrollHeight"
+            )
+            
+            content_height = total_height - self.image_size[1]
+            if content_height <= 0:
+                raise ValueError(f"Not enough text content for font {font}")
                 
-                # Then extract individual character cells if needed
-                char_cells = driver.find_elements(By.CLASS_NAME, 'char-cell')
-                logger.info(f"Found {len(char_cells)} character cells")
-                
-                # Take screenshots of individual cells
-                for i, cell in enumerate(char_cells[:num_samples]):
-                    try:
-                        char = cell.get_attribute('data-char')
-                        safe_char = ''.join(c if c.isalnum() else '_' for c in char)
-                        filename = font_dir / f"char_{i:02d}_{safe_char}.jpg"
-                        self._save_optimized_screenshot(cell, filename)
-                    except Exception as e:
-                        logger.error(f"Error capturing cell {i} for font {font}: {e}")
-            else:
-                # Original text block with scrolling mode
-                text_block = wait.until(
-                    EC.presence_of_element_located((By.CLASS_NAME, 'text-block'))
-                )
-                
-                # Get total height of text
-                total_height = driver.execute_script(
-                    "return document.querySelector('.text-block').scrollHeight"
-                )
-                
-                content_height = total_height - self.image_size[1]
-                if content_height <= 0:
-                    raise ValueError(f"Not enough text content for font {font}")
+            scroll_step = content_height / (num_samples - 1)
+            
+            for i in range(num_samples):
+                try:
+                    # Calculate scroll position
+                    scroll_position = int(i * scroll_step)
                     
-                scroll_step = content_height / (num_samples - 1)
-                
-                for i in range(num_samples):
-                    try:
-                        # Calculate scroll position
-                        scroll_position = int(i * scroll_step)
+                    # Scroll to position
+                    driver.execute_script(
+                        f"document.querySelector('.text-block').style.transform = 'translateY(-{scroll_position}px)';"
+                    )
+                    time.sleep(0.1)
+                    
+                    # Take and save optimized screenshot
+                    filename = font_dir / f"sample_{i:04d}.jpg"
+                    self._save_optimized_screenshot(container, filename)
+                    
+                    if i % 100 == 0:
+                        logger.info(f"Generated {i}/{num_samples} samples for font {font}")
                         
-                        # Scroll to position
-                        driver.execute_script(
-                            f"document.querySelector('.text-block').style.transform = 'translateY(-{scroll_position}px)';"
-                        )
-                        time.sleep(0.1)
-                        
-                        # Take and save optimized screenshot
-                        filename = font_dir / f"sample_{i:04d}.jpg"
-                        self._save_optimized_screenshot(container, filename)
-                        
-                        if i % 100 == 0:
-                            logger.info(f"Generated {i}/{num_samples} samples for font {font}")
-                            
-                    except Exception as e:
-                        logger.error(f"Error capturing screenshot {i} for font {font}: {e}")
-                        raise
+                except Exception as e:
+                    logger.error(f"Error capturing screenshot {i} for font {font}: {e}")
+                    raise
                     
         finally:
             if driver:
                 driver.quit()
-
+                
+    def _capture_font_screenshots_with_detection(self, font: str, num_samples: int = 10) -> None:
+        """Capture screenshots for a single font with character-level detection annotations"""
+        driver = None
+        try:
+            driver = self._setup_webdriver()
+            font_dir = self.output_dir / font.lower().replace(' ', '_')
+            font_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Create annotations directory
+            annotations_dir = font_dir / "annotations"
+            annotations_dir.mkdir(exist_ok=True)
+            
+            url = f"http://localhost:{self.port}/font/{font.replace(' ', '%20')}"
+            logger.info(f"Loading URL: {url}")
+            driver.get(url)
+            
+            wait = WebDriverWait(driver, 10, .5)
+            container = wait.until(
+                EC.presence_of_element_located((By.CLASS_NAME, 'container'))
+            )
+            
+            # Wait for text block to be ready
+            text_block = wait.until(
+                EC.presence_of_element_located((By.ID, 'text-block'))
+            )
+            
+            # Wait for initial character detection to complete
+            time.sleep(1.0)  # Additional time for initial rendering
+            
+            # Get total height of text
+            total_height = driver.execute_script(
+                "return document.querySelector('#text-block').scrollHeight"
+            )
+            
+            content_height = total_height - self.image_size[1]
+            if content_height <= 0:
+                raise ValueError(f"Not enough text content for font {font}")
+                
+            scroll_step = content_height / (num_samples - 1)
+            
+            for i in range(num_samples):
+                try:
+                    # Calculate scroll position
+                    scroll_position = int(i * scroll_step)
+                    
+                    # Scroll to position
+                    driver.execute_script(
+                        f"document.querySelector('#text-block').style.transform = 'translateY(-{scroll_position}px)';"
+                    )
+                    time.sleep(0.5)  # Additional time for rendering and measuring
+                    
+                    # Trigger measurement after scrolling
+                    driver.execute_script("window.measureCharacterPositions();")
+                    time.sleep(0.5)
+                    
+                    # Get detection data from JavaScript
+                    detection_data = driver.execute_script("return window.detectionData;")
+                    
+                    # Take and save optimized screenshot
+                    image_filename = f"sample_{i:04d}.jpg"
+                    image_path = font_dir / image_filename
+                    self._save_optimized_screenshot(container, image_path)
+                    
+                    # Process detection data
+                    if detection_data and 'characters' in detection_data:
+                        # Filter to only characters visible in the current viewport
+                        visible_chars = [
+                            char for char in detection_data['characters']
+                            if 0 <= char['y'] <= self.image_size[1] and 0 <= char['x'] <= self.image_size[0]
+                        ]
+                        
+                        # Generate annotations in YOLO format
+                        annotation_lines = []
+                        char_mapping = {}  # For label file
+                        
+                        for char in visible_chars:
+                            # Skip if character is empty or whitespace
+                            if not char['char'] or char['char'].isspace():
+                                continue
+                                
+                            # Convert to YOLO format: class x_center y_center width height
+                            # (all normalized to 0-1)
+                            char_code = ord(char['char']) 
+                            char_class = char_code % 256  # Simple mapping for now
+                            
+                            # Add to mapping
+                            char_mapping[char_class] = char['char']
+                            
+                            # Calculate normalized coordinates
+                            x_center = (char['x'] + char['width']/2) / self.image_size[0]
+                            y_center = (char['y'] + char['height']/2) / self.image_size[1]
+                            width_norm = char['width'] / self.image_size[0]
+                            height_norm = char['height'] / self.image_size[1]
+                            
+                            # Skip if bounding box is invalid
+                            if width_norm <= 0 or height_norm <= 0:
+                                continue
+                            
+                            # Ensure values are bounded between 0 and 1
+                            x_center = max(0, min(1, x_center))
+                            y_center = max(0, min(1, y_center))
+                            width_norm = max(0, min(1, width_norm))
+                            height_norm = max(0, min(1, height_norm))
+                            
+                            line = f"{char_class} {x_center:.6f} {y_center:.6f} {width_norm:.6f} {height_norm:.6f}"
+                            annotation_lines.append(line)
+                        
+                        # Save YOLO annotations
+                        annotation_path = annotations_dir / f"{image_filename.split('.')[0]}.txt"
+                        with open(annotation_path, 'w') as f:
+                            f.write('\n'.join(annotation_lines))
+                        
+                        # Also save raw JSON data for reference
+                        json_path = annotations_dir / f"{image_filename.split('.')[0]}.json"
+                        import json
+                        with open(json_path, 'w') as f:
+                            json.dump({
+                                'image': image_filename,
+                                'font': font,
+                                'scroll_position': scroll_position,
+                                'characters': visible_chars
+                            }, f, indent=2)
+                        
+                        # Update character mapping file
+                        mapping_path = annotations_dir / "classes.txt"
+                        with open(mapping_path, 'w') as f:
+                            for class_id, char in sorted(char_mapping.items()):
+                                f.write(f"{class_id} {char}\n")
+                        
+                        logger.info(f"Generated image {image_filename} with {len(visible_chars)} character annotations")
+                    else:
+                        logger.warning(f"No detection data available for image {i}")
+                    
+                    if i % 10 == 0:
+                        logger.info(f"Generated {i+1}/{num_samples} samples for font {font}")
+                        
+                except Exception as e:
+                    logger.error(f"Error capturing screenshot {i} for font {font}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    
+        finally:
+            if driver:
+                driver.quit()
+                
+        # Create a classes file for the entire font
+        classes_path = font_dir / "classes.txt"
+        
+        # Compile all character codes seen in this font
+        all_chars = set()
+        
+        # Look through all annotation files
+        anno_files = list(annotations_dir.glob("*.txt"))
+        for anno_file in anno_files:
+            try:
+                with open(anno_file, 'r') as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if parts:
+                            all_chars.add(int(parts[0]))
+            except Exception as e:
+                logger.error(f"Error reading annotation file {anno_file}: {e}")
+        
+        # Create a comprehensive mapping file
+        with open(classes_path, 'w') as f:
+            for class_id in sorted(all_chars):
+                char = chr(class_id) if class_id < 256 else chr(class_id % 256)
+                f.write(f"{class_id} {char}\n")
     def generate_dataset(self) -> None:
         logger.info("Starting dataset generation")
         self.start_flask()
@@ -443,12 +489,43 @@ class FontRenderer:
         for font in self.fonts:
             try:
                 logger.info(f"Processing font: {font}")
-                self._capture_font_screenshots(font, num_samples=self.num_samples_per_font)
+                
+                if self.detection_mode:
+                    # Use detection-specific capture method
+                    self._capture_font_screenshots_with_detection(
+                        font, 
+                        num_samples=self.num_samples_per_font
+                    )
+                else:
+                    # Use standard capture method
+                    self._capture_font_screenshots(
+                        font, 
+                        num_samples=self.num_samples_per_font
+                    )
+                    
             except Exception as e:
                 logger.error(f"Failed to process font {font}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 continue
         
         logger.info("Dataset generation complete")
+        
+        # Create dataset description file
+        description_path = self.output_dir / "dataset_info.txt"
+        with open(description_path, 'w') as f:
+            f.write(f"Dataset generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Number of fonts: {len(self.fonts)}\n")
+            f.write(f"Samples per font: {self.num_samples_per_font}\n")
+            f.write(f"Image size: {self.image_size[0]}x{self.image_size[1]}\n")
+            f.write(f"Font size: {self.font_size}px\n")
+            
+            if self.detection_mode:
+                f.write(f"Mode: Detection with character annotations\n")
+                f.write(f"Annotation format: YOLO\n")
+            else:
+                f.write(f"Mode: Full text\n")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -461,12 +538,9 @@ def main():
     parser.add_argument('--port', default=5100, type=int)
     parser.add_argument('--font_size', default=16, type=int)
     parser.add_argument('--line_height', default=1.5, type=float)
-    parser.add_argument('--character_mode', action='store_true', 
-                        help='Use character grid mode instead of text mode')
-    parser.add_argument('--grid_rows', default=6, type=int, 
-                        help='Number of rows in character grid')
-    parser.add_argument('--grid_cols', default=6, type=int, 
-                        help='Number of columns in character grid')
+    parser.add_argument('--detection_mode', action='store_true',
+                      help='Generate images with character-level detection annotations')
+    
     args = parser.parse_args()
 
     renderer = FontRenderer(
@@ -480,14 +554,14 @@ def main():
         num_samples_per_font=args.samples_per_class,
         font_size=args.font_size,
         line_height=args.line_height,
-        character_mode=args.character_mode  # Pass the new parameter
+        detection_mode=args.detection_mode
     )
     
-    # Update grid dimensions if specified
-    if args.character_mode:
-        renderer.grid_rows = args.grid_rows
-        renderer.grid_cols = args.grid_cols
-        renderer.characters = renderer.characters[:(args.grid_rows * args.grid_cols)]
+    # Print mode information
+    if args.detection_mode:
+        logger.info("Running in detection mode: generating images with character annotations")
+    else:
+        logger.info("Running in standard mode: generating paragraph images")
     
     try:
         renderer.generate_dataset()

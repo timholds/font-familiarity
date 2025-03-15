@@ -20,41 +20,117 @@
             background: white;
         }
         
-        .character-grid {
+        .text-block {
             width: 100%;
-            height: 100%;
-            display: grid;
-            grid-template-columns: repeat({{ grid_cols }}, 1fr);
-            grid-template-rows: repeat({{ grid_rows }}, 1fr);
-            padding: 10px;
+            padding: 20px;
             box-sizing: border-box;
+            font-size: {{ font_size }}px;
+            line-height: {{ line_height }};
             font-family: '{{ font.name }}', sans-serif;
+            position: relative;
+            transform: translateY(0);
+            transition: transform 0.1s ease-out;
+            color: black;
             text-rendering: optimizeLegibility;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
-        .char-cell {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: {{ font_size }}px;
-            color: black;
-            line-height: 1;
-            margin: 2px;
-            border: 1px solid #f0f0f0;
+        /* Style for character spans */
+        .char-span {
+            display: inline-block;
+            position: relative;
         }
+
+        /* Highlight for debugging (uncomment to see bounding boxes) */
+        /*.char-span:hover {
+            background-color: rgba(255, 0, 0, 0.2);
+            outline: 1px solid red;
+        }*/
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="character-grid">
-            {% for char in characters %}
-            <div class="char-cell" data-char="{{ char }}">
-                {{ char }}
-            </div>
-            {% endfor %}
+        <div class="text-block" id="text-block">
+            <!-- Text will be dynamically wrapped in spans via JavaScript -->
         </div>
     </div>
+
+    <script>
+        // Initialize detection data
+        let detectionData = {
+            fontName: "{{ font.name }}",
+            imageWidth: {{ font.image_width }},
+            imageHeight: {{ font.image_height }},
+            characters: []
+        };
+
+        // Function to wrap characters in spans and collect their positions
+        function initializeCharacterDetection() {
+            const textBlock = document.getElementById('text-block');
+            const text = `{{ text|safe }}`;
+            
+            // Replace text content with wrapped spans
+            textBlock.innerHTML = '';
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                
+                // Create span for each character
+                const span = document.createElement('span');
+                span.className = 'char-span';
+                span.textContent = char;
+                span.dataset.charIndex = i;
+                span.dataset.char = char;
+                
+                textBlock.appendChild(span);
+            }
+            
+            // Give time for rendering before measuring
+            setTimeout(measureCharacterPositions, 500);
+        }
+
+        // Function to measure all character positions
+        function measureCharacterPositions() {
+            const spans = document.querySelectorAll('.char-span');
+            const container = document.querySelector('.container');
+            const containerRect = container.getBoundingClientRect();
+            
+            detectionData.characters = [];
+            
+            spans.forEach(span => {
+                if (span.textContent.trim() === '') return; // Skip whitespace
+                
+                const rect = span.getBoundingClientRect();
+                
+                // Calculate relative coordinates within container
+                const x = rect.left - containerRect.left;
+                const y = rect.top - containerRect.top;
+                const width = rect.width;
+                const height = rect.height;
+                
+                // Skip if character is outside visible container
+                if (y < 0 || y > {{ font.image_height }} || x < 0 || x > {{ font.image_width }}) {
+                    return;
+                }
+                
+                // Add to detection data
+                detectionData.characters.push({
+                    char: span.dataset.char,
+                    x: x,
+                    y: y,
+                    width: width,
+                    height: height
+                });
+            });
+            
+            // Make data accessible to Selenium
+            window.detectionData = detectionData;
+            console.log('Detection data ready:', window.detectionData);
+        }
+
+        // Initialize on load
+        window.addEventListener('load', initializeCharacterDetection);
+    </script>
 </body>
-</html>
+</html> 
