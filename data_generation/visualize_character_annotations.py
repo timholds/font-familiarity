@@ -30,6 +30,7 @@ def draw_annotations(image_path, annotation_path, json_path=None, classes_path=N
                     char = parts[1]
                     class_mapping[class_id] = char
     
+    
     # Read YOLO annotations
     annotations = []
     if Path(annotation_path).exists():
@@ -60,6 +61,16 @@ def draw_annotations(image_path, annotation_path, json_path=None, classes_path=N
                         
                     annotations.append(annotation)
     
+    print(f"Found {len(class_mapping)} character mappings")
+    print(f"Annotation has {len(annotations)} bounding boxes")
+
+    # Print missing mappings
+    missing_labels = []
+    for anno in annotations:
+        if anno['class_id'] not in class_mapping:
+            missing_labels.append(anno['class_id'])
+    if missing_labels:
+        print(f"Warning: Missing class mappings for IDs: {missing_labels}")
     # Draw bounding boxes
     for anno in annotations:
         x, y, w, h = anno['bbox']

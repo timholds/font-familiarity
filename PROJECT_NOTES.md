@@ -8,6 +8,20 @@
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
 
+# Character Level Model
+## Create detection labels
+Copyfont-detection-dataset/
+  └── arial/
+      ├── sample_0000.jpg  # Full paragraph image
+      ├── sample_0001.jpg
+      └── annotations/
+          ├── sample_0000.txt  # YOLO format: "class_id x_center y_center width height" 
+          ├── sample_0000.json # Raw JSON with character data
+          ├── sample_0001.txt
+          └── sample_0001.json
+      └── classes.txt  # Mapping of class_id to characters
+
+
 # Deployment 
 Adding a makefile for local development (builds whatever is currently in the codebase)
 https://claude.ai/chat/eb0fce0e-7b73-455e-8d6e-6472738188e4

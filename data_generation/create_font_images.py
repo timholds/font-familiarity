@@ -382,7 +382,11 @@ class FontRenderer:
                         # Filter to only characters visible in the current viewport
                         visible_chars = [
                             char for char in detection_data['characters']
-                            if 0 <= char['y'] <= self.image_size[1] and 0 <= char['x'] <= self.image_size[0]
+                            if (0 <= char['y'] <= self.image_size[1] - char['height'] - 5 and 
+                                0 <= char['x'] <= self.image_size[0] - char['width'] - 5 and
+                                char['y'] + char['height'] > 5 and
+                                char['x'] + char['width'] > 5 and
+                                char['width'] > 3 and char['height'] > 3)  # Minimum size requirement
                         ]
                         
                         # Generate annotations in YOLO format
@@ -480,7 +484,8 @@ class FontRenderer:
         # Create a comprehensive mapping file
         with open(classes_path, 'w') as f:
             for class_id in sorted(all_chars):
-                char = chr(class_id) if class_id < 256 else chr(class_id % 256)
+                # Ensure we use the actual character, not just % 256
+                char = chr(class_id)
                 f.write(f"{class_id} {char}\n")
     def generate_dataset(self) -> None:
         logger.info("Starting dataset generation")
