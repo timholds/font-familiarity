@@ -21,6 +21,13 @@ Copyfont-detection-dataset/
           └── sample_0001.json
       └── classes.txt  # Mapping of class_id to characters
 
+### Challenge: currently the character detection labels we have are non rectangular
+- Fixed-size square patches: Force all bounding boxes to be squares with consistent dimensions, even if that means including more whitespace for some characters. This ensures consistent scale, but loses aspect ratio information.
+- Augmentation: Use data augmentation to help the network become invariant to aspect ratio and size variations.
+- Aspect ratio preservation: When resizing for the network, maintain the aspect ratio by adding padding rather than distorting the character.-
+- Character-type embedding: Include information about which character it is as an additional input to the network, allowing it to adjust for character-specific features.
+
+
 
 # Deployment 
 Adding a makefile for local development (builds whatever is currently in the codebase)
