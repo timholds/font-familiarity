@@ -7,6 +7,7 @@ import time
 import os
 from PIL import Image
 import io
+import json
 
 from flask import Flask, render_template
 from selenium import webdriver
@@ -432,7 +433,6 @@ class FontRenderer:
                         
                         # Also save raw JSON data for reference
                         json_path = annotations_dir / f"{image_filename.split('.')[0]}.json"
-                        import json
                         with open(json_path, 'w') as f:
                             json.dump({
                                 'image': image_filename,
