@@ -8,6 +8,31 @@
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
 
+# Character Level Model
+## Create detection labels
+Copyfont-detection-dataset/
+  └── arial/
+      ├── sample_0000.jpg  # Full paragraph image
+      ├── sample_0001.jpg
+      └── annotations/
+          ├── sample_0000.txt  # YOLO format: "class_id x_center y_center width height" 
+          ├── sample_0000.json # Raw JSON with character data
+          ├── sample_0001.txt
+          └── sample_0001.json
+      └── classes.txt  # Mapping of class_id to characters
+
+### Challenge: what size should the input images be and what size font should we use?
+- Bigger images can fit more text, but the amount of memory is quadratic in the image size, so we need to be careful about how big we make them.
+- Bigger text size gives more pixels for each character, which in theory gives us a stronger signal to classify off of, but it also mean we are getting fewer characters per image.  
+
+### Challenge: currently the character detection labels we have are non rectangular
+- Fixed-size square patches: Force all bounding boxes to be squares with consistent dimensions, even if that means including more whitespace for some characters. This ensures consistent scale, but loses aspect ratio information.
+- Augmentation: Use data augmentation to help the network become invariant to aspect ratio and size variations.
+- Aspect ratio preservation: When resizing for the network, maintain the aspect ratio by adding padding rather than distorting the character.-
+- Character-type embedding: Include information about which character it is as an additional input to the network, allowing it to adjust for character-specific features.
+
+
+
 # Deployment 
 Adding a makefile for local development (builds whatever is currently in the codebase)
 https://claude.ai/chat/eb0fce0e-7b73-455e-8d6e-6472738188e4
