@@ -118,7 +118,7 @@ class FontRenderer:
                  template_dir: str = 'templates',
                  port: int = 5100,
                  image_size: tuple = (256, 256),  
-                 image_quality: int = 80, 
+                 image_quality: int = 80, # JPEG quality (0-100))
                  num_samples_per_font: int = 10,
                  font_size: int = 24,
                  line_height: float = 1.5,
@@ -138,17 +138,7 @@ class FontRenderer:
         self.detection_mode = detection_mode
         
         self.fonts = self._load_fonts(fonts_file)
-        
-        # Load text content from file
-        try:
-            with open(text_file, 'r', encoding='utf-8') as f:
-                raw_text = f.read().strip()
-            if not raw_text:
-                raise ValueError("Text file is empty")
-        except FileNotFoundError:
-            logger.warning(f"Text file not found: {text_file}, using default text")
-            raw_text = "The quick brown fox jumps over the lazy dog. " * 20
-        
+    
         # Process text content with potential repetition for scrolling
         self.text = prepare_text_content(
             text_file,
@@ -259,7 +249,7 @@ class FontRenderer:
                 raise ValueError(f"Unsupported format: {format}")
             
     def _capture_font_screenshots(self, font: str, num_samples: int = 10) -> None:
-        """Capture screenshots for a single font using the standard approach"""
+        """Capture screenshots for a single font with scrolling"""
         driver = None
         try:
             driver = self._setup_webdriver()
