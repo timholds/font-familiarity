@@ -10,7 +10,7 @@
 
 # Character Level Model
 ## Create detection labels
-Copyfont-detection-dataset/
+font-detection-dataset/
   └── arial/
       ├── sample_0000.jpg  # Full paragraph image
       ├── sample_0001.jpg
