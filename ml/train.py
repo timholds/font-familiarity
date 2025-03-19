@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import time
-from dataset import get_dataloaders
+from dataset import get_dataloaders, get_char_dataloaders
 from model import SimpleCNN
+from char_model import CharSimpleCNN
 import argparse
 import wandb
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
@@ -204,6 +205,7 @@ def main():
     parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--initial_channels", type=int, default=16)
+    parser.add_argument("--char_model", type=bool, default=True)
     
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
@@ -229,10 +231,16 @@ def main():
     
     # Load data
     print("Loading data...")
-    train_loader, test_loader, num_classes = get_dataloaders(
-        data_dir=args.data_dir,
-        batch_size=args.batch_size
-    )
+    if args.char_model:
+        train_loader, test_loader, num_classes = get_char_dataloaders(
+            data_dir=args.data_dir,
+            batch_size=args.batch_size
+        )
+    else:
+        train_loader, test_loader, num_classes = get_dataloaders(
+            data_dir=args.data_dir,
+            batch_size=args.batch_size
+        )
 
     print("\nStep 2: Validating label mapping...")
     label_mapping_path = os.path.join(args.data_dir, 'label_mapping.npy')
@@ -256,12 +264,20 @@ def main():
     # Initialize model
     print("\nStep 3: Initializing model...")
     print(f"Creating model with num_classes={num_classes}")
-    model = SimpleCNN(
-        num_classes=num_classes,
-        embedding_dim=args.embedding_dim,
-        input_size=args.resolution,
-        initial_channels=args.initial_channels
-    ).to(device)
+    if args.char_model:
+        model = CharSimpleCNN(
+            num_classes=num_classes,
+            embedding_dim=args.embedding_dim,
+            input_size=args.resolution,
+            initial_channels=args.initial_channels
+        ).to(device)
+    else:
+        model = SimpleCNN(
+            num_classes=num_classes,
+            embedding_dim=args.embedding_dim,
+            input_size=args.resolution,
+            initial_channels=args.initial_channels
+        ).to(device)
 
     actual_classes = model.classifier.weight.shape[0]
     assert actual_classes == num_classes, (
