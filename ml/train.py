@@ -30,25 +30,59 @@ def count_parameters(model):
     return total_params
 
 
+
+# TODO update this to work with character patches
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, 
-                warmup_epochs, warmup_scheduler, main_scheduler, metrics_calculator):
-    """Train for one epoch."""
+                warmup_epochs, warmup_scheduler, main_scheduler, metrics_calculator, char_model=False):
+    """Train for one epoch, supporting both character-based and whole-image models."""
     model.train()
     running_loss = 0.0
     total_correct = 0
     total_samples = 0
     
     pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}')
-    for batch_idx, (data, target) in enumerate(pbar):
+    for batch_idx, batch_data in enumerate(pbar):
         metrics_calculator.start_batch()
         
-        # Forward pass and compute loss
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
+        # Handle different data formats based on model type
+        if char_model:
+            # For character-based model, batch_data is a dictionary from our collate_fn
+            patches = batch_data['patches'].to(device)
+            attention_mask = batch_data['attention_mask'].to(device)
+            targets = batch_data['labels'].to(device)
+            batch_size = targets.size(0)
+            
+            # Forward pass
+            optimizer.zero_grad()
+            
+            # Different models might return different structures
+            outputs = model(patches, attention_mask)
+            
+            # Handle different output formats from model
+            if isinstance(outputs, tuple):
+                # Model returns logits and attention weights
+                logits, _ = outputs
+            elif isinstance(outputs, dict):
+                # Model returns a dict with different outputs
+                logits = outputs['logits']
+            else:
+                # Model directly returns logits
+                logits = outputs
+            
+            # Compute loss and backward
+            loss = criterion(logits, targets)
+        else:
+            # Traditional whole-image approach
+            data, targets = batch_data
+            data, targets = data.to(device), targets.to(device)
+            batch_size = targets.size(0)
+            
+            # Forward pass
+            optimizer.zero_grad()
+            logits = model(data)
+            loss = criterion(logits, targets)
         
-        # Backward pass
+        # Common backward and optimization steps
         loss.backward()
         optimizer.step()
         
@@ -60,9 +94,9 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         
         # Update running statistics
         running_loss = (running_loss * batch_idx + loss.item()) / (batch_idx + 1)
-        pred = output.argmax(dim=1)
-        total_correct += (pred == target).sum().item()
-        total_samples += target.size(0)
+        pred = logits.argmax(dim=1)
+        total_correct += (pred == targets).sum().item()
+        total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
         # Compute and log batch metrics
@@ -83,18 +117,18 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             'acc': f'{current_acc:.2f}%',
             'lr': f'{optimizer.param_groups[0]["lr"]:.6f}'
         })
-        
+    
     # Compute final training metrics
     train_metrics = {
         'train/loss': running_loss,
-        'train/top1_acc': current_acc,  # Changed to match test metrics naming
-        #'train/samples': total_samples,
+        'train/top1_acc': current_acc,
+        'train/samples': total_samples,
     }
     
     return train_metrics
 
-def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=None):
-    """Evaluate the model."""
+def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=None, char_model=False):
+    """Evaluate the model, supporting both character-based and whole-image models."""
     model.eval()
     test_loss = 0
     all_logits = []
@@ -106,23 +140,41 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
     total = 0
     
     with torch.no_grad():
-        for data, target in tqdm(test_loader, desc='Evaluating'):
-            data, target = data.to(device), target.to(device)
-            output = model(data)
+        for batch_data in tqdm(test_loader, desc='Evaluating'):
+            # Handle different data formats based on model type
+            if char_model:
+                # For character-based model
+                patches = batch_data['patches'].to(device)
+                attention_mask = batch_data['attention_mask'].to(device)
+                target = batch_data['labels'].to(device)
+                
+                # Forward pass with different possible output formats
+                output = model(patches, attention_mask)
+                if isinstance(output, tuple):
+                    logits, _ = output  # Unpack (logits, attention_weights)
+                elif isinstance(output, dict):
+                    logits = output['logits']  # Extract from dictionary
+                else:
+                    logits = output  # Direct logits output
+            else:
+                # Traditional whole-image approach
+                data, target = batch_data
+                data, target = data.to(device), target.to(device)
+                logits = model(data)
             
             # Accumulate tensors for advanced metrics
-            all_logits.append(output)
+            all_logits.append(logits)
             all_targets.append(target)
             
             # Compute basic metrics on the fly
-            test_loss += criterion(output, target).item()
+            test_loss += criterion(logits, target).item()
             
             # Top-1 accuracy
-            pred = output.argmax(dim=1)
+            pred = logits.argmax(dim=1)
             correct += (pred == target).sum().item()
             
             # Top-5 accuracy
-            _, pred5 = output.topk(5, 1, True, True)
+            _, pred5 = logits.topk(5, 1, True, True)
             target_expanded = target.view(-1, 1).expand_as(pred5)
             correct5 = pred5.eq(target_expanded).any(dim=1).sum().item()
             top5_correct += correct5
@@ -161,6 +213,7 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
             test_metrics[f'test/{key}'] = value
     
     return test_metrics
+
 
 def compute_class_embeddings(model, dataloader, num_classes, device):
     """Compute and store average embeddings for each class."""
@@ -335,12 +388,12 @@ def main():
         # Train
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, device, epoch,
-            warmup_epochs, warmup_scheduler, main_scheduler, metrics_calculator
+            warmup_epochs, warmup_scheduler, main_scheduler, metrics_calculator, args.char_model
         )
         
         # Evaluate
         test_metrics = evaluate(
-            model, test_loader, criterion, device, metrics_calculator, epoch
+            model, test_loader, criterion, device, metrics_calculator, epoch, args.char_model
         )
         
         # Combine metrics and add epoch info
