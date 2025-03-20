@@ -78,15 +78,6 @@ class SimpleCNN(nn.Module):
         return x
     
 
-import torch
-from torch import nn
-
-import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
-
-
-class CharSimpleCNN(nn.Module):
     """
     Basic CNN architecture for font classification.
     Input: (batch_size, 1, 256, 256)

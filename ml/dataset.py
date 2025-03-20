@@ -143,6 +143,105 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
               Expecting riginal to be >= 1"
         return images, labels
 
+# Add this function to dataset.py
+def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, train=True):
+    """
+    Create a dataloader with character patches extracted by CRAFT
+    
+    Args:
+        data_dir: Directory containing font dataset
+        craft_model: Initialized CRAFT model
+        batch_size: Batch size for dataloader
+        num_workers: Number of workers for dataloader
+        
+    Returns:
+        DataLoader with pre-extracted character patches
+    """
+    from PIL import Image
+    
+    # Use your existing dataset class
+    train_dataset = CharacterFontDataset(data_dir, train=train)
+    
+    # Process each image to extract character patches
+    processed_data = []
+    
+    print("Preprocessing dataset with CRAFT character detection...")
+    for idx in tqdm(range(len(train_dataset))):
+        img, target = train_dataset[idx]
+        
+        # Convert tensor to image format for CRAFT
+        img_np = img.numpy().transpose(1, 2, 0)  # CHW -> HWC
+        img_np = (img_np * 255).astype(np.uint8)
+        
+        # Handle grayscale vs RGB
+        if img_np.shape[-1] == 1:
+            img_np = np.squeeze(img_np)
+            if len(img_np.shape) == 2:
+                img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
+        
+        pil_img = Image.fromarray(img_np)
+        
+        # Get character polygons from CRAFT
+        polygons = craft_model.get_polygons(pil_img)
+        
+        # Extract patches
+        char_patches = []
+        for polygon in polygons:
+            # Convert polygon to bounding box
+            x_coords = [p[0] for p in polygon]
+            y_coords = [p[1] for p in polygon]
+            
+            x1, y1 = max(0, min(x_coords)), max(0, min(y_coords))
+            x2, y2 = min(img_np.shape[1], max(x_coords)), min(img_np.shape[0], max(y_coords))
+            
+            # Skip very small regions
+            if x2-x1 < 3 or y2-y1 < 3:
+                continue
+                
+            # Extract patch
+            patch = img_np[y1:y2, x1:x2].copy()
+            
+            # Convert to grayscale if needed
+            if len(patch.shape) == 3 and patch.shape[2] == 3:
+                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+                
+            # Normalize and resize to standard size
+            patch = cv2.resize(patch, (32, 32))
+            patch = patch.astype(np.float32) / 255.0
+            
+            # Convert to tensor format
+            patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dim
+            char_patches.append(patch_tensor)
+        
+        # If no patches found, use whole image
+        if not char_patches:
+            if len(img_np.shape) == 3 and img_np.shape[2] == 3:
+                img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            else:
+                img_gray = img_np
+            
+            patch = cv2.resize(img_gray, (32, 32))
+            patch = patch.astype(np.float32) / 255.0
+            patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)
+            char_patches = [patch_tensor]
+        
+        # Stack patches and store with font label
+        patches_tensor = torch.stack(char_patches)
+        processed_data.append({
+            'patches': patches_tensor,
+            'label': target,
+            'num_patches': len(char_patches)
+        })
+    
+    # Create dataloader with custom collate function
+    return DataLoader(
+        processed_data,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        collate_fn=char_collate_fn  # Reuse your existing collate function
+    )
+
 class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     

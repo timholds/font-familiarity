@@ -5,7 +5,8 @@ from tqdm import tqdm
 import time
 from dataset import get_dataloaders, get_char_dataloaders
 from model import SimpleCNN
-from char_model import CharSimpleCNN
+from char_model import CRAFTFontClassifier
+
 import argparse
 import wandb
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
@@ -44,9 +45,9 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
     for batch_idx, batch_data in enumerate(pbar):
         metrics_calculator.start_batch()
         
-        # Handle different data formats based on model type
         if char_model:
-            # For character-based model, batch_data is a dictionary from our collate_fn
+            # For character-based model (with CRAFT)
+            # Batch data is a dictionary with patches, attention mask, and labels
             patches = batch_data['patches'].to(device)
             attention_mask = batch_data['attention_mask'].to(device)
             targets = batch_data['labels'].to(device)
@@ -68,11 +69,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             else:
                 # Model directly returns logits
                 logits = outputs
-            
-            # Compute loss and backward
-            loss = criterion(logits, targets)
         else:
-            # Traditional whole-image approach
             data, targets = batch_data
             data, targets = data.to(device), targets.to(device)
             batch_size = targets.size(0)
@@ -80,11 +77,12 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             # Forward pass
             optimizer.zero_grad()
             logits = model(data)
-            loss = criterion(logits, targets)
         
-        # Common backward and optimization steps
+        # Compute loss and backward
+        loss = criterion(logits, targets)
         loss.backward()
         optimizer.step()
+        
         
         # Update schedulers
         if epoch < warmup_epochs:
@@ -102,8 +100,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         if batch_idx % 100 == 0:
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
-            if isinstance(model, CRAFTFontClassifier):
-                model.visualize_char_preds(images, batch_data['patches'], 
+            if char_model:
+                model.visualize_char_preds(data, batch_data['patches'], 
                                         batch_data['attention_mask'], 
                                         save_path=vis_path)
 
@@ -327,11 +325,13 @@ def main():
     print("\nStep 3: Initializing model...")
     print(f"Creating model with num_classes={num_classes}")
     if args.char_model:
-        model = CharSimpleCNN(
-            num_classes=num_classes,
+       model = CRAFTFontClassifier(
+            num_fonts=num_classes,
+            craft_weights_dir=args.craft_weights_dir,
+            device=device,
+            char_size=32,
             embedding_dim=args.embedding_dim,
-            input_size=args.resolution,
-            initial_channels=args.initial_channels
+            craft_fp16=args.craft_fp16
         ).to(device)
     else:
         model = SimpleCNN(
@@ -494,75 +494,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-# import torch
-# from torch import nn
-# from torch.utils.data import Dataset, DataLoader
-# from model import FontEncoder, ContrastiveLoss
-# from typing import List, Dict, Tuple
-
-# @torch.compile
-# class FontSimilarityModel:
-#     def __init__(self, latent_dim: int = 128):
-#         self.encoder = FontEncoder(latent_dim)
-#         self.criterion = ContrastiveLoss()
-#         self.optimizer = torch.optim.Adam(self.encoder.parameters(), lr=1e-4)
-#         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#         self.encoder.to(self.device)
-        
-#     def train_epoch(self, dataloader: DataLoader) -> float:
-#         self.encoder.train()
-#         total_loss = 0
-        
-#         for batch_idx, (images, labels) in enumerate(dataloader):
-#             images, labels = images.to(self.device), labels.to(self.device)
-            
-#             self.optimizer.zero_grad()
-#             embeddings = self.encoder(images)
-#             loss = self.criterion(embeddings, labels)
-            
-#             loss.backward()
-#             self.optimizer.step()
-            
-#             total_loss += loss.item()
-            
-#         return total_loss / len(dataloader)
-    
-
-#     def compute_centroids(self, dataloader: DataLoader) -> Dict[int, torch.Tensor]:
-#         self.encoder.eval()
-#         centroids = {}
-#         sample_counts = {}
-        
-#         with torch.no_grad():
-#             for images, labels in dataloader:
-#                 images = images.to(self.device)
-#                 embeddings = self.encoder(images)
-                
-#                 for emb, label in zip(embeddings, labels):
-#                     label = label.item()
-#                     if label not in centroids:
-#                         centroids[label] = emb
-#                         sample_counts[label] = 1
-#                     else:
-#                         centroids[label] += emb
-#                         sample_counts[label] += 1
-        
-#         # Compute averages and normalize
-#         for label in centroids:
-#             centroids[label] = centroids[label] / sample_counts[label]
-#             centroids[label] = F.normalize(centroids[label], p=2, dim=0)
-        
-#         return centroids
-    
-#     def find_similar_fonts(self, query_idx: int, centroids: Dict[int, torch.Tensor], 
-#                           k: int = 5) -> List[Tuple[int, float]]:
-#         query_centroid = centroids[query_idx]
-#         similarities = []
-        
-#         for idx, centroid in centroids.items():
-#             if idx != query_idx:
-#                 sim = F.cosine_similarity(query_centroid.unsqueeze(0), 
-#                                         centroid.unsqueeze(0))
-#                 similarities.append((idx, sim.item()))
-        
-#         return sorted(similarities, key=lambda x: x[1], reverse=True)[:k]
