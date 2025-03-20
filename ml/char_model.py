@@ -6,7 +6,9 @@ from torch.utils.data import Dataset
 from torch import nn
 import torchvision.transforms as transforms
 from CRAFT import CRAFTModel, draw_polygons
-
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
 # Todo update this to take in character patches
 # Todo aggregation of the patches in 
 class CharSimpleCNN(nn.Module):
@@ -212,7 +214,7 @@ class CRAFTFontClassifier(nn.Module):
         self.device = device
         self.patch_size = patch_size
         
-    def visualize_char_preds(patches, attention_mask, predictions=None, targets=None, save_path=None):
+    def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
         """
         Visualize character patches for debugging
         
@@ -389,10 +391,21 @@ class CRAFTFontClassifier(nn.Module):
         attention_masks = []
         
         for i in range(batch_size):
-            # Convert tensor to PIL Image for CRAFT
+            # Convert tensor to numpy array
             img = images[i].cpu().numpy().transpose(1, 2, 0)  # CHW -> HWC
             img = (img * 255).astype(np.uint8)
-            pil_img = Image.fromarray(img)
+            
+            # Handle grayscale images
+            if img.shape[-1] == 1:
+                img = img.squeeze(-1)  # Remove channel dim for grayscale
+                rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            else:
+                rgb_img = img
+                
+            # CRAFT might require PIL format - check the implementation
+            # If CRAFT's get_polygons requires PIL, maintain that conversion
+            from PIL import Image
+            pil_img = Image.fromarray(rgb_img)
             
             # Get polygons from CRAFT
             polygons = self.craft.get_polygons(pil_img)
@@ -407,7 +420,7 @@ class CRAFTFontClassifier(nn.Module):
                 x1, y1 = min(x_coords), min(y_coords)
                 x2, y2 = max(x_coords), max(y_coords)
                 
-                # Extract patch
+                # Extract patch using cv2
                 if x2-x1 > 2 and y2-y1 > 2:  # Ensure minimum size
                     patch = img[y1:y2, x1:x2].copy()
                     
@@ -419,6 +432,9 @@ class CRAFTFontClassifier(nn.Module):
             # If no valid patches, create a default patch from the whole image
             if not img_patches:
                 img_resized = cv2.resize(img, (self.patch_size, self.patch_size))
+                # Ensure grayscale for the model
+                if len(img_resized.shape) == 3 and img_resized.shape[2] == 3:
+                    img_resized = cv2.cvtColor(img_resized, cv2.COLOR_RGB2GRAY)
                 img_norm = img_resized.astype(np.float32) / 255.0
                 patch_tensor = torch.from_numpy(img_norm).float().unsqueeze(0)
                 img_patches = [patch_tensor]
@@ -427,7 +443,8 @@ class CRAFTFontClassifier(nn.Module):
             img_patches_tensor = torch.stack(img_patches)
             all_patches.append(img_patches_tensor)
             attention_masks.append(torch.ones(len(img_patches)))
-        
+            
+        # Rest of the method remains the same
         # Pad to same number of patches in batch
         max_patches = max(p.size(0) for p in all_patches)
         padded_patches = []
@@ -461,7 +478,7 @@ class CRAFTFontClassifier(nn.Module):
             'patches': patches_batch,
             'attention_mask': attention_batch
         }
-    
+
     def _normalize_patch(self, patch):
         """Normalize a character patch to standard size with preserved aspect ratio."""
         if patch.size == 0:

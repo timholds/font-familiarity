@@ -100,10 +100,14 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         if batch_idx % 100 == 0:
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
-            if char_model:
-                model.visualize_char_preds(data, batch_data['patches'], 
-                                        batch_data['attention_mask'], 
-                                        save_path=vis_path)
+            if char_model and hasattr(model, 'visualize_char_preds'):
+                model.visualize_char_preds(
+                    patches=batch_data['patches'],
+                    attention_mask=batch_data['attention_mask'],
+                    predictions=pred,
+                    targets=targets,
+                    save_path=vis_path
+                )
 
         # Compute and log batch metrics
         if batch_idx % 50 == 0:
@@ -149,43 +153,52 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
         for batch_data in tqdm(test_loader, desc='Evaluating'):
             # Handle different data formats based on model type
             if char_model:
-                # For character-based model
-                patches = batch_data['patches'].to(device)
-                attention_mask = batch_data['attention_mask'].to(device)
-                target = batch_data['labels'].to(device)
-                
-                # Forward pass with different possible output formats
-                output = model(patches, attention_mask)
-                if isinstance(output, tuple):
-                    logits, _ = output  # Unpack (logits, attention_weights)
-                elif isinstance(output, dict):
-                    logits = output['logits']  # Extract from dictionary
+                # For character-based model (with CRAFT)
+                if isinstance(batch_data, dict):
+                    # Dataloader already provides patches
+                    patches = batch_data['patches'].to(device)
+                    attention_mask = batch_data['attention_mask'].to(device)
+                    targets = batch_data['labels'].to(device)
+                    
+                    # Handle case for CRAFTFontClassifier vs CharacterBasedFontClassifier
+                    if isinstance(model, CRAFTFontClassifier):
+                        # Using full images with annotations
+                        logits = model(
+                            patches, 
+                            targets=targets, 
+                            attention_mask=attention_mask
+                        )
+                    else:
+                        # Using pre-extracted patches
+                        logits = model(patches, attention_mask)
                 else:
-                    logits = output  # Direct logits output
-            else:
-                # Traditional whole-image approach
-                data, target = batch_data
-                data, target = data.to(device), target.to(device)
-                logits = model(data)
+                    # Full images, need to extract patches
+                    data, targets = batch_data
+                    data, targets = data.to(device), targets.to(device)
+                    
+                    # Forward pass handles extraction internally
+                    logits = model(data, targets)
+                
+                batch_size = targets.size(0)
             
             # Accumulate tensors for advanced metrics
             all_logits.append(logits)
-            all_targets.append(target)
+            all_targets.append(targets)
             
             # Compute basic metrics on the fly
-            test_loss += criterion(logits, target).item()
+            test_loss += criterion(logits, targets).item()
             
             # Top-1 accuracy
             pred = logits.argmax(dim=1)
-            correct += (pred == target).sum().item()
+            correct += (pred == targets).sum().item()
             
             # Top-5 accuracy
             _, pred5 = logits.topk(5, 1, True, True)
-            target_expanded = target.view(-1, 1).expand_as(pred5)
+            target_expanded = targets.view(-1, 1).expand_as(pred5)
             correct5 = pred5.eq(target_expanded).any(dim=1).sum().item()
             top5_correct += correct5
             
-            total += target.size(0)
+            total += targets.size(0)
     
     # Compute basic metrics
     avg_loss = test_loss / len(test_loader)
@@ -265,7 +278,7 @@ def main():
     parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--initial_channels", type=int, default=16)
-    parser.add_argument("--char_model", type=bool, default=True)
+    parser.add_argument("--char_model", action="store_true", help="Use character-based model")
     
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
