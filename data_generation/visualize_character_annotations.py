@@ -7,7 +7,7 @@ import argparse
 import random
 import matplotlib.pyplot as plt
 
-def draw_annotations(image_path, annotation_path, json_path=None, classes_path=None, output_dir=None):
+def draw_label_annotations(image_path, annotation_path, json_path=None, classes_path=None, output_dir=None):
     """Draw character bounding boxes on an image and save or display the result."""
     # Read image
     image = cv2.imread(str(image_path))
@@ -119,7 +119,7 @@ def draw_annotations(image_path, annotation_path, json_path=None, classes_path=N
         plt.show()
         return True
 
-def visualize_font_dataset(dataset_dir, font_name=None, max_images=5, output_dir=None):
+def visualize_char_labels(dataset_dir, font_name=None, max_images=5, output_dir=None):
     """Visualize character detections for a font dataset."""
     dataset_path = Path(dataset_dir)
     
@@ -177,13 +177,64 @@ def visualize_font_dataset(dataset_dir, font_name=None, max_images=5, output_dir
             else:
                 font_output_dir = None
                 
-            draw_annotations(
+            draw_label_annotations(
                 img_path, 
                 anno_path, 
                 json_path if json_path.exists() else None,
                 classes_path,
                 font_output_dir
             )
+
+def visualize_char_preds(self, images, patches, attention_mask, save_path=None):
+    """
+    Visualize extracted character patches for debugging
+    
+    Args:
+        images: Original batch of images [B, C, H, W]
+        patches: Extracted patches [B, max_patches, C, patch_H, patch_W]
+        attention_mask: Mask indicating valid patches [B, max_patches]
+        save_path: Path to save visualization
+    """
+    batch_size = images.size(0)
+    max_patches = patches.size(1)
+    
+    for b in range(min(batch_size, A)):  # Only visualize a few samples
+        # Create visualization grid
+        img = images[b].cpu().numpy().transpose(1, 2, 0)  # CHW -> HWC
+        img = (img * 255).astype(np.uint8)
+        
+        # Draw original image with boxes
+        orig_vis = img.copy()
+        
+        # Create patch grid
+        num_valid = int(attention_mask[b].sum().item())
+        grid_size = int(np.ceil(np.sqrt(num_valid)))
+        patch_size = self.char_size
+        grid = np.zeros((grid_size * patch_size, grid_size * patch_size), dtype=np.uint8)
+        
+        # Place patches in grid
+        valid_idx = 0
+        for p in range(max_patches):
+            if attention_mask[b, p] == 0:
+                continue
+                
+            patch = patches[b, p, 0].cpu().numpy()  # Take first channel
+            patch = (patch * 255).astype(np.uint8)
+            
+            row = valid_idx // grid_size
+            col = valid_idx % grid_size
+            grid[row*patch_size:(row+1)*patch_size, 
+                 col*patch_size:(col+1)*patch_size] = patch
+            valid_idx += 1
+        
+        # Combine visualizations
+        combined = np.vstack([orig_vis, grid]) if len(img.shape) == 2 else np.vstack([orig_vis, cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)])
+        
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            cv2.imwrite(f"{save_path}_sample_{b}.jpg", combined)
+        
+        return combined
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize character detection annotations in a font dataset")
@@ -194,7 +245,7 @@ def main():
     
     args = parser.parse_args()
     
-    visualize_font_dataset(
+    visualize_char_labels(
         args.dataset_dir,
         args.font,
         args.max_images,

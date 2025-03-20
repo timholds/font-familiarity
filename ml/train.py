@@ -99,6 +99,14 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
+        if batch_idx % 100 == 0:
+            # Visualize a few samples from the batch
+            vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
+            if isinstance(model, CRAFTFontClassifier):
+                model.visualize_char_preds(images, batch_data['patches'], 
+                                        batch_data['attention_mask'], 
+                                        save_path=vis_path)
+
         # Compute and log batch metrics
         if batch_idx % 50 == 0:
             batch_metrics = {

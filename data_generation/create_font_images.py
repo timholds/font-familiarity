@@ -234,7 +234,7 @@ class FontRenderer:
         # Open with Pillow
         with Image.open(io.BytesIO(png_data)) as img:
             # Convert to grayscale (since we're dealing with text)
-            img = img.convert('L')
+            # img = img.convert('L')
             
             # Resize if needed
             if img.size != self.image_size:
