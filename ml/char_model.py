@@ -2,9 +2,15 @@ import os
 import json
 import cv2
 import torch
+from PIL import Image
+
 from torch.utils.data import Dataset
 from torch import nn
 import torchvision.transforms as transforms
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
+
+
 from CRAFT import CRAFTModel, draw_polygons
 import numpy as np
 from PIL import Image
@@ -73,14 +79,36 @@ class CharSimpleCNN(nn.Module):
 
 
     def get_embedding(self, x):
-        x = self.transform(x)
+        print(f"Input shape to get_embedding: {x.shape}")
+
+        x = x / 255.0
+
+        # Always force resize using F.interpolate (skip the transforms.Resize step)
+        if x.shape[-2] != self.input_size or x.shape[-1] != self.input_size:
+            print(f"Resizing from {x.shape[-2]}x{x.shape[-1]} to {self.input_size}x{self.input_size}")
+            x = F.interpolate(x, size=(self.input_size, self.input_size), mode='bilinear', align_corners=False)
+
+        # Apply only normalization from transform
+        # x = F.normalize(x, mean=[0.5], std=[0.5])
+        x = TF.normalize(x, mean=[0.5], std=[0.5])
+
+
         x = self.features(x)
         x = self.flatten(x)
+        print(f"After features, shape: {x.shape}")
+        x = self.flatten(x)
+    
+        print(f"After flatten, shape: {x.shape}, expected flatten_dim: {self.flatten_dim}")
         embeddings = self.embedding_layer(x)
-        return embeddings
+        print(f"After embedding_layer, shape: {embeddings.shape}")
 
+        
+        return embeddings
+    
     def forward(self, x):
+        x = x / 255.0 
         embeddings = self.get_embedding(x)
+        print(embeddings.shape)
         x = self.classifier(embeddings)
         return x
     
@@ -107,6 +135,11 @@ class SelfAttentionAggregator(nn.Module):
             key_padding_mask = (attention_mask == 0)
         else:
             key_padding_mask = None
+
+        print(f"Self-attention input shape: {x.shape}, embedding_dim: {self.multihead_attn.embed_dim}")
+        if x.shape[-1] != self.multihead_attn.embed_dim:
+            raise ValueError(f"Expected embedding dim {self.multihead_attn.embed_dim}, got {x.shape[-1]}")
+            
             
         # Self-attention
         attn_output, attn_weights = self.multihead_attn(
@@ -162,22 +195,49 @@ class CharacterBasedFontClassifier(nn.Module):
             char_patches: Character images [batch_size, max_chars, 1, H, W]
             attention_mask: Mask for padding [batch_size, max_chars]
         """
+        print(f"Input patches shape: {char_patches.shape}")
+
+        if len(char_patches.shape) > 5:
+            print(f"Fixing unexpected shape: {char_patches.shape}")
+            # Reshape to [batch_size, max_chars, channels, H, W]
+            batch_size = char_patches.shape[0]
+            max_chars = char_patches.shape[1]
+            # Get the channels from the last dimension
+            channels = char_patches.shape[-1]
+            print(f"batch_size: {batch_size}, max_chars: {max_chars}, channels: {channels}")
+            char_patches = char_patches.reshape(batch_size, max_chars, channels, 
+                                                char_patches.shape[3], char_patches.shape[4])
+            print(f"Reshaped to: {char_patches.shape}")
+            print(f"Reshaped to: {char_patches.shape}")
+        
         batch_size, max_chars = char_patches.shape[:2]
-        
-        # Reshape to process all characters at once
-        flat_patches = char_patches.view(-1, 1, char_patches.shape[3], char_patches.shape[4])
-        
+        # Reshape to process all characters at once - flatten batch and max_chars dimensions
+        flat_patches = char_patches.reshape(-1, char_patches.shape[2], 
+                                            char_patches.shape[3], char_patches.shape[4])
+        print(f"Flattened patches shape: {flat_patches.shape}")
+
+
         # Get character embeddings
         char_embeddings = self.char_encoder.get_embedding(flat_patches)
-        
+        print(f"Raw embeddings shape: {char_embeddings.shape}")
+
+        # expected_embedding_dim = self.aggregator.multihead_attn.embed_dim
+        # if char_embeddings.shape[1] != expected_embedding_dim:
+        #     print(f"WARNING: Embedding dimension mismatch. Got {char_embeddings.shape[1]}, expected {expected_embedding_dim}")
+        #     # Use a linear projection to fix the dimension
+        #     projection = nn.Linear(char_embeddings.shape[1], expected_embedding_dim).to(char_embeddings.device)
+        #     char_embeddings = projection(char_embeddings)
+
+
         # Reshape back to [batch_size, max_chars, embedding_dim]
         char_embeddings = char_embeddings.view(batch_size, max_chars, -1)
-        
+        print(f"Reshaped embeddings shape: {char_embeddings.shape}")
         # Aggregate character embeddings with attention
         font_embedding, attention_weights = self.aggregator(char_embeddings, attention_mask)
-        
+        print(f"Font embedding shape: {font_embedding.shape}, attention_weights shape: {attention_weights.shape}")
         # Classify font
         logits = self.font_classifier(font_embedding)
+        print(f"Logits shape: {logits.shape}")
         
         return {
             'logits': logits,
@@ -293,7 +353,7 @@ class CRAFTFontClassifier(nn.Module):
         for b in range(batch_size):
             # Convert image to numpy and prepare for visualization
             img = images[b].cpu().numpy().transpose(1, 2, 0)  # CHW -> HWC
-            img = (img * 255).astype(np.uint8)
+            #img = (img * 255).astype(np.uint8)
             
             # Handle grayscale/RGB
             if len(img.shape) == 2:
@@ -306,6 +366,11 @@ class CRAFTFontClassifier(nn.Module):
             # Convert to PIL for CRAFT
             from PIL import Image
             pil_img = Image.fromarray(rgb_img)
+
+            print('!!!!!!!!!!!')
+            print(f"Image {i} shape: {rgb_img.shape}, min: {rgb_img.min()}, max: {rgb_img.max()}")
+            print(f"PIL image size: {pil_img.size}, mode: {pil_img.mode}")
+
             
             # Get polygons from CRAFT
             try:
@@ -386,6 +451,7 @@ class CRAFTFontClassifier(nn.Module):
                     # Resize and normalize
                     patch = self._normalize_patch(patch)
                     patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dimension
+                    print(f"Patch shape: {patch.shape}, tensor shape: {patch_tensor.shape}")
                     img_patches.append(patch_tensor)
             
             # If no valid patches, create a default patch from the whole image
@@ -449,124 +515,126 @@ class CRAFTFontClassifier(nn.Module):
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
+        print(f"Starting CRAFT extraction with images shape: {images.shape}")
+
 
         for i in range(batch_size):
             # Step 1: Convert tensor to numpy with proper format handling
             img_tensor = images[i].cpu()
+            print(f"Image {i} shape: {img_tensor.shape}, min: {img_tensor.min()}, max: {img_tensor.max()}")
             
-            # Handle different tensor dimensions properly
-            if img_tensor.dim() == 3:  # Has channel dimension (C,H,W)
-                if img_tensor.size(0) == 1:  # Grayscale (1,H,W)
-                    # Remove channel dimension for grayscale
-                    img = img_tensor.squeeze(0).numpy()
-                    # Convert to 3-channel for CRAFT
-                    rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-                else:  # RGB or multi-channel
-                    # Transpose from CHW to HWC for OpenCV/PIL
-                    img = img_tensor.numpy().transpose(1, 2, 0)
-                    if img.shape[2] == 3:  # True RGB
-                        rgb_img = img
-                    else:  # Unexpected number of channels
-                        print(f"Warning: Unexpected number of channels: {img.shape[2]}")
-                        # Convert to grayscale then to RGB
-                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                        rgb_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
-            else:  # Already HW format (grayscale without channel dim)
-                img = img_tensor.numpy()
-                # Convert to 3-channel for CRAFT
-                rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-
-            # Scale to 0-255 range for OpenCV/PIL
-            img = (img if 'img' in locals() else rgb_img) * 255
-            img = img.astype(np.uint8)
-            rgb_img = (rgb_img * 255).astype(np.uint8)
+            img_np = img_tensor.permute(1, 2, 0).numpy()  # Convert CHW to HWC
+        
+        # Ensure correct RGB format for CRAFT
+        if img_np.shape[2] == 1:
+            img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
+        
+        # Ensure uint8 range
+        if img_np.max() <= 1.0:
+            img_np = (img_np * 255).astype(np.uint8)
+        else:
+            img_np = img_np.astype(np.uint8)
+        
+        # Convert to PIL for CRAFT
+        pil_img = Image.fromarray(img_np)
+        print(f"Processing image {i}, shape: {img_np.shape}")
+        
+        # Get polygons from CRAFT
+        try:
+            polygons = self.craft.get_polygons(pil_img)
+            print(f"Found {len(polygons)} characters in image {i}")
+        except Exception as e:
+            print(f"CRAFT error: {e}")
+            polygons = []
+        
+        # Extract character patches
+        img_patches = []
+        for polygon in polygons:
+            # Convert polygon to bounding box
+            x_coords = [p[0] for p in polygon]
+            y_coords = [p[1] for p in polygon]
             
-            # Step 2: Convert to PIL for CRAFT
-            from PIL import Image
-            pil_img = Image.fromarray(rgb_img)
+            x1, y1 = min(x_coords), min(y_coords)
+            x2, y2 = max(x_coords), max(y_coords)
             
-            # Step 3: Get polygons from CRAFT with error handling
-            try:
-                polygons = self.craft.get_polygons(pil_img)
-            except Exception as e:
-                print(f"CRAFT error for image {i}, shape {rgb_img.shape}: {str(e)}")
-                polygons = []  # Use empty list if CRAFT fails
+            # Ensure integer coordinates and minimum size
+            x1, y1 = max(0, int(x1)), max(0, int(y1))
+            x2, y2 = min(img_np.shape[1], int(x2)), min(img_np.shape[0], int(y2))
             
-            # Step 4: Extract patches for this image
-            img_patches = []
-            for polygon in polygons:
-                # Convert polygon to bounding box
-                x_coords = [p[0] for p in polygon]
-                y_coords = [p[1] for p in polygon]
-                
-                x1, y1 = min(x_coords), min(y_coords)
-                x2, y2 = max(x_coords), max(y_coords)
-                
-                # Ensure integer coordinates and minimum size
-                x1, y1 = max(0, int(x1)), max(0, int(y1))
-                x2, y2 = min(rgb_img.shape[1], int(x2)), min(rgb_img.shape[0], int(y2))
-                
-                # Extract patch using cv2
-                if x2-x1 > 2 and y2-y1 > 2:  # Ensure minimum size
-                    patch = rgb_img[y1:y2, x1:x2].copy()
+            # Skip very small regions
+            if x2-x1 < 3 or y2-y1 < 3:
+                continue
+            
+            # Extract patch
+            patch = img_np[y1:y2, x1:x2].copy()
+            
+            # Convert to grayscale
+            if len(patch.shape) == 3 and patch.shape[2] == 3:
+                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+            
+            # Resize and normalize (returns a 2D array)
+            normalized_patch = self._normalize_patch(patch)
+            
+            # Convert to tensor with channel dimension [1, H, W] - PyTorch format
+            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+            img_patches.append(patch_tensor)
                     
-                    # Step 5: Convert to grayscale for classifier
-                    if len(patch.shape) == 3 and patch.shape[2] == 3:
-                        patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-                    
-                    # Resize and normalize using our helper method
-                    patch = self._normalize_patch(patch)
-                    patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dimension
-                    img_patches.append(patch_tensor)
-            
             # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
-                print(f"No valid patches found for image {i}, using whole image")
-                # Get grayscale version of full image
-                if len(rgb_img.shape) == 3 and rgb_img.shape[2] == 3:
-                    img_gray = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2GRAY)
-                else:
-                    img_gray = rgb_img
-                    
-                # Resize and normalize
+                print(f"No valid patches for image {i}, using whole image")
+                img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if len(img_np.shape) == 3 else img_np
                 img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
-                img_norm = img_resized.astype(np.float32) / 255.0
-                patch_tensor = torch.from_numpy(img_norm).float().unsqueeze(0)
+                normalized = img_resized.astype(np.float32) / 255.0
+                patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
                 img_patches = [patch_tensor]
             
-            # Step 7: Stack patches and create attention mask
+            # Stack patches for this image [num_patches, 1, H, W]
             img_patches_tensor = torch.stack(img_patches)
             all_patches.append(img_patches_tensor)
             attention_masks.append(torch.ones(len(img_patches)))
             
-        # Step 8: Pad to same number of patches in batch
         max_patches = max(p.size(0) for p in all_patches)
+        print(f"Maximum patches in batch: {max_patches}")
+        if max_patches > 100:
+            max_patches = min(max_patches, 100)
+            print(f"Limiting to {max_patches} patches")
+
+        # Pad to same number of patches
         padded_patches = []
         padded_masks = []
 
         for patches, mask in zip(all_patches, attention_masks):
+            # Limit number of patches if needed
+            if patches.size(0) > max_patches:
+                patches = patches[:max_patches]
+                mask = mask[:max_patches]
+            
+            # Pad if needed
             if patches.size(0) < max_patches:
                 padding = torch.zeros(
-                    (max_patches - patches.size(0), 1, self.patch_size, self.patch_size), 
+                    (max_patches - patches.size(0), 1, self.patch_size, self.patch_size),
                     dtype=patches.dtype, device=patches.device
                 )
                 padded = torch.cat([patches, padding], dim=0)
                 
                 # Extend mask
                 pad_mask = torch.cat([
-                    mask, 
+                    mask,
                     torch.zeros(max_patches - mask.size(0), device=mask.device)
                 ])
             else:
                 padded = patches
                 pad_mask = mask
-                
+            
             padded_patches.append(padded)
             padded_masks.append(pad_mask)
 
-        # Step 9: Stack into batch tensors
+        # Stack into batch, final shape [batch_size, max_patches, 1, H, W]
         patches_batch = torch.stack(padded_patches).to(self.device)
         attention_batch = torch.stack(padded_masks).to(self.device)
+
+        print(f"Final patches shape: {patches_batch.shape}, mask shape: {attention_batch.shape}")
+        print(f"Final patches elements: {patches_batch.numel()}")
 
         return {
             'patches': patches_batch,
@@ -607,6 +675,7 @@ class CRAFTFontClassifier(nn.Module):
             pad_w = (self.patch_size - new_w) // 2
             normalized[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = resized
             
+            print(f"Patch shape in normalize_patch after grayscale conversion: {patch.shape}")
             return normalized / 255.0  # Normalize to [0,1]
         except Exception as e:
             print(f"Error normalizing patch: {e}, patch shape: {patch.shape}")
@@ -616,7 +685,7 @@ class CRAFTFontClassifier(nn.Module):
     def forward(self, images, targets=None, annotations=None):
         """
         Forward pass that handles both training and inference modes
-        
+
         Args:
             images: Tensor of shape [batch_size, channels, height, width]
             targets: Optional font class targets (for training)
@@ -625,6 +694,23 @@ class CRAFTFontClassifier(nn.Module):
         Returns:
             Dictionary with model outputs
         """
+        print(f"Input images shape: {images.shape}, targets: {targets.shape}")
+
+        if len(images.shape) == 4 and images.shape[3] in [1, 3]:  # HWC format
+            print(f"Converting images from HWC to CHW format")
+            # Permute dimensions: [B, H, W, C] -> [B, C, H, W]
+            images = images.permute(0, 3, 1, 2)
+            print(f"After transposing: {images.shape}")
+
+        # Check if input is a dictionary (from dataloader)
+        if isinstance(images, dict):
+            # Extract components from dictionary
+            batch_data = images
+            images = batch_data['images']
+            targets = batch_data['labels'] if 'labels' in batch_data else None
+            annotations = batch_data['annotations'] if 'annotations' in batch_data else None
+
+        # Now proceed with normal processing
         if self.training and annotations is not None:
             # Training mode: use provided annotations to extract patches
             batch_data = self.extract_patches_from_annotations(images, targets, annotations)
@@ -633,13 +719,14 @@ class CRAFTFontClassifier(nn.Module):
             batch_data = self.extract_patches_with_craft(images)
             if targets is not None:
                 batch_data['labels'] = targets.to(self.device)
-        
+
+        print(f"Batch data shape: {batch_data['patches'].shape}, attention_mask: {batch_data['attention_mask'].shape}")
         # Process patches with font classifier
         output = self.font_classifier(
             batch_data['patches'], 
             batch_data['attention_mask']
         )
-        
+
         # Add labels to output if available
         if 'labels' in batch_data:
             output['labels'] = batch_data['labels']

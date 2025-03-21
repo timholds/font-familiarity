@@ -143,7 +143,6 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
               Expecting riginal to be >= 1"
         return images, labels
 
-# Add this function to dataset.py
 def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, train=True):
     """
     Create a dataloader with character patches extracted by CRAFT
@@ -394,7 +393,7 @@ class CharacterFontDataset(Dataset):
             pad_w = (self.char_size - new_w) // 2
             normalized[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = resized
             
-            return normalized / 255.0  # Normalize to [0,1]
+            return normalized 
         except Exception as e:
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
@@ -404,77 +403,66 @@ class CharacterFontDataset(Dataset):
     
     def __getitem__(self, idx: int):
         # Get original image and its font target
-        img = self.data[idx].astype(np.float32)  # Don't normalize yet
+        img = self.data[idx].astype(np.float32)  # Keep as 0-255 range
         target = self.targets[idx]
-        
-        # Extract character patches
-        char_patches = self._extract_char_patches(img, target, idx)
-        
-        # Convert patches to tensors
-        patch_tensors = []
-        for char_data in char_patches:
-            patch = char_data['patch']
-            patch_tensor = torch.from_numpy(patch).float()
-            patch_tensor = patch_tensor.unsqueeze(0)  # Add channel dimension
-            patch_tensors.append(patch_tensor)
-        
-        # Handle case with no valid patches
-        if not patch_tensors:
-            # Create a fallback by using the whole image resized
-            img_norm = img / 255.0  # Normalize
-            import cv2
-            img_resized = cv2.resize(img_norm, (self.char_size, self.char_size))
-            patch_tensor = torch.from_numpy(img_resized).float().unsqueeze(0)
-            patch_tensors = [patch_tensor]
-        
-        # Stack all patches for this sample
-        patches = torch.stack(patch_tensors)
-        
-        return patches, target
 
+        # Get font name and sample ID for annotation lookup
+        font_idx = target
+        font_name = self.idx_to_font.get(font_idx, f"unknown_font_{font_idx}")
+        sample_id = f"sample_{idx:04d}"
+
+        # Try to find annotations
+        yolo_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.txt")
+        annotations = []
+
+        # Process YOLO format annotations if available
+        if os.path.exists(yolo_path):
+            try:
+                with open(yolo_path, 'r') as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            # Format: class_id, x_center, y_center, w, h
+                            # Store as-is in normalized coordinates
+                            class_id = int(parts[0])
+                            x_center = float(parts[1])
+                            y_center = float(parts[2])
+                            w = float(parts[3])
+                            h = float(parts[4])
+                            annotations.append([class_id, x_center, y_center, w, h])
+            except Exception as e:
+                print(f"Error processing YOLO annotations for {yolo_path}: {e}")
+
+        # Convert the full image to tensor
+        img_tensor = torch.from_numpy(img).float()
+
+        # Add channel dimension if needed
+        if img_tensor.dim() == 2:  # If grayscale without channel
+            img_tensor = img_tensor.unsqueeze(0)
+
+        return img_tensor, target, annotations
+    
 def char_collate_fn(batch):
     """
-    Custom collate function for batches with variable numbers of characters.
+    Custom collate function for batches with images and annotations.
     
     Args:
-        batch: List of (patches, target) tuples from dataset
+        batch: List of (image, target, annotations) tuples from dataset
         
     Returns:
         Dictionary with batched data
     """
-    # Separate patches and labels
-    patches_list, labels = zip(*batch)
+    # Separate images, labels, and annotations
+    images, targets, annotations_list = zip(*batch)
     
-    # Get number of patches in each sample and max patches
-    num_patches = [p.shape[0] for p in patches_list]
-    max_patches = max(num_patches)
-    
-    # Create attention mask (1 = real patch, 0 = padding)
-    attention_mask = torch.zeros(len(batch), max_patches)
-    for i, n in enumerate(num_patches):
-        attention_mask[i, :n] = 1
-    
-    # Pad patches to have same number in batch
-    padded_patches = []
-    for patches in patches_list:
-        if patches.shape[0] < max_patches:
-            padding = torch.zeros(
-                (max_patches - patches.shape[0], 1, patches.shape[2], patches.shape[3]), 
-                dtype=patches.dtype
-            )
-            padded = torch.cat([patches, padding], dim=0)
-        else:
-            padded = patches
-        padded_patches.append(padded)
-    
-    # Stack into batch
-    patches_batch = torch.stack(padded_patches)
-    labels_batch = torch.tensor(labels)
+    # Stack images and convert targets to tensor
+    images_batch = torch.stack(images)
+    targets_batch = torch.tensor(targets)
     
     return {
-        'patches': patches_batch,          # [batch_size, max_chars, 1, H, W]
-        'attention_mask': attention_mask,  # [batch_size, max_chars]
-        'labels': labels_batch             # [batch_size]
+        'images': images_batch,          # [batch_size, channels, H, W]
+        'labels': targets_batch,         # [batch_size]
+        'annotations': annotations_list  # List of annotation lists
     }
 
 

@@ -47,17 +47,15 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         
         if char_model:
             # For character-based model (with CRAFT)
-            # Batch data is a dictionary with patches, attention mask, and labels
-            patches = batch_data['patches'].to(device)
-            attention_mask = batch_data['attention_mask'].to(device)
+            # Batch data is a dictionary with images, labels, and annotations
+            images = batch_data['images'].to(device)
             targets = batch_data['labels'].to(device)
+            annotations = batch_data['annotations'] if 'annotations' in batch_data else None
             batch_size = targets.size(0)
-            
-            # Forward pass
+
+            # Forward pass - pass everything to the model
             optimizer.zero_grad()
-            
-            # Different models might return different structures
-            outputs = model(patches, attention_mask)
+            outputs = model(images, targets, annotations)
             
             # Handle different output formats from model
             if isinstance(outputs, tuple):
@@ -162,34 +160,20 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
         for batch_data in tqdm(test_loader, desc='Evaluating'):
             # Handle different data formats based on model type
             if char_model:
-                # For character-based model (with CRAFT)
-                if isinstance(batch_data, dict):
-                    # Dataloader already provides patches
-                    patches = batch_data['patches'].to(device)
-                    attention_mask = batch_data['attention_mask'].to(device)
-                    targets = batch_data['labels'].to(device)
-                    
-                    # Handle case for CRAFTFontClassifier vs CharacterBasedFontClassifier
-                    if isinstance(model, CRAFTFontClassifier):
-                        # Using full images with annotations
-                        logits = model(
-                            patches, 
-                            targets=targets, 
-                            attention_mask=attention_mask
-                        )
-                    else:
-                        # Using pre-extracted patches
-                        logits = model(patches, attention_mask)
+                # For character-based model with CRAFT
+                images = batch_data['images'].to(device)
+                targets = batch_data['labels'].to(device)
+                annotations = batch_data['annotations'] if 'annotations' in batch_data else None
+
+                # Forward pass with whole images
+                outputs = model(images, targets, annotations)
+
+                # Extract logits from outputs
+                if isinstance(outputs, dict):
+                    logits = outputs['logits']
                 else:
-                    # Full images, need to extract patches
-                    data, targets = batch_data
-                    data, targets = data.to(device), targets.to(device)
-                    
-                    # Forward pass handles extraction internally
-                    logits = model(data, targets)
-                
-                batch_size = targets.size(0)
-            
+                    logits = outputs
+                            
             # Accumulate tensors for advanced metrics
             all_logits.append(logits)
             all_targets.append(targets)
