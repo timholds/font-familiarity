@@ -439,8 +439,10 @@ class CRAFTFontClassifier(nn.Module):
     def extract_patches_with_craft(self, images):
         """
         Extract character patches using CRAFT during inference
+        
         Args:
-            images: Tensor of shape [batch_size, channels, height, width]    
+            images: Tensor of shape [batch_size, 1|3, height, width]
+                
         Returns:
             Dictionary with patches and attention_mask
         """
@@ -449,34 +451,48 @@ class CRAFTFontClassifier(nn.Module):
         attention_masks = []
 
         for i in range(batch_size):
-            # Convert tensor to numpy array
-            img = images[i].cpu().numpy().transpose(1, 2, 0)  # CHW -> HWC
-            img = (img * 255).astype(np.uint8)
+            # Step 1: Convert tensor to numpy with proper format handling
+            img_tensor = images[i].cpu()
             
-            # Handle grayscale/RGB format consistently
-            if len(img.shape) == 2:  # Already grayscale without channel dim
+            # Handle different tensor dimensions properly
+            if img_tensor.dim() == 3:  # Has channel dimension (C,H,W)
+                if img_tensor.size(0) == 1:  # Grayscale (1,H,W)
+                    # Remove channel dimension for grayscale
+                    img = img_tensor.squeeze(0).numpy()
+                    # Convert to 3-channel for CRAFT
+                    rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                else:  # RGB or multi-channel
+                    # Transpose from CHW to HWC for OpenCV/PIL
+                    img = img_tensor.numpy().transpose(1, 2, 0)
+                    if img.shape[2] == 3:  # True RGB
+                        rgb_img = img
+                    else:  # Unexpected number of channels
+                        print(f"Warning: Unexpected number of channels: {img.shape[2]}")
+                        # Convert to grayscale then to RGB
+                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                        rgb_img = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+            else:  # Already HW format (grayscale without channel dim)
+                img = img_tensor.numpy()
+                # Convert to 3-channel for CRAFT
                 rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-            elif img.shape[-1] == 1:  # Grayscale with channel dim
-                img_gray = img.squeeze(-1)  # Remove channel dim
-                rgb_img = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB)
-            elif img.shape[-1] == 3:  # Already RGB
-                rgb_img = img
-            else:
-                print(f"Unexpected image shape: {img.shape}")
-                rgb_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-                
-            # CRAFT might require PIL format
+
+            # Scale to 0-255 range for OpenCV/PIL
+            img = (img if 'img' in locals() else rgb_img) * 255
+            img = img.astype(np.uint8)
+            rgb_img = (rgb_img * 255).astype(np.uint8)
+            
+            # Step 2: Convert to PIL for CRAFT
             from PIL import Image
             pil_img = Image.fromarray(rgb_img)
             
-            # Get polygons from CRAFT with error handling
+            # Step 3: Get polygons from CRAFT with error handling
             try:
                 polygons = self.craft.get_polygons(pil_img)
             except Exception as e:
-                print(f"CRAFT error for image shape {rgb_img.shape}: {str(e)}")
+                print(f"CRAFT error for image {i}, shape {rgb_img.shape}: {str(e)}")
                 polygons = []  # Use empty list if CRAFT fails
             
-            # Extract patches for this image
+            # Step 4: Extract patches for this image
             img_patches = []
             for polygon in polygons:
                 # Convert polygon to bounding box
@@ -486,40 +502,44 @@ class CRAFTFontClassifier(nn.Module):
                 x1, y1 = min(x_coords), min(y_coords)
                 x2, y2 = max(x_coords), max(y_coords)
                 
+                # Ensure integer coordinates and minimum size
+                x1, y1 = max(0, int(x1)), max(0, int(y1))
+                x2, y2 = min(rgb_img.shape[1], int(x2)), min(rgb_img.shape[0], int(y2))
+                
                 # Extract patch using cv2
                 if x2-x1 > 2 and y2-y1 > 2:  # Ensure minimum size
-                    patch = rgb_img[int(y1):int(y2), int(x1):int(x2)].copy()
+                    patch = rgb_img[y1:y2, x1:x2].copy()
                     
-                    # Convert to grayscale for model consistency
+                    # Step 5: Convert to grayscale for classifier
                     if len(patch.shape) == 3 and patch.shape[2] == 3:
                         patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
                     
-                    # Resize and normalize
+                    # Resize and normalize using our helper method
                     patch = self._normalize_patch(patch)
                     patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dimension
                     img_patches.append(patch_tensor)
             
-            # If no valid patches, create a default patch from the whole image
+            # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
                 print(f"No valid patches found for image {i}, using whole image")
-                if len(img.shape) == 3 and img.shape[2] == 3:
-                    img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-                elif len(img.shape) == 3 and img.shape[2] == 1:
-                    img_gray = img.squeeze(-1)
+                # Get grayscale version of full image
+                if len(rgb_img.shape) == 3 and rgb_img.shape[2] == 3:
+                    img_gray = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2GRAY)
                 else:
-                    img_gray = img
+                    img_gray = rgb_img
                     
+                # Resize and normalize
                 img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
                 img_norm = img_resized.astype(np.float32) / 255.0
                 patch_tensor = torch.from_numpy(img_norm).float().unsqueeze(0)
                 img_patches = [patch_tensor]
             
-            # Stack patches for this image and create attention mask
+            # Step 7: Stack patches and create attention mask
             img_patches_tensor = torch.stack(img_patches)
             all_patches.append(img_patches_tensor)
             attention_masks.append(torch.ones(len(img_patches)))
             
-        # Pad to same number of patches in batch
+        # Step 8: Pad to same number of patches in batch
         max_patches = max(p.size(0) for p in all_patches)
         padded_patches = []
         padded_masks = []
@@ -544,7 +564,7 @@ class CRAFTFontClassifier(nn.Module):
             padded_patches.append(padded)
             padded_masks.append(pad_mask)
 
-        # Stack into batch tensors
+        # Step 9: Stack into batch tensors
         patches_batch = torch.stack(padded_patches).to(self.device)
         attention_batch = torch.stack(padded_masks).to(self.device)
 
@@ -552,6 +572,7 @@ class CRAFTFontClassifier(nn.Module):
             'patches': patches_batch,
             'attention_mask': attention_batch
         }
+    
     def _normalize_patch(self, patch):
         """Normalize a character patch to standard size with preserved aspect ratio."""
         if patch.size == 0:

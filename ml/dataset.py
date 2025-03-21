@@ -294,7 +294,7 @@ class CharacterFontDataset(Dataset):
         json_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.json")
         
         patches = []
-        height, width = image.shape
+        height, width = image.shape[:2]
         
         # Process YOLO format annotations
         if os.path.exists(yolo_path):
@@ -318,6 +318,8 @@ class CharacterFontDataset(Dataset):
                             # Extract and preprocess patch
                             if x2-x1 > 2 and y2-y1 > 2:  # Ensure minimum size
                                 patch = image[y1:y2, x1:x2].copy()
+                                if len(patch.shape) == 3 and patch.shape[2] == 3:
+                                    patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
                                 normalized_patch = self._normalize_patch(patch)
                                 
                                 char = self.char_mapping.get(class_id, '?')
