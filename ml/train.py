@@ -100,12 +100,21 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         if batch_idx % 100 == 0:
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
+
+            # Your existing patch visualization
             if char_model and hasattr(model, 'visualize_char_preds'):
                 model.visualize_char_preds(
                     patches=batch_data['patches'],
                     attention_mask=batch_data['attention_mask'],
                     predictions=pred,
                     targets=targets,
+                    save_path=vis_path
+                )
+
+            # Add CRAFT detection visualization
+            if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
+                model.visualize_craft_detections(
+                    images=data,  # Original images
                     save_path=vis_path
                 )
 
@@ -340,12 +349,12 @@ def main():
     if args.char_model:
        model = CRAFTFontClassifier(
             num_fonts=num_classes,
-            craft_weights_dir=args.craft_weights_dir,
             device=device,
-            char_size=32,
-            embedding_dim=args.embedding_dim,
-            craft_fp16=args.craft_fp16
+            patch_size=32,
+            embedding_dim=args.embedding_dim
         ).to(device)
+       
+       # TODO add some assertions to the model
     else:
         model = SimpleCNN(
             num_classes=num_classes,
@@ -354,16 +363,16 @@ def main():
             initial_channels=args.initial_channels
         ).to(device)
 
-    actual_classes = model.classifier.weight.shape[0]
-    assert actual_classes == num_classes, (
-        f"Critical Error: Model initialized with wrong number of classes. "
-        f"Got {actual_classes}, expected {num_classes}"
-    )
-    
+        actual_classes = model.classifier.weight.shape[0]
+        assert actual_classes == num_classes, (
+            f"Critical Error: Model initialized with wrong number of classes. "
+            f"Got {actual_classes}, expected {num_classes}"
+        )
+        
 
-    print(f"Model initialized with classifier shape: {model.classifier.weight.shape}")
-    print(f"Number of classes from loader: {num_classes}")
-    print(f"Model number of classes: {model.classifier.weight.shape[0]}")
+        print(f"Model initialized with classifier shape: {model.classifier.weight.shape}")
+        print(f"Number of classes from loader: {num_classes}")
+        print(f"Model number of classes: {model.classifier.weight.shape[0]}")
 
 
     total_params     = sum(p.numel() for p in model.parameters())
