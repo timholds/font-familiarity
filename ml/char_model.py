@@ -195,7 +195,7 @@ class CharacterBasedFontClassifier(nn.Module):
             char_patches: Character images [batch_size, max_chars, 1, H, W]
             attention_mask: Mask for padding [batch_size, max_chars]
         """
-        print(f"Input patches shape: {char_patches.shape}")
+        print(f"CharacterBasedFontClassifier input patches shape: {char_patches.shape}")
 
         if len(char_patches.shape) > 5:
             print(f"Fixing unexpected shape: {char_patches.shape}")
@@ -711,14 +711,16 @@ class CRAFTFontClassifier(nn.Module):
             annotations = batch_data['annotations'] if 'annotations' in batch_data else None
 
         # Now proceed with normal processing
-        if self.training and annotations is not None:
-            # Training mode: use provided annotations to extract patches
-            batch_data = self.extract_patches_from_annotations(images, targets, annotations)
-        else:
+        # if self.training and annotations is not None:
+        #     print("?????????????")
+        #     # Training mode: use provided annotations to extract patches
+        #     batch_data = self.extract_patches_from_annotations(images, targets, annotations)
+        # else:
+        #     print("starting craft !!!!!!!!!!!!!!11")
             # Inference mode: use CRAFT to extract patches
-            batch_data = self.extract_patches_with_craft(images)
-            if targets is not None:
-                batch_data['labels'] = targets.to(self.device)
+        batch_data = self.extract_patches_with_craft(images)
+        if targets is not None:
+            batch_data['labels'] = targets.to(self.device)
 
         print(f"Batch data shape: {batch_data['patches'].shape}, attention_mask: {batch_data['attention_mask'].shape}")
         # Process patches with font classifier
