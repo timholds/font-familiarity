@@ -94,7 +94,6 @@ class CharSimpleCNN(nn.Module):
 
 
         x = self.features(x)
-        x = self.flatten(x)
         print(f"After features, shape: {x.shape}")
         x = self.flatten(x)
     
@@ -108,7 +107,7 @@ class CharSimpleCNN(nn.Module):
     def forward(self, x):
         x = x / 255.0 
         embeddings = self.get_embedding(x)
-        print(embeddings.shape)
+        print(f"ebmedding shape {embeddings.shape}")
         x = self.classifier(embeddings)
         return x
     
@@ -208,7 +207,6 @@ class CharacterBasedFontClassifier(nn.Module):
             char_patches = char_patches.reshape(batch_size, max_chars, channels, 
                                                 char_patches.shape[3], char_patches.shape[4])
             print(f"Reshaped to: {char_patches.shape}")
-            print(f"Reshaped to: {char_patches.shape}")
         
         batch_size, max_chars = char_patches.shape[:2]
         # Reshape to process all characters at once - flatten batch and max_chars dimensions
@@ -246,7 +244,6 @@ class CharacterBasedFontClassifier(nn.Module):
             'char_embeddings': char_embeddings
         }
     
-
 class CRAFTFontClassifier(nn.Module):
     """
     Combined model that uses CRAFT for text detection and CharacterBasedFontClassifier for font identification.
@@ -503,20 +500,10 @@ class CRAFTFontClassifier(nn.Module):
         }
     
     def extract_patches_with_craft(self, images):
-        """
-        Extract character patches using CRAFT during inference
-        
-        Args:
-            images: Tensor of shape [batch_size, 1|3, height, width]
-                
-        Returns:
-            Dictionary with patches and attention_mask
-        """
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
         print(f"Starting CRAFT extraction with images shape: {images.shape}")
-
 
         for i in range(batch_size):
             # Step 1: Convert tensor to numpy with proper format handling
@@ -524,61 +511,65 @@ class CRAFTFontClassifier(nn.Module):
             print(f"Image {i} shape: {img_tensor.shape}, min: {img_tensor.min()}, max: {img_tensor.max()}")
             
             img_np = img_tensor.permute(1, 2, 0).numpy()  # Convert CHW to HWC
+
+            # Ensure correct RGB format for CRAFT
+            if img_np.shape[2] == 1:
+                img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
+            
+            # Ensure uint8 range
+            if img_np.max() <= 1.0:
+                img_np = (img_np * 255).astype(np.uint8)
+            else:
+                img_np = img_np.astype(np.uint8)
+            
+            # Convert to PIL for CRAFT
+            pil_img = Image.fromarray(img_np)
+            print(f"Processing image {i}, PIL image size: {pil_img.size}, mode: {pil_img.mode}")
+
+            # print(f"Processing image {i}, shape: {img_np.shape} into pil image: {pil_img.size}")
         
-        # Ensure correct RGB format for CRAFT
-        if img_np.shape[2] == 1:
-            img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
-        
-        # Ensure uint8 range
-        if img_np.max() <= 1.0:
-            img_np = (img_np * 255).astype(np.uint8)
-        else:
-            img_np = img_np.astype(np.uint8)
-        
-        # Convert to PIL for CRAFT
-        pil_img = Image.fromarray(img_np)
-        print(f"Processing image {i}, shape: {img_np.shape}")
-        
-        # Get polygons from CRAFT
-        try:
-            polygons = self.craft.get_polygons(pil_img)
-            print(f"Found {len(polygons)} characters in image {i}")
-        except Exception as e:
-            print(f"CRAFT error: {e}")
-            polygons = []
-        
-        # Extract character patches
-        img_patches = []
-        for polygon in polygons:
-            # Convert polygon to bounding box
-            x_coords = [p[0] for p in polygon]
-            y_coords = [p[1] for p in polygon]
+            # Get polygons from CRAFT
+            try:
+                print("getting polygons")
+                polygons = self.craft.get_polygons(pil_img)
+                print(f"Found {len(polygons)} characters in image {i}")
+            except Exception as e:
+                print(f"CRAFT error: {e}")
+                polygons = []
             
-            x1, y1 = min(x_coords), min(y_coords)
-            x2, y2 = max(x_coords), max(y_coords)
-            
-            # Ensure integer coordinates and minimum size
-            x1, y1 = max(0, int(x1)), max(0, int(y1))
-            x2, y2 = min(img_np.shape[1], int(x2)), min(img_np.shape[0], int(y2))
-            
-            # Skip very small regions
-            if x2-x1 < 3 or y2-y1 < 3:
-                continue
-            
-            # Extract patch
-            patch = img_np[y1:y2, x1:x2].copy()
-            
-            # Convert to grayscale
-            if len(patch.shape) == 3 and patch.shape[2] == 3:
-                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-            
-            # Resize and normalize (returns a 2D array)
-            normalized_patch = self._normalize_patch(patch)
-            
-            # Convert to tensor with channel dimension [1, H, W] - PyTorch format
-            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
-            img_patches.append(patch_tensor)
-                    
+            # Extract character patches
+            img_patches = []
+            for polygon in polygons:
+                # Convert polygon to bounding box
+                x_coords = [p[0] for p in polygon]
+                y_coords = [p[1] for p in polygon]
+                
+                x1, y1 = min(x_coords), min(y_coords)
+                x2, y2 = max(x_coords), max(y_coords)
+                
+                # Ensure integer coordinates and minimum size
+                x1, y1 = max(0, int(x1)), max(0, int(y1))
+                x2, y2 = min(img_np.shape[1], int(x2)), min(img_np.shape[0], int(y2))
+                
+                # Skip very small regions
+                if x2-x1 < 3 or y2-y1 < 3:
+                    continue
+                
+                # Extract patch
+                patch = img_np[y1:y2, x1:x2].copy()
+                print(f"In patch extraction with craft, Character patch shape: {patch.shape}")
+                
+                # Convert to grayscale
+                if len(patch.shape) == 3 and patch.shape[2] == 3:
+                    patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+                
+                # Resize and normalize (returns a 2D array)
+                normalized_patch = self._normalize_patch(patch)
+                
+                # Convert to tensor with channel dimension [1, H, W] - PyTorch format
+                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+                img_patches.append(patch_tensor)
+                        
             # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
                 print(f"No valid patches for image {i}, using whole image")
@@ -592,7 +583,7 @@ class CRAFTFontClassifier(nn.Module):
             img_patches_tensor = torch.stack(img_patches)
             all_patches.append(img_patches_tensor)
             attention_masks.append(torch.ones(len(img_patches)))
-            
+                
         max_patches = max(p.size(0) for p in all_patches)
         print(f"Maximum patches in batch: {max_patches}")
         if max_patches > 100:

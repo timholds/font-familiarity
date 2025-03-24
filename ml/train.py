@@ -294,6 +294,7 @@ def main():
     wandb.define_metric("*", step_metric="epoch")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
     
     # Load data
     print("Loading data...")
