@@ -1,0 +1,13 @@
+git+https://github.com/timholds/CRAFT-text-detection.git#egg=craft
+
+torch==2.5.0
+torchvision==0.20.0
+numpy==1.24.3
+opencv-python-headless==4.7.0.72
+shapely
+huggingface_hub
+
+# pip install numpy==2.0.2
+#  pip install opencv-python==4.11.0.86 opencv-contrib-python==4.11.0.86         
+# pip install scipy==1.14.1 scikit-image==0.25.2
+
