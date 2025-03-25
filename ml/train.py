@@ -366,7 +366,7 @@ def main():
                 embedding_dim=args.embedding_dim,
                 craft_fp16=use_fp16
             ).to(device)
-            breakpoint()
+            
         except RuntimeError as e:
             
             if "CUDA" in str(e):
