@@ -350,7 +350,11 @@ class CRAFTFontClassifier(nn.Module):
         for b in range(batch_size):
             print(f"visualize_craft_detections input Image {b} shape: {images[b].shape}, min: {images[b].min()}, max: {images[b].max()}")
             # Convert image to numpy and prepare for visualization
-            img = images[b].cpu().numpy() # HWC
+            # check if the image is in CHW format
+            if len(images[b].shape) == 3 and images[b].shape[0] in [1, 3]:
+                img = images[b].permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
+            else:
+                img = images[b].cpu().numpy() # HWC
             #img = (img * 255).astype(np.uint8)
             print(f"visualize_craft_detections Image {b} shape: {img.shape}, min: {img.min()}, max: {img.max()}")
             
