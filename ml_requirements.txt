@@ -10,6 +10,7 @@ huggingface_hub
 scikit-image
 wandb
 prettytable
+matplotlib
 # pip install numpy==2.0.2
 #  pip install opencv-python==4.11.0.86 opencv-contrib-python==4.11.0.86         
 # pip install scipy==1.14.1 scikit-image==0.25.2

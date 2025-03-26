@@ -348,24 +348,27 @@ class CRAFTFontClassifier(nn.Module):
         batch_size = min(4, images.size(0))  # Visualize up to 4 samples
 
         for b in range(batch_size):
+            print(f"visualize_craft_detections input Image {b} shape: {images[b].shape}, min: {images[b].min()}, max: {images[b].max()}")
             # Convert image to numpy and prepare for visualization
-            img = images[b].cpu().numpy().transpose(1, 2, 0)  # CHW -> HWC
+            img = images[b].cpu().numpy() # HWC
             #img = (img * 255).astype(np.uint8)
+            print(f"visualize_craft_detections Image {b} shape: {img.shape}, min: {img.min()}, max: {img.max()}")
             
-            # Handle grayscale/RGB
-            if len(img.shape) == 2:
-                rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-            elif img.shape[-1] == 1:
-                rgb_img = cv2.cvtColor(img.squeeze(-1), cv2.COLOR_GRAY2RGB)
-            else:
-                rgb_img = img
+            # # Handle grayscale/RGB
+            # if len(img.shape) == 2:
+            #     rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            # elif img.shape[-1] == 1:
+            #     rgb_img = cv2.cvtColor(img.squeeze(-1), cv2.COLOR_GRAY2RGB)
+            # else:
+            rgb_img = img.astype(np.uint8)
                 
             # Convert to PIL for CRAFT
             from PIL import Image
+            print(f"visualize_craft_detections rgb_img {b} shape: {rgb_img.shape}, min: {rgb_img.min()}, max: {rgb_img.max()}")
             pil_img = Image.fromarray(rgb_img)
 
             print('!!!!!!!!!!!')
-            print(f"Image {i} shape: {rgb_img.shape}, min: {rgb_img.min()}, max: {rgb_img.max()}")
+            print(f"Image {b} shape: {rgb_img.shape}, min: {rgb_img.min()}, max: {rgb_img.max()}")
             print(f"PIL image size: {pil_img.size}, mode: {pil_img.mode}")
 
             
