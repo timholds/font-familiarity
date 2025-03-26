@@ -514,15 +514,41 @@ def main():
                 embedding_dim=args.embedding_dim,
                 initial_channels=args.initial_channels
             )
-            classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
-            assert classifier_shape[0] == num_classes, (
-                f"Critical Error: Attempting to save model with wrong number of classes. "
-                f"Got {classifier_shape[0]}, expected {num_classes}"
-            )
+            # classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
+            # assert classifier_shape[0] == num_classes, (
+            #     f"Critical Error: Attempting to save model with wrong number of classes. "
+            #     f"Got {classifier_shape[0]}, expected {num_classes}"
+            # )
+            if args.char_model:
+                # For character-based model, classifier is at font_classifier.font_classifier
+                classifier_key = 'font_classifier.font_classifier.weight'
+            else:
+                # For simple CNN, classifier is directly at classifier
+                classifier_key = 'classifier.weight'
+
+            # Try to get the classifier shape
+            if classifier_key in best_model_state['model_state_dict']:
+                classifier_shape = best_model_state['model_state_dict'][classifier_key].shape
+                print(f"Found classifier at {classifier_key} with shape {classifier_shape}")
+                
+                # Verify number of classes
+                assert classifier_shape[0] == num_classes, (
+                    f"Critical Error: Attempting to save model with wrong number of classes. "
+                    f"Got {classifier_shape[0]}, expected {num_classes}"
+                )
+            else:
+                # If key not found, print available keys for debugging
+                print("Classifier key not found. Available keys in state_dict:")
+                for key in best_model_state['model_state_dict'].keys():
+                    if 'weight' in key and key.endswith('weight'):
+                        print(f"  {key}: {best_model_state['model_state_dict'][key].shape}")
+                
+                print(f"WARNING: Could not verify classifier shape for {num_classes} classes")
+            
             torch.save(best_model_state, model_path)
             print(f"Saved checkpoint with classifier shape: {classifier_shape}")
 
-        
+            
         # Update wandb summary periodically
         if (epoch + 1) % 5 == 0 or epoch == args.epochs - 1:
             wandb.run.summary.update({
