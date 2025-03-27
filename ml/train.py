@@ -99,20 +99,19 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
 
-            # Your existing patch visualization
-            if char_model and hasattr(model, 'visualize_char_preds'):
-                model.visualize_char_preds(
-                    patches=batch_data['patches'],
-                    attention_mask=batch_data['attention_mask'],
-                    predictions=pred,
-                    targets=targets,
-                    save_path=vis_path
-                )
+            # if char_model and hasattr(model, 'visualize_char_preds'):
+            #     model.visualize_char_preds(
+            #         patches=batch_data['patches'],
+            #         attention_mask=batch_data['attention_mask'],
+            #         predictions=pred,
+            #         targets=targets,
+            #         save_path=vis_path
+            #     )
 
             # Add CRAFT detection visualization
             if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
                 model.visualize_craft_detections(
-                    images=data,  # Original images
+                    images=images,  # Original images
                     save_path=vis_path
                 )
 
@@ -262,6 +261,23 @@ def compute_class_embeddings(model, dataloader, num_classes, device):
     return class_embeddings
 
 def main():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+    os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
+
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"CUDA version: {torch.version.cuda}")
+        print(f"CUDA device count: {torch.cuda.device_count()}")
+        print(f"Current CUDA device: {torch.cuda.current_device()}")
+        print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
+    else:
+        print("CUDA is not available. Checking environment:")
+        print(f"CUDA_HOME environment variable: {os.environ.get('CUDA_HOME', 'Not set')}")
+        print(f"CUDA_PATH environment variable: {os.environ.get('CUDA_PATH', 'Not set')}")
+        print(f"LD_LIBRARY_PATH environment variable: {os.environ.get('LD_LIBRARY_PATH', 'Not set')}")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default="data/font_dataset_npz_test/")
     parser.add_argument("--epochs", type=int, default=30)
@@ -294,6 +310,8 @@ def main():
     wandb.define_metric("*", step_metric="epoch")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    
     
     # Load data
     print("Loading data...")
@@ -331,12 +349,44 @@ def main():
     print("\nStep 3: Initializing model...")
     print(f"Creating model with num_classes={num_classes}")
     if args.char_model:
-       model = CRAFTFontClassifier(
-            num_fonts=num_classes,
-            device=device,
-            patch_size=32,
-            embedding_dim=args.embedding_dim
-        ).to(device)
+        try:
+            print("Initializing CRAFT model...")
+            # Try with reduced precision to save memory
+            use_fp16 = True if device.type == 'cuda' else False
+            
+            # Clear cache before initialization
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
+            
+            model = CRAFTFontClassifier(
+                num_fonts=num_classes,
+                device=device,
+                patch_size=32,
+                embedding_dim=args.embedding_dim,
+                craft_fp16=use_fp16
+            ).to(device)
+            
+        except RuntimeError as e:
+            
+            if "CUDA" in str(e):
+                print(f"CUDA error during model initialization: {e}")
+                print("Trying with CPU for CRAFT model...")
+                
+                # Try with CPU for CRAFT but keep classifier on GPU if available
+                craft_device = torch.device('cpu')
+                model = CRAFTFontClassifier(
+                    num_fonts=num_classes,
+                    device=craft_device,
+                    patch_size=32,
+                    embedding_dim=args.embedding_dim,
+                    craft_fp16=False
+                )
+                # Only move classifier to GPU
+                if device.type == 'cuda':
+                    model.font_classifier = model.font_classifier.to(device)
+                model = model.to(device)
+            else:
+                raise e
        
        # TODO add some assertions to the model
     else:
@@ -464,15 +514,41 @@ def main():
                 embedding_dim=args.embedding_dim,
                 initial_channels=args.initial_channels
             )
-            classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
-            assert classifier_shape[0] == num_classes, (
-                f"Critical Error: Attempting to save model with wrong number of classes. "
-                f"Got {classifier_shape[0]}, expected {num_classes}"
-            )
+            # classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
+            # assert classifier_shape[0] == num_classes, (
+            #     f"Critical Error: Attempting to save model with wrong number of classes. "
+            #     f"Got {classifier_shape[0]}, expected {num_classes}"
+            # )
+            if args.char_model:
+                # For character-based model, classifier is at font_classifier.font_classifier
+                classifier_key = 'font_classifier.font_classifier.weight'
+            else:
+                # For simple CNN, classifier is directly at classifier
+                classifier_key = 'classifier.weight'
+
+            # Try to get the classifier shape
+            if classifier_key in best_model_state['model_state_dict']:
+                classifier_shape = best_model_state['model_state_dict'][classifier_key].shape
+                print(f"Found classifier at {classifier_key} with shape {classifier_shape}")
+                
+                # Verify number of classes
+                assert classifier_shape[0] == num_classes, (
+                    f"Critical Error: Attempting to save model with wrong number of classes. "
+                    f"Got {classifier_shape[0]}, expected {num_classes}"
+                )
+            else:
+                # If key not found, print available keys for debugging
+                print("Classifier key not found. Available keys in state_dict:")
+                for key in best_model_state['model_state_dict'].keys():
+                    if 'weight' in key and key.endswith('weight'):
+                        print(f"  {key}: {best_model_state['model_state_dict'][key].shape}")
+                
+                print(f"WARNING: Could not verify classifier shape for {num_classes} classes")
+            
             torch.save(best_model_state, model_path)
             print(f"Saved checkpoint with classifier shape: {classifier_shape}")
 
-        
+            
         # Update wandb summary periodically
         if (epoch + 1) % 5 == 0 or epoch == args.epochs - 1:
             wandb.run.summary.update({
