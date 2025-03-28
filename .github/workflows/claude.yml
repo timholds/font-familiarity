@@ -14,9 +14,9 @@ name: Claude Project Sync
 
 on:
   push:
-    branches: [char]
+    branches: [main, char]
   pull_request:
-    branches: [char]
+    branches: [main, char]
   # Allow manual triggering
   workflow_dispatch:
 
