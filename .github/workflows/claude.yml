@@ -96,7 +96,6 @@ jobs:
 
               try:
                   # Make the request
-                  print(f"Making request to {url}")
                   with urllib.request.urlopen(req) as response:
                       print(f"Response status code: {response.status}")
                       
@@ -125,7 +124,6 @@ jobs:
           try:
               print("Testing Claude API authentication...")
               orgs = _make_request("GET", "/organizations")
-              print(f"Organizations: {orgs}")
               if not orgs:
                   print("Error: No organizations found")
                   sys.exit(1)
