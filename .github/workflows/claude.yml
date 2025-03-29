@@ -96,6 +96,7 @@ jobs:
 
               try:
                   # Make the request
+                  print(f"Making request to {url}")
                   with urllib.request.urlopen(req) as response:
                       print(f"Response status code: {response.status}")
                       
