@@ -29,8 +29,7 @@ Convert each patch to grayscale
 Normalize and resize patches for classification  
 Feed grayscale patches to the character classifier  
 
-### Challenge: what size, format, color space should the input images be and what size font should we use?
-- Bigger images can fit more text, but the amount of memory is quadratic in the image size, so we need to be careful about how big we make them.  
+
 ### Challenge: what structure do the images need to have to work with CRAFT text detector
 - expecting a color image with 3 channels
 - /CRAFT/model.py expects a PIL Image object
@@ -42,6 +41,11 @@ Feed grayscale patches to the character classifier
 
 ### Challenge: what size should the input images be and what size font should we use?
 - Bigger images can fit more text, but the amount of memory is quadratic in the image size, so we need to be careful about how big we make them.
+
+
+
+### Challenge: what size, format, color space should the input images be and what size font should we use?
+- Bigger images can fit more text, but the amount of memory is quadratic in the image size, so we need to be careful about how big we make them.  
 - Bigger text size gives more pixels for each character, which in theory gives us a stronger signal to classify off of, but it also mean we are getting fewer characters per image.  
 - CRAFT expects 3 channel image  
 - Patch level character CNN should probably just be in grayscale since we care about shape not color and that should still be preserved. 
@@ -363,3 +367,5 @@ Upload an image or screenshot
 
 
 Going from 2d to 3d means reworking the model to be character based instead of string based. Since we have new degrees of freedom for the input, it would be tremendously helpful to remove some others, lest we have to scale up the amount of data disproportionately. Btw, we don't hear much about the curse of dimensionality too much these days, do we?
+
+First, I got some appropriate CRAFT parameters for my particular image and font sizes that would give me character level patches and used Colab to visualize the patches for a single image. Then I added a visualization function as part of the training loop that would show me the 
