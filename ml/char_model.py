@@ -359,14 +359,7 @@ class CRAFTFontClassifier(nn.Module):
                 img = images[b].permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
             else:
                 img = images[b].cpu().numpy() # HWC
-            #img = (img * 255).astype(np.uint8)
             
-            # # Handle grayscale/RGB
-            # if len(img.shape) == 2:
-            #     rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-            # elif img.shape[-1] == 1:
-            #     rgb_img = cv2.cvtColor(img.squeeze(-1), cv2.COLOR_GRAY2RGB)
-            # else:
             rgb_img = img.astype(np.uint8)
                 
             # Convert to PIL for CRAFT
@@ -383,7 +376,9 @@ class CRAFTFontClassifier(nn.Module):
                 polygons = []
             
             # Create figure
-            fig, ax = plt.subplots(figsize=(5.12, 5.12), dpi=100)
+            # fig, ax = plt.subplots(figsize=(5.12, 5.12), dpi=100)
+            fig, ax = plt.subplots(figsize=(rgb_img.shape[1]/100, rgb_img.shape[0]/100))  # Scale to image dimensions
+
             ax.imshow(rgb_img)
             
             # Draw polygons
