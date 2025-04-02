@@ -363,10 +363,8 @@ class CRAFTFontClassifier(nn.Module):
             rgb_img = img.astype(np.uint8)
                 
             # Convert to PIL for CRAFT
-            from PIL import Image
+            from PIL import Image, ImageDraw, ImageFont
             pil_img = Image.fromarray(rgb_img)
-
-
             
             # Get polygons from CRAFT
             try:
@@ -374,33 +372,59 @@ class CRAFTFontClassifier(nn.Module):
             except Exception as e:
                 print(f"CRAFT detection error: {e}")
                 polygons = []
+
+            draw = ImageDraw.Draw(pil_img)
+
+            # Draw polygons
+            for poly in polygons:
+                # Convert to tuple format for PIL
+                poly_tuple = [tuple(p) for p in poly]
+                draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
+
+            # Add text at the top if needed
+            try:
+                font = ImageFont.truetype("arial.ttf", 20)  # Adjust font and size as needed
+            except:
+                font = ImageFont.load_default()
+                draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
+                        fill=(0, 0, 0), font=font)
+
+            # Save with exact dimensions
+            if save_path:
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                image_label = targets[b].item()
+                pil_img.save(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
+            else:
+                pil_img.show()  # Display directly with PIL
             
             # Create figure
             # fig, ax = plt.subplots(figsize=(5.12, 5.12), dpi=100)
-            fig, ax = plt.subplots(figsize=(rgb_img.shape[1]/100, rgb_img.shape[0]/100))  # Scale to image dimensions
+            # # fig, ax = plt.subplots(figsize=(rgb_img.shape[1]/100, rgb_img.shape[0]/100))  # Scale to image dimensions
+            # plt.tight_layout(pad=0)
 
-            ax.imshow(rgb_img)
+            # ax.imshow(rgb_img)
             
-            # Draw polygons
-            for poly in polygons:
-                # Convert to numpy array for matplotlib
-                poly_array = np.array(poly)
-                # Create polygon patch
-                patch = mpatches.Polygon(poly_array, fill=False, edgecolor='red', linewidth=2)
-                ax.add_patch(patch)
+            # # Draw polygons
+            # for poly in polygons:
+            #     # Convert to numpy array for matplotlib
+            #     poly_array = np.array(poly)
+            #     # Create polygon patch
+            #     patch = mpatches.Polygon(poly_array, fill=False, edgecolor='red', linewidth=2)
+            #     ax.add_patch(patch)
             
-            ax.set_title(f"CRAFT Detections: {len(polygons)} characters")
-            ax.axis('off')
+            # ax.set_title(f"CRAFT Detections: {len(polygons)} characters")
+            # ax.axis('off')
             
-            # Save or show
-            if save_path:
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            # # Save or show
+            # if save_path:
+            #     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-                image_label = targets[b].item()
-                plt.savefig(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
-                plt.close()
-            else:
-                plt.show()
+            #     image_label = targets[b].item()
+            #     filename = f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png"
+            #     plt.savefig(filename, bbox_inches='tight', pad_inches=0)
+            #     plt.close()
+            # else:
+            #     plt.show()
 
     def extract_patches_from_annotations(self, images, targets, annotations):
         """
@@ -567,7 +591,7 @@ class CRAFTFontClassifier(nn.Module):
             # Extract character patches
             img_patches = []
             for polygon in polygons:
-                polygon = self.add_padding_to_polygons(polygon)
+                # polygon = self.add_padding_to_polygons(polygon)
 
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
