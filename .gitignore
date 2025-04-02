@@ -24,3 +24,4 @@ font_dataset_npz*/
 *.env*
 weights/
 debug/
+test-data/

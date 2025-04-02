@@ -159,7 +159,7 @@ def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, t
     from PIL import Image
     
     # Use your existing dataset class
-    train_dataset = CharacterFontDataset(data_dir, train=train)
+    train_dataset = CharacterFontDataset(data_dir, train=train, use_annotations=False)
     
     # Process each image to extract character patches
     processed_data = []
@@ -244,10 +244,12 @@ def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, t
 class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
-    def __init__(self, root_dir: str, train: bool = True, char_size: int = 32, max_chars: int = 50):
+    def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
+                  max_chars: int = 50, use_annotations=False):
         self.root_dir = root_dir
         self.char_size = char_size
         self.max_chars = max_chars
+        self.use_annotations = use_annotations
         
         # Load font data using original approach
         mode = 'train' if train else 'test'
@@ -263,9 +265,16 @@ class CharacterFontDataset(Dataset):
         self.idx_to_font = {idx: font for font, idx in self.label_mapping.items()}
         
         # Load character class mapping
-        self.char_mapping = self._load_char_mapping(os.path.join(root_dir, 'classes.txt'))
-        
+        # Load character class mapping if it exists
+        self.char_mapping = {}
+        classes_path = os.path.join(root_dir, 'classes.txt')
+        if os.path.exists(classes_path):
+            self.char_mapping = self._load_char_mapping(classes_path)
+
         print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
+        if self.use_annotations:
+            print(f"Using character annotations. Found {len(self.char_mapping)} character mappings.")
+            print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
         
     def _load_char_mapping(self, mapping_file: str) -> dict:
         """Load mapping from class_id to character."""
@@ -403,19 +412,28 @@ class CharacterFontDataset(Dataset):
     
     def __getitem__(self, idx: int):
         # Get original image and its font target
-        img = self.data[idx].astype(np.float32)  # Keep as 0-255 range
+        img = self.data[idx].astype(np.float32)
         target = self.targets[idx]
 
-        # Get font name and sample ID for annotation lookup
+        # Convert the full image to tensor
+        img_tensor = torch.from_numpy(img).float()
+
+        # Add channel dimension if needed
+        if img_tensor.dim() == 2:  # If grayscale without channel
+            img_tensor = img_tensor.unsqueeze(0)
+        
+        # Skip annotation processing if not using annotations
+        if not self.use_annotations:
+            return img_tensor, target, []
+
+        # Get font name for annotation lookup
         font_idx = target
         font_name = self.idx_to_font.get(font_idx, f"unknown_font_{font_idx}")
         sample_id = f"sample_{idx:04d}"
-
-        # Try to find annotations
         yolo_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.txt")
-        annotations = []
-
+        
         # Process YOLO format annotations if available
+        annotations = []
         if os.path.exists(yolo_path):
             try:
                 with open(yolo_path, 'r') as f:
@@ -423,7 +441,6 @@ class CharacterFontDataset(Dataset):
                         parts = line.strip().split()
                         if len(parts) >= 5:
                             # Format: class_id, x_center, y_center, w, h
-                            # Store as-is in normalized coordinates
                             class_id = int(parts[0])
                             x_center = float(parts[1])
                             y_center = float(parts[2])
@@ -433,15 +450,8 @@ class CharacterFontDataset(Dataset):
             except Exception as e:
                 print(f"Error processing YOLO annotations for {yolo_path}: {e}")
 
-        # Convert the full image to tensor
-        img_tensor = torch.from_numpy(img).float()
-
-        # Add channel dimension if needed
-        if img_tensor.dim() == 2:  # If grayscale without channel
-            img_tensor = img_tensor.unsqueeze(0)
-
         return img_tensor, target, annotations
-    
+
 def char_collate_fn(batch):
     """
     Custom collate function for batches with images and annotations.
@@ -469,13 +479,14 @@ def char_collate_fn(batch):
 def get_char_dataloaders(
     data_dir: str,
     batch_size: int = 32,
-    num_workers: int = 4
+    num_workers: int = 4, 
+    use_annotations: bool = False
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
     """
-    train_dataset = CharacterFontDataset(data_dir, train=True)
-    test_dataset = CharacterFontDataset(data_dir, train=False)
+    train_dataset = CharacterFontDataset(data_dir, train=True, use_annotations=use_annotations)
+    test_dataset = CharacterFontDataset(data_dir, train=False, use_annotations=use_annotations)
 
     assert train_dataset.num_classes == test_dataset.num_classes, (
         f"Mismatch between train ({train_dataset.num_classes}) and "

@@ -502,6 +502,36 @@ class CRAFTFontClassifier(nn.Module):
             'labels': targets_batch
         }
     
+
+    def add_padding_to_polygons(polygons, padding_x=5, padding_y=8):
+        padded_polygons = []
+
+        for polygon in polygons:
+            # Convert to numpy array if it's not already
+            polygon = np.array(polygon)
+
+            # Find min and max coordinates
+            min_x = np.min(polygon[:, 0])
+            max_x = np.max(polygon[:, 0])
+            min_y = np.min(polygon[:, 1])
+            max_y = np.max(polygon[:, 1])
+
+            # Calculate width and height
+            width = max_x - min_x
+            height = max_y - min_y
+
+            # Create expanded rectangle
+            expanded_rect = np.array([
+                [min_x - padding_x, min_y - padding_y],
+                [max_x + padding_x, min_y - padding_y],
+                [max_x + padding_x, max_y + padding_y],
+                [min_x - padding_x, max_y + padding_y]
+            ])
+
+            padded_polygons.append(expanded_rect)
+
+        return padded_polygons
+    
     def extract_patches_with_craft(self, images):
         batch_size = images.size(0)
         all_patches = []
@@ -537,6 +567,8 @@ class CRAFTFontClassifier(nn.Module):
             # Extract character patches
             img_patches = []
             for polygon in polygons:
+                polygon = self.add_padding_to_polygons(polygon)
+
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
                 y_coords = [p[1] for p in polygon]
@@ -565,6 +597,7 @@ class CRAFTFontClassifier(nn.Module):
                 # Convert to tensor with channel dimension [1, H, W] - PyTorch format
                 patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
                 img_patches.append(patch_tensor)
+
                         
             # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
