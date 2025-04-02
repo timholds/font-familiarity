@@ -396,35 +396,7 @@ class CRAFTFontClassifier(nn.Module):
                 pil_img.save(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
             else:
                 pil_img.show()  # Display directly with PIL
-            
-            # Create figure
-            # fig, ax = plt.subplots(figsize=(5.12, 5.12), dpi=100)
-            # # fig, ax = plt.subplots(figsize=(rgb_img.shape[1]/100, rgb_img.shape[0]/100))  # Scale to image dimensions
-            # plt.tight_layout(pad=0)
-
-            # ax.imshow(rgb_img)
-            
-            # # Draw polygons
-            # for poly in polygons:
-            #     # Convert to numpy array for matplotlib
-            #     poly_array = np.array(poly)
-            #     # Create polygon patch
-            #     patch = mpatches.Polygon(poly_array, fill=False, edgecolor='red', linewidth=2)
-            #     ax.add_patch(patch)
-            
-            # ax.set_title(f"CRAFT Detections: {len(polygons)} characters")
-            # ax.axis('off')
-            
-            # # Save or show
-            # if save_path:
-            #     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-            #     image_label = targets[b].item()
-            #     filename = f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png"
-            #     plt.savefig(filename, bbox_inches='tight', pad_inches=0)
-            #     plt.close()
-            # else:
-            #     plt.show()
+           
 
     def extract_patches_from_annotations(self, images, targets, annotations):
         """
