@@ -336,7 +336,7 @@ class CRAFTFontClassifier(nn.Module):
             else:
                 plt.show()
 
-    def visualize_craft_detections(self, images, save_path=None):
+    def visualize_craft_detections(self, images, targets, label_mapping, save_path=None):
         """
         Visualize CRAFT character detections on original images
 
@@ -349,6 +349,8 @@ class CRAFTFontClassifier(nn.Module):
         import os
 
         batch_size = min(4, images.size(0))  # Visualize up to 4 samples
+        label_mapping = {v: k for k, v in label_mapping.items()}
+
 
         for b in range(batch_size):
             # Convert image to numpy and prepare for visualization
@@ -381,7 +383,7 @@ class CRAFTFontClassifier(nn.Module):
                 polygons = []
             
             # Create figure
-            fig, ax = plt.subplots(figsize=(5.12, 5.12))
+            fig, ax = plt.subplots(figsize=(5.12, 5.12), dpi=100)
             ax.imshow(rgb_img)
             
             # Draw polygons
@@ -398,7 +400,9 @@ class CRAFTFontClassifier(nn.Module):
             # Save or show
             if save_path:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                plt.savefig(f"{save_path}_craft_sample_{b}.png")
+
+                image_label = targets[b].item()
+                plt.savefig(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
                 plt.close()
             else:
                 plt.show()

@@ -112,6 +112,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
                 model.visualize_craft_detections(
                     images=images,  # Original images
+                    targets=targets,
+                    label_mapping=train_loader.dataset.label_mapping,
                     save_path=vis_path
                 )
 
