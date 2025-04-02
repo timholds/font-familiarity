@@ -17,7 +17,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
 import argparse
 
 # Running main takes the list of fonts passed in and 
@@ -332,7 +331,7 @@ class FontRenderer:
             )
             
             # Wait for initial character detection to complete
-            time.sleep(1.0)  # Additional time for initial rendering
+            time.sleep(.1)  # Additional time for initial rendering
             
             # Get total height of text
             total_height = driver.execute_script(
