@@ -31,7 +31,7 @@ class CharSimpleCNN(nn.Module):
         super().__init__() 
         self.input_size = input_size   
         self.transform = transforms.Compose([
-            transforms.Resize((self.input_size, self.input_size)),
+            #transforms.Resize((self.input_size, self.input_size)),
             transforms.Normalize(mean=[0.5], std=[0.5])  # Example normalization for grayscale images
         ])
         # Build feature layers with single conv per block
@@ -81,16 +81,13 @@ class CharSimpleCNN(nn.Module):
     def get_embedding(self, x):
         # print(f"Input shape to get_embedding: {x.shape}")
 
-        # x = x / 255.0
-
-        # Always force resize using F.interpolate (skip the transforms.Resize step)
+        # Always force resize using F.interpolate
         if x.shape[-2] != self.input_size or x.shape[-1] != self.input_size:
             # print(f"Resizing from {x.shape[-2]}x{x.shape[-1]} to {self.input_size}x{self.input_size}")
             x = F.interpolate(x, size=(self.input_size, self.input_size), mode='bilinear', align_corners=False)
 
         # Apply only normalization from transform
-        # x = F.normalize(x, mean=[0.5], std=[0.5])
-        x = TF.normalize(x, mean=[0.5], std=[0.5])
+        x = self.transform(x)
 
 
         x = self.features(x)
