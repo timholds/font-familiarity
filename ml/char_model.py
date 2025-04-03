@@ -251,7 +251,7 @@ class CRAFTFontClassifier(nn.Module):
     During inference, uses CRAFT to extract character patches.
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
-                 patch_size=32, embedding_dim=256, craft_fp16=True):
+                 patch_size=32, embedding_dim=256, craft_fp16=False):
         super().__init__()
         # Initialize CRAFT model for text detection
         self.craft = CRAFTModel(
@@ -260,8 +260,8 @@ class CRAFTFontClassifier(nn.Module):
             use_refiner=True,
             fp16=craft_fp16, 
             link_threshold=1.9,
-            text_threshold=.85,
-            low_text=.8,
+            text_threshold=.5,
+            low_text=.5,
         )
         
         # Initialize the font classifier

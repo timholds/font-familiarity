@@ -8,6 +8,9 @@
 [ ] Compare my model to a LoRA of gemmapali or a multimodal llama
 
 
+### Adversarial Fonts
+Alex Brush
+
 # Character Level Model
 ## Create detection labels
 font-detection-dataset/
