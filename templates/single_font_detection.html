@@ -75,7 +75,8 @@
         function initializeCharacterDetection() {
             const textBlock = document.getElementById('text-block');
             const containerRect = document.querySelector('.container').getBoundingClientRect();
-            const text = `{{ text|safe }}`;
+            const text = "{{ text|escape|replace('\n', '\\n')|replace('\"', '\\\"') }}";
+
             
             // Replace text content with wrapped spans
             textBlock.innerHTML = '';

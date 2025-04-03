@@ -329,7 +329,7 @@ class FontRenderer:
             text_block = wait.until(
                 EC.presence_of_element_located((By.ID, 'text-block'))
             )
-            
+        
             # Wait for initial character detection to complete
             time.sleep(.1)  # Additional time for initial rendering
             
@@ -340,6 +340,11 @@ class FontRenderer:
             
             content_height = total_height - self.image_size[1]
             if content_height <= 0:
+                rendered_html = driver.execute_script("return document.querySelector('.text-block').innerHTML")
+                rendered_text = driver.execute_script("return document.querySelector('.text-block').textContent")
+                print(f"Rendered HTML length: {len(rendered_html)}")
+                print(f"Rendered text length: {len(rendered_text)}")
+                print(f"Text block height: {total_height}")
                 raise ValueError(f"Not enough text content for font {font}")
                 
             scroll_step = content_height / (num_samples - 1)
