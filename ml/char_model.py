@@ -81,7 +81,7 @@ class CharSimpleCNN(nn.Module):
     def get_embedding(self, x):
         # print(f"Input shape to get_embedding: {x.shape}")
 
-        x = x / 255.0
+        # x = x / 255.0
 
         # Always force resize using F.interpolate (skip the transforms.Resize step)
         if x.shape[-2] != self.input_size or x.shape[-1] != self.input_size:
@@ -105,7 +105,6 @@ class CharSimpleCNN(nn.Module):
         return embeddings
     
     def forward(self, x):
-        x = x / 255.0 
         embeddings = self.get_embedding(x)
         # print(f"ebmedding shape {embeddings.shape}")
         x = self.classifier(embeddings)
@@ -534,17 +533,23 @@ class CRAFTFontClassifier(nn.Module):
         attention_masks = []
 
         for i in range(batch_size):
+            if len(images[i].shape) == 3 and images[i].shape[0] in [1, 3]:
+                img_np = images[i].permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
+            else:
+                img_np = images[i].cpu().numpy() # HWC
+        
+
             # Step 1: Convert tensor to numpy with proper format handling
-            img_tensor = images[i].cpu()
-            
-            img_np = img_tensor.permute(1, 2, 0).numpy()  # Convert CHW to HWC
+            # img_tensor = images[i].cpu().numpy().astype(np.uint8)
+            # img_np = img_tensor.permute(1, 2, 0).numpy()  # Convert CHW to HWC
 
             # Ensure correct RGB format for CRAFT
-            if img_np.shape[2] == 1:
-                img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
+            # if img_np.shape[2] == 1:
+            #     img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
             
             # Ensure uint8 range
             if img_np.max() <= 1.0:
+                print(f"!!!!! Converting image to uint8 from float range [0, 1]")
                 img_np = (img_np * 255).astype(np.uint8)
             else:
                 img_np = img_np.astype(np.uint8)

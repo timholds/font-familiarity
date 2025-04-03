@@ -55,6 +55,9 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
 
             # Forward pass - pass everything to the model
             optimizer.zero_grad()
+
+            # TODO visualize model inputs here to validate range and shape
+
             outputs = model(images, targets, annotations)
             
             # Handle different output formats from model
@@ -99,15 +102,19 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
 
-            # if char_model and hasattr(model, 'visualize_char_preds'):
-            #     model.visualize_char_preds(
-            #         patches=batch_data['patches'],
-            #         attention_mask=batch_data['attention_mask'],
-            #         predictions=pred,
-            #         targets=targets,
-            #         save_path=vis_path
-            #     )
+            # Extract patches for visualization
+            if char_model and hasattr(model, 'visualize_char_preds'):
+                with torch.no_grad(): 
+                    patch_data = model.extract_patches_with_craft(images) # images BHWC
+                    model.visualize_char_preds(
+                        patches=patch_data['patches'],
+                        attention_mask=patch_data['attention_mask'],
+                        predictions=pred,
+                        targets=targets,
+                        save_path=vis_path
+                    )
 
+        
             # Add CRAFT detection visualization
             if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
                 model.visualize_craft_detections(
