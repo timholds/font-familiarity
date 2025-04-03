@@ -15,7 +15,7 @@ from metrics import ClassificationMetrics
 import os
 from prettytable import PrettyTable
 import numpy as np
-from utils import get_model_path
+from utils import get_model_path, check_char_model_batch_independence
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -293,6 +293,8 @@ def main():
     
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
+
+    torch.manual_seed(0)
     
     # Initialize wandb
     wandb.init(
@@ -367,6 +369,10 @@ def main():
                 embedding_dim=args.embedding_dim,
                 craft_fp16=use_fp16
             ).to(device)
+            
+            # print("\nTesting batch independence...")
+            # char_model = model.font_classifier
+            # check_char_model_batch_independence(char_model, device=device)
             
         except RuntimeError as e:
             

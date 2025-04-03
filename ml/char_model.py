@@ -71,7 +71,7 @@ class CharSimpleCNN(nn.Module):
         self.embedding_layer = nn.Sequential(
             nn.Linear(self.flatten_dim, embedding_dim),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.25)
+            #nn.Dropout(0.25)
         )
     
         
