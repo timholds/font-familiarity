@@ -1,22 +1,15 @@
 name: Claude Project Sync
-
 # Syncs all files in the repository with the "Project Knowledge" section of a Claude project
-
-# Step 1: Get the CLAUDE_TOKEN value from inspect / application / cookies / sessionKey (starts with "sk-ant-")
-# and CLAUDE_TOKEN as a secret in the repository settings / secrets and variables / actions / repository secrets
-
-# Step 2: Get the CLAUDE_PROJECT_ID from the URL of the project in Claude and add it as another repository secret
-
-# Step 3: optionally, create a .claudeinclude file and put the files/folders you want to include there, 
-# Otherwise, it will update all files listed in .gitignore and .claudeignore
-
-# Sometimes it fails, but rerunning it usually works.
+# Get the CLAUDE_TOKEN from inspect / application / cookies / sessionKey (starts with "sk-ant-")
+# Get the CLAUDE_PROJECT_ID from the URL of the project in Claude
+# If .claudeinclude file exists, only files/folders listed there will be included
+# Otherwise, ignores files listed in .gitignore and .claudeignore
 
 on:
   push:
-    branches: [main, char]
+    branches: [main]
   pull_request:
-    branches: [main, char]
+    branches: [main]
   # Allow manual triggering
   workflow_dispatch:
 
@@ -44,7 +37,7 @@ jobs:
           CLAUDE_TOKEN: ${{ secrets.CLAUDE_TOKEN }}
           CLAUDE_PROJECT_ID: ${{ secrets.CLAUDE_PROJECT_ID }}
         run: |
-          # Create a file to test Claude API authentication
+          # Create a file to test Claude API authentication with retry capability
           cat > test_claude_auth.py << 'EOF'
           #!/usr/bin/env python3
           import os
@@ -55,11 +48,18 @@ jobs:
           import urllib.error
           import urllib.parse
           import gzip
-
+          import time
+          import random
+                  
           # Configuration
           CLAUDE_TOKEN = os.environ.get('CLAUDE_TOKEN')
           PROJECT_ID = os.environ.get('CLAUDE_PROJECT_ID')
-
+                  
+          # Retry configuration
+          MAX_RETRIES = 8
+          INITIAL_BACKOFF = 30  # Initial delay in seconds
+          MAX_BACKOFF = 300     # Maximum delay in seconds (5 minutes)
+                  
           if not CLAUDE_TOKEN or not PROJECT_ID:
               print("Error: Missing CLAUDE_TOKEN or PROJECT_ID environment variables")
               sys.exit(1)
@@ -68,7 +68,14 @@ jobs:
           API_URL = "https://claude.ai/api"
           ORGANIZATION_URL = f"{API_URL}/organizations"
 
-          def _make_request(method, endpoint, data=None):
+          def exponential_backoff(attempt):
+              """Calculate exponential backoff time with jitter"""
+              delay = min(MAX_BACKOFF, INITIAL_BACKOFF * (2 ** attempt))
+              # Add jitter (random variation) to prevent synchronized retries
+              jitter = random.uniform(0.8, 1.2)
+              return delay * jitter
+
+          def _make_request(method, endpoint, data=None, attempt=0):
               url = f"{API_URL}{endpoint}"
               headers = {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0",
@@ -84,16 +91,16 @@ jobs:
               req = urllib.request.Request(url, method=method)
               for key, value in headers.items():
                   req.add_header(key, value)
-
+              
               # Add cookies
               cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
               req.add_header("Cookie", cookie_string)
-
+              
               # Add data if present
               if data:
                   json_data = json.dumps(data).encode("utf-8")
                   req.data = json_data
-
+              
               try:
                   # Make the request
                   with urllib.request.urlopen(req) as response:
@@ -104,7 +111,7 @@ jobs:
                           content = gzip.decompress(response.read())
                       else:
                           content = response.read()
-
+                      
                       content_str = content.decode("utf-8")
                       return json.loads(content_str)
               except urllib.error.HTTPError as e:
@@ -119,54 +126,78 @@ jobs:
                       print(f"Error response: {error_str}")
                   except:
                       print("Could not decode error response")
-                  sys.exit(1)
-                  
-          try:
-              print("Testing Claude API authentication...")
-              orgs = _make_request("GET", "/organizations")
-              if not orgs:
-                  print("Error: No organizations found")
-                  sys.exit(1)
-                  
-              print(f"Success! Found {len(orgs)} organizations")
-              
-              # Get the first organization with chat capability
-              org_id = None
-              for org in orgs:
-                  capabilities = org.get("capabilities", [])
-                  if "chat" in capabilities and (
-                      "claude_pro" in capabilities or 
-                      "raven" in capabilities
-                  ):
-                      org_id = org["uuid"]
-                      print(f"Selected organization: {org['name']} (ID: {org_id})")
-                      break
                       
-              if not org_id:
-                  print("Error: No organization with required capabilities found")
+                  # Check if we should retry
+                  if attempt < MAX_RETRIES:
+                      backoff_time = exponential_backoff(attempt)
+                      print(f"Retrying in {backoff_time:.2f} seconds... (Attempt {attempt+1}/{MAX_RETRIES})")
+                      time.sleep(backoff_time)
+                      return _make_request(method, endpoint, data, attempt + 1)
+                  else:
+                      print("Maximum retry attempts reached. Giving up.")
+                      sys.exit(1)
+              except Exception as e:
+                  print(f"Unexpected error: {e}")
+                  if attempt < MAX_RETRIES:
+                      backoff_time = exponential_backoff(attempt)
+                      print(f"Retrying in {backoff_time:.2f} seconds... (Attempt {attempt+1}/{MAX_RETRIES})")
+                      time.sleep(backoff_time)
+                      return _make_request(method, endpoint, data, attempt + 1)
+                  else:
+                      print("Maximum retry attempts reached. Giving up.")
+                      sys.exit(1)
+                  
+          def test_authentication():
+              try:
+                  print("Testing Claude API authentication...")
+                  orgs = _make_request("GET", "/organizations")
+                  if not orgs:
+                      print("Error: No organizations found")
+                      sys.exit(1)
+                      
+                  print(f"Success! Found {len(orgs)} organizations")
+                  
+                  # Get the first organization with chat capability
+                  org_id = None
+                  for org in orgs:
+                      capabilities = org.get("capabilities", [])
+                      if "chat" in capabilities and (
+                          "claude_pro" in capabilities or 
+                          "raven" in capabilities
+                      ):
+                          org_id = org["uuid"]
+                          print(f"Selected organization: {org['name']} (ID: {org_id})")
+                          break
+                          
+                  if not org_id:
+                      print("Error: No organization with required capabilities found")
+                      sys.exit(1)
+                  
+                  # Test project access
+                  projects = _make_request("GET", f"/organizations/{org_id}/projects")
+                  
+                  print(f"Success! Found {len(projects)} projects")
+                  
+                  # Check for our specific project
+                  project_found = False
+                  for project in projects:
+                      if project["uuid"] == PROJECT_ID:
+                          print(f"Found project: {project['name']} (ID: {PROJECT_ID})")
+                          project_found = True
+                          break
+                          
+                  if not project_found:
+                      print(f"Warning: Project with ID {PROJECT_ID} not found in organization {org_id}")
+                      
+                  print("Authentication test completed successfully!")
+                  
+              except Exception as e:
+                  print(f"Error: An unexpected error occurred: {e}")
                   sys.exit(1)
               
-              # Test project access
-              projects = _make_request("GET", f"/organizations/{org_id}/projects")
-              
-              print(f"Success! Found {len(projects)} projects")
-              
-              # Check for our specific project
-              project_found = False
-              for project in projects:
-                  if project["uuid"] == PROJECT_ID:
-                      print(f"Found project: {project['name']} (ID: {PROJECT_ID})")
-                      project_found = True
-                      break
-                      
-              if not project_found:
-                  print(f"Warning: Project with ID {PROJECT_ID} not found in organization {org_id}")
-                  
-              print("Authentication test completed successfully!")
-              
-          except Exception as e:
-              print(f"Error: An unexpected error occurred: {e}")
-              sys.exit(1)
+          # Run the main function
+          if __name__ == "__main__":
+              test_authentication()
           EOF
 
           # Make the test script executable
@@ -586,7 +617,7 @@ jobs:
                               print(f"Failed to upload: {file_path_str}")
                               
                       # Add a small delay to prevent rate limiting
-                      time.sleep(10)
+                      time.sleep(8)
                       
                   except Exception as e:
                       print(f"Error syncing {file_path_str}: {e}")
