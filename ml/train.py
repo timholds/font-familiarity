@@ -297,7 +297,7 @@ def main():
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--initial_channels", type=int, default=16)
     parser.add_argument("--char_model", action="store_true", help="Use character-based model")
-    
+    parser.add_argument("--pretrained_model", type=str, default=None, help="Path to pretrained model")
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -322,6 +322,18 @@ def main():
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
+
+    if args.pretrained_model:
+        print(f"Loading checkpoint from {args.resume_from}")
+        checkpoint = torch.load(args.resume_from, map_location=device)
+
+        # Extract checkpoint information
+        start_epoch = checkpoint['epoch']
+        best_test_acc = checkpoint['test_metrics']['test/top1_acc']
+        num_classes = checkpoint['num_classes']
+        
+        print(f"Resuming from epoch {start_epoch}/{args.epochs} with previous best test accuracy {best_test_acc:.2f}%")
+        
     
     
     # Load data
@@ -423,7 +435,9 @@ def main():
         print(f"Number of classes from loader: {num_classes}")
         print(f"Model number of classes: {model.classifier.weight.shape[0]}")
 
-
+    if args.pretrained_model:
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print("Model state loaded from checkpoint")
     total_params     = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'Total params {total_params}')
