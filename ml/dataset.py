@@ -6,9 +6,7 @@ from typing import Tuple
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
-    with np.load(file_path) as data:
-        data = np.load(file_path, mmap_mode='r')
-
+    with np.load(file_path, mmap_mode='r') as data:
         # Load data using memory mapping
         images = data['images']
         # Load labels and adjust indexing (convert from 1-based to 0-based)
@@ -30,11 +28,21 @@ class FontDataset(Dataset):
     def __init__(self, root_dir: str, train: bool = True):
         self.root_dir = root_dir
         mode = 'train' if train else 'test'
-        data_file = os.path.join(root_dir, f'{mode}.npz')
+        h5_file = os.path.join(root_dir, f'{mode}.h5')
+        npz_file = os.path.join(root_dir, f'{mode}.npz')
         
-        # Load data from NPZ file
-        self.data, self.targets = load_npz_mmap(data_file)
-
+        # Choose correct loader based on file existence
+        if os.path.exists(h5_file):
+            print(f"Loading H5 dataset from {h5_file}")
+            self.data, self.targets, self.h5_file = load_h5_dataset(h5_file)
+            self.using_h5 = True
+        elif os.path.exists(npz_file):
+            print(f"Loading NPZ dataset from {npz_file}")
+            self.data, self.targets = load_npz_mmap(npz_file)
+            self.using_h5 = False
+            self.h5_file = None
+        else:
+            raise FileNotFoundError(f"No dataset file found at {h5_file} or {npz_file}")
         
         # Load label mapping
         label_map_path = os.path.join(root_dir, 'label_mapping.npy')
@@ -43,6 +51,11 @@ class FontDataset(Dataset):
         print(f"Number of classes: {self.num_classes}")
         print(f"Label mapping loaded from {label_map_path}")
       
+    def __del__(self):
+        # Close H5 file if it's open
+        if hasattr(self, 'h5_file') and self.h5_file is not None:
+            self.h5_file.close()
+
     def _validate_targets(self):
         """Validate that all targets are within the correct range."""
         min_target = self.targets.min()
@@ -121,13 +134,40 @@ def get_dataloaders(
     
     return train_loader, test_loader, train_dataset.num_classes
 
-
+def load_h5_dataset(file_path):
+    """Load dataset from H5 file format"""
+    import h5py
+    
+    # Ensure proper extension
+    h5_filename = file_path if file_path.endswith('.h5') else f"{file_path}.h5"
+    
+    try:
+        # Open the H5 file
+        f = h5py.File(h5_filename, 'r')
+        
+        # Access the datasets
+        images = f['images']
+        labels = f['labels'][:]  # Load labels fully into memory as they're small
+        
+        # Convert labels if needed (keeping your 1-indexed vs 0-indexed logic)
+        if not (labels == 0).any():  # labels are 1-indexed
+            labels -= 1
+            
+        assert (labels >= 0).all(), "Negative label indices found after converting to 0 index"
+        
+        return images, labels, f  # Return file handle to keep it open
+    except Exception as e:
+        print(f"Error loading H5 dataset: {e}")
+        # Try loading as npz for backward compatibility
+        try:
+            return load_npz_mmap(file_path.replace('.h5', '.npz')), None
+        except:
+            raise RuntimeError(f"Failed to load dataset from {file_path}")
 
 def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
     # TODO are we sticking with grayscale images?
-    with np.load(file_path) as data:
-        data = np.load(file_path, mmap_mode='r')
+    with np.load(file_path, allow_pickle=True, mmap_mode='r') as data:
 
         # Load data using memory mapping
         images = data['images']
@@ -253,8 +293,24 @@ class CharacterFontDataset(Dataset):
         
         # Load font data using original approach
         mode = 'train' if train else 'test'
-        data_file = os.path.join(root_dir, f'{mode}.npz')
-        self.data, self.targets = load_char_npz_mmap(data_file)
+        #data_file = os.path.join(root_dir, f'{mode}.h5')
+        h5_file = os.path.join(root_dir, f'{mode}.h5')
+        npz_file = os.path.join(root_dir, f'{mode}.npz')
+        
+        # Choose correct loader based on file existence
+        if os.path.exists(h5_file):
+            print(f"Loading H5 dataset from {h5_file}")
+            self.data, self.targets, self.h5_file = load_h5_dataset(h5_file)
+            self.using_h5 = True
+        elif os.path.exists(npz_file):
+            print(f"Loading NPZ dataset from {npz_file}")
+            self.data, self.targets = load_char_npz_mmap(npz_file)
+            self.using_h5 = False
+            self.h5_file = None
+        else:
+            raise FileNotFoundError(f"No dataset file found at {h5_file} or {npz_file}")
+        
+        #self.data, self.targets = load_char_npz_mmap(data_file)
         
         # Load label mapping
         label_map_path = os.path.join(root_dir, 'label_mapping.npy')
@@ -412,8 +468,13 @@ class CharacterFontDataset(Dataset):
     
     def __getitem__(self, idx: int):
         # Get original image and its font target
+        # img = self.data[idx].astype(np.float32)
+        # target = self.targets[idx]
+
         img = self.data[idx].astype(np.float32)
-        target = self.targets[idx]
+        target = int(self.targets[idx])  # Ensure it's an integer
+        target = torch.tensor(target, dtype=torch.long)  # Convert to torch.long tensor
+
 
         # Convert the full image to tensor
         img_tensor = torch.from_numpy(img).float()

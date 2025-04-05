@@ -25,3 +25,4 @@ font_dataset_npz*/
 weights/
 debug/
 test-data/
+*.h5

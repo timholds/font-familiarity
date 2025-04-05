@@ -181,8 +181,8 @@ class FontRenderer:
         server = ServerThread(app, self.port)
         server.start()
         self.server_thread = server
-    
         time.sleep(1)  # Wait for server to start
+
 
     def generate_dataset(self):
         self.start_flask()

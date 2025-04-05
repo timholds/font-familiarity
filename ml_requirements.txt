@@ -11,7 +11,7 @@ scikit-image
 wandb
 prettytable
 matplotlib
-
+h5py
 # data generation
 # flask
 # selenium

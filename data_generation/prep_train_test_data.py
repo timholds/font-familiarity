@@ -57,6 +57,87 @@ def save_dataset(image_paths, labels, filename):
     file_size = os.path.getsize(filename) / (1024 ** 3)  # Size in GB
     print(f"Saved {filename} with {len(images)} images ({file_size:.2f} GB)")
 
+def save_dataset_in_batches(image_paths, labels, filename, batch_size=1000):
+    """Load and save images in batches using HDF5 to avoid memory issues"""
+    import h5py
+    h5_filename = filename if filename.endswith('.h5') else f"{filename}.h5"
+
+    total_images = len(image_paths)
+    num_batches = (total_images + batch_size - 1) // batch_size  # Ceiling division
+    
+    # Get the shape and dtype of the first image to initialize the dataset
+    with Image.open(image_paths[0]) as sample_img:
+        sample_array = np.array(sample_img)
+        img_shape = sample_array.shape
+        img_dtype = sample_array.dtype
+    
+    # Create HDF5 file and initialize datasets
+    with h5py.File(filename, 'w') as f:
+        # Create resizable datasets
+        images_dataset = f.create_dataset(
+            'images', 
+            shape=(total_images, *img_shape),
+            dtype=img_dtype,
+            chunks=(1, *img_shape),  # Chunking for efficient access
+            compression='gzip'       # Use compression to save space
+        )
+        
+        labels_dataset = f.create_dataset(
+            'labels',
+            shape=(total_images,),
+            dtype=np.int32,
+            chunks=(min(1000, total_images),),
+            compression='gzip'
+        )
+        
+        # Process images in batches
+        current_idx = 0
+        for batch in range(num_batches):
+            print(f"Processing batch {batch+1}/{num_batches}...")
+            start_idx = batch * batch_size
+            end_idx = min((batch + 1) * batch_size, total_images)
+            batch_size_actual = end_idx - start_idx
+            
+            batch_images = []
+            batch_indices = []
+            
+            # Load this batch of images
+            for i, img_path in enumerate(tqdm(image_paths[start_idx:end_idx])):
+                try:
+                    with Image.open(img_path) as img:
+                        img_array = np.array(img)
+                        if img_array.shape == img_shape:  # Ensure consistent shapes
+                            batch_images.append(img_array)
+                            batch_indices.append(start_idx + i)
+                        else:
+                            print(f"Skipping {img_path}: inconsistent shape {img_array.shape}")
+                except Exception as e:
+                    print(f"Error processing {img_path}: {e}")
+            
+            # Write this batch to the HDF5 file
+            if batch_images:
+                batch_images_array = np.stack(batch_images)
+                batch_labels = np.array([labels[i] for i in batch_indices])
+                
+                # Write to the correct positions in the datasets
+                images_dataset[batch_indices] = batch_images_array
+                labels_dataset[batch_indices] = batch_labels
+                
+                current_idx += len(batch_images)
+                
+            # Flush to disk after each batch
+            f.flush()
+    
+    # Create a companion NPZ file with just the labels for quick loading
+    filename = filename if filename.endswith('.h5') else f"{filename}.h5"
+
+    
+    file_size = os.path.getsize(filename) / (1024 ** 3)  # Size in GB
+    print(f"Saved {filename} with {current_idx} images ({file_size:.2f} GB)")
+    
+    return filename
+
+
 def process_dataset(input_image_dir, output_dir, test_size=0.2, include_annotations=False):
     """Create and save train/test datasets"""
     
@@ -135,11 +216,11 @@ def process_dataset(input_image_dir, output_dir, test_size=0.2, include_annotati
     
     # Process and save training data
     print("\nProcessing training data...")
-    save_dataset(train_paths, train_labels, os.path.join(output_dir, 'train.npz'))
+    save_dataset_in_batches(train_paths, train_labels, os.path.join(output_dir, 'train.h5'))
     
     # Process and save test data
     print("\nProcessing test data...")
-    save_dataset(test_paths, test_labels, os.path.join(output_dir, 'test.npz'))
+    save_dataset_in_batches(test_paths, test_labels, os.path.join(output_dir, 'test.h5'))
     
     print(f"\nComplete! Saved to {output_dir}")
     print(f"Training samples: {len(train_paths)}")
