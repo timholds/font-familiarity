@@ -303,7 +303,7 @@ def main():
 
     torch.manual_seed(0)
     
-    # Initialize wandb
+    # Set up metrics logging
     wandb.init(
         project="Font-Familiarity",
         name=f"experiment_{time.strftime('%Y-%m-%d_%H-%M-%S')}",
@@ -315,7 +315,6 @@ def main():
         }
     )
     
-    # Set up metrics logging
     wandb.define_metric("batch_loss", step_metric="global_step")
     wandb.define_metric("batch_acc", step_metric="global_step")
     wandb.define_metric("*", step_metric="epoch")
@@ -324,8 +323,8 @@ def main():
     print(f"Using device: {device}")
 
     if args.pretrained_model:
-        print(f"Loading checkpoint from {args.resume_from}")
-        checkpoint = torch.load(args.resume_from, map_location=device)
+        print(f"Loading checkpoint from {args.pretrained_model}")
+        checkpoint = torch.load(args.pretrained_model, map_location=device)
 
         # Extract checkpoint information
         start_epoch = checkpoint['epoch']
@@ -333,9 +332,7 @@ def main():
         num_classes = checkpoint['num_classes']
         
         print(f"Resuming from epoch {start_epoch}/{args.epochs} with previous best test accuracy {best_test_acc:.2f}%")
-        
-    
-    
+
     # Load data
     print("Loading data...")
     if args.char_model:
@@ -394,7 +391,6 @@ def main():
             # check_char_model_batch_independence(char_model, device=device)
             
         except RuntimeError as e:
-            
             if "CUDA" in str(e):
                 print(f"CUDA error during model initialization: {e}")
                 print("Trying with CPU for CRAFT model...")
@@ -456,25 +452,89 @@ def main():
         lr=args.learning_rate,
         weight_decay=args.weight_decay
     )
-    
-    # Set up schedulers
-    warmup_scheduler = LinearLR(
-        optimizer,
-        start_factor=0.1,
-        total_iters=warmup_epochs * len(train_loader)
-    )
-    
-    main_scheduler = CosineAnnealingLR(
-        optimizer,
-        T_max=(args.epochs - warmup_epochs) * len(train_loader),
-        eta_min=1e-6
-    )
+
+    if args.pretrained_model:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        print("Optimizer state loaded from checkpoint")
+
+        # Calculate iterations completed so far
+        total_iters_completed = start_epoch * len(train_loader)
+        remaining_warmup_epochs = max(0, warmup_epochs - start_epoch)
+
+        # Configure warmup scheduler
+        if start_epoch < warmup_epochs:
+            # Still in warmup phase - calculate current factor and remaining iters
+            progress = start_epoch / warmup_epochs
+            current_factor = 0.1 + 0.9 * progress  # Assuming start_factor=0.1
+            warmup_scheduler = LinearLR(
+                optimizer,
+                start_factor=current_factor,
+                end_factor=1.0,
+                total_iters=remaining_warmup_epochs * len(train_loader)
+            )
+            print(f"Resuming warmup schedule at factor {current_factor:.4f} for {remaining_warmup_epochs} more epochs")
+        else:
+            # Warmup completed, create dummy scheduler
+            warmup_scheduler = LinearLR(
+                optimizer, 
+                start_factor=1.0,
+                end_factor=1.0,
+                total_iters=1
+            )
+            print("Warmup phase already completed")
+
+        # Configure cosine scheduler
+        if start_epoch >= warmup_epochs:
+            # Already in cosine phase
+            cosine_iters_completed = (start_epoch - warmup_epochs) * len(train_loader)
+            total_cosine_iters = (args.epochs - warmup_epochs) * len(train_loader)
+            # Create with proper last_epoch (-1 is the default for starting fresh)
+            main_scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=total_cosine_iters,
+                eta_min=1e-6,
+                last_epoch=cosine_iters_completed - 1  # -1 because step() will be called again
+            )
+            print(f"Resuming cosine schedule after {cosine_iters_completed} iterations")
+        else:
+            # Not yet in cosine phase
+            main_scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=(args.epochs - warmup_epochs) * len(train_loader),
+                eta_min=1e-6
+            )
+            print("Cosine phase not yet started")
+            
+        # Verify learning rate is correct by comparing with saved value
+        if 'train_metrics' in checkpoint and 'train/learning_rate' in checkpoint['train_metrics']:
+            checkpoint_lr = checkpoint['train_metrics']['train/learning_rate']
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"Checkpoint LR: {checkpoint_lr:.6f}, Current LR: {current_lr:.6f}")
+            
+            # If there's a significant mismatch, force the LR
+            if abs(checkpoint_lr - current_lr) > 1e-5:
+                print(f"Warning: LR mismatch detected. Forcing LR to {checkpoint_lr}")
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = checkpoint_lr
+    else:
+        # Initialize schedulers fresh 
+        warmup_scheduler = LinearLR(
+            optimizer,
+            start_factor=0.1,
+            total_iters=warmup_epochs * len(train_loader)
+        )
+
+        main_scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=(args.epochs - warmup_epochs) * len(train_loader),
+            eta_min=1e-6
+        )
     
     print("Starting training...")
     best_test_acc = 0.0
     metrics_calculator.reset_timing()
     
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         print(f'\nEpoch: {epoch+1}/{args.epochs}')
         epoch_start_time = time.time()
         
