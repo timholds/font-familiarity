@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
+import torchvision
 import torchvision.transforms.functional as TF
 
 
@@ -270,6 +271,103 @@ class CRAFTFontClassifier(nn.Module):
         self.device = device
         self.patch_size = patch_size
         
+
+    def extract_patches_batch(self, batch_images: torch.Tensor, batch_polys: list):
+        """Fully GPU-based patch extraction"""
+        # Convert polygons to ROI tensors
+        rois = []
+        for b_idx, polys in enumerate(batch_polys):
+            if not polys:  # Fallback to full image
+                rois.append([b_idx, 0, 0, 1, 1])  # Will be scaled later
+                continue
+                
+            for poly in polys:
+                x_coords = poly[:, 0]
+                y_coords = poly[:, 1]
+                x1 = x_coords.min()
+                y1 = y_coords.min()
+                x2 = x_coords.max()
+                y2 = y_coords.max()
+                rois.append([b_idx, y1, x1, y2, x2])
+
+        # Handle empty case
+        if not rois: 
+            return torch.zeros(), torch.zeros()
+
+        # Convert to tensor and normalize coordinates
+        roi_tensor = torch.tensor(rois, dtype=torch.float32, device=self.device)
+        roi_tensor[:, 1:] /= torch.tensor([
+            batch_images.shape[2],  # Height
+            batch_images.shape[3],  # Width
+            batch_images.shape[2],
+            batch_images.shape[3]
+        ], device=self.device)
+
+        # Batch extract using ROI align
+        patches = torchvision.ops.roi_align(
+            batch_images,
+            roi_tensor,
+            output_size=(self.patch_size, self.patch_size)
+        )
+
+        # Create attention mask
+        valid_counts = [len(p) if p else 1 for p in batch_polys]
+        max_patches = max(valid_counts)
+        mask = torch.zeros(
+            (batch_images.size(0), max_patches),
+            device=self.device
+        )
+        for i, count in enumerate(valid_counts):
+            mask[i, :count] = 1
+
+        return patches, mask
+    
+    def get_batch_polygons(self, batch_images: torch.Tensor, ratios_w: torch.Tensor, ratios_h: torch.Tensor):
+        """Batch process pre-normalized images on GPU"""
+        # Forward pass
+        with torch.no_grad():
+            y, _ = self.net(batch_images)
+            if self.refiner:
+                y, _ = self.refiner(y, None)
+
+        # Batch post-processing
+        text_scores = y[..., 0]  # [B, H, W]
+        link_scores = y[..., 1] if not self.refiner else y[..., 0]
+        
+        # Threshold maps on GPU
+        text_mask = (text_scores > self.text_threshold)
+        link_mask = (link_scores > self.link_threshold)
+        combined_mask = text_mask & link_mask
+
+        # Find connected components using PyTorch's label
+        batch_labels = [
+            torch.ops.torchvision.label_connected_components(mask.float())
+            for mask in combined_mask
+        ]
+
+        # Extract polygon coordinates for each component
+        batch_polys = []
+        for b_idx in range(batch_images.size(0)):
+            polys = []
+            for label in torch.unique(batch_labels[b_idx]):
+                if label == 0: continue
+                # Get component coordinates (GPU tensor)
+                y_coords, x_coords = torch.where(batch_labels[b_idx] == label)
+                if len(x_coords) < 4: continue
+                
+                # Find convex hull (custom kernel or approximation)
+                poly_points = self._convex_hull(x_coords, y_coords)
+                
+                # Scale coordinates using precomputed ratios
+                scaled_poly = poly_points * torch.tensor([
+                    [ratios_w[b_idx], ratios_h[b_idx]]
+                ], device=self.device)
+                
+                polys.append(scaled_poly)
+            batch_polys.append(polys)
+
+        return batch_polys
+
     def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
         """
         Visualize character patches (for debugging)
@@ -393,7 +491,6 @@ class CRAFTFontClassifier(nn.Module):
             else:
                 pil_img.show()  # Display directly with PIL
            
-
     def extract_patches_from_annotations(self, images, targets, annotations):
         """
         Extract character patches using ground truth annotations during training
@@ -494,7 +591,6 @@ class CRAFTFontClassifier(nn.Module):
             'labels': targets_batch
         }
     
-
     def add_padding_to_polygons(polygons, padding_x=5, padding_y=8):
         padded_polygons = []
 
@@ -524,7 +620,7 @@ class CRAFTFontClassifier(nn.Module):
 
         return padded_polygons
     
-    def extract_patches_with_craft(self, images):
+    def extract_patches_with_craft_old(self, images):
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
@@ -654,7 +750,7 @@ class CRAFTFontClassifier(nn.Module):
             'attention_mask': attention_batch
         }
     
-    def extract_patches_with_craft_batch(self, images, ratio_w=None, ratio_h=None):
+    def extract_patches_with_craft(self, images, ratio_w=None, ratio_h=None):
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
@@ -683,7 +779,8 @@ class CRAFTFontClassifier(nn.Module):
             # Get polygons from CRAFT
             try:
                 # images is BCHW
-                polygons = self.craft.get_polygons(images[i], ratio_w, ratio_h)
+                # polygons = self.craft.get_polygons(images[i], ratio_w, ratio_h)
+                batch_polys = self.craft.get_batch_polygons(images, ratio_w, ratio_h)
             except Exception as e:
                 print(f"CRAFT error: {e}")
                 polygons = []
@@ -709,7 +806,7 @@ class CRAFTFontClassifier(nn.Module):
                     continue
                 
                 # Extract patch
-                patch = images[i][y1:y2, x1:x2].copy()
+                patch = images[i][:, y1:y2, x1:x2]  # CHW format
                 
                 # Convert to grayscale
                 # breakpoint()
@@ -821,7 +918,9 @@ class CRAFTFontClassifier(nn.Module):
             # Always return grayscale
             return np.zeros((self.patch_size, self.patch_size), dtype=np.float32)
     
-    def forward(self, images, targets=None, annotations=None):
+    # def forward(self, images, targets=None, annotations=None):
+
+    def forward(self, batch):
         """
         Forward pass that handles both training and inference modes
 
@@ -834,37 +933,18 @@ class CRAFTFontClassifier(nn.Module):
             Dictionary with model outputs
         """
 
-        if isinstance(images, dict):
-            ratio_h = images.get('ratio_h')
-            ratio_w = images.get('ratio_w')
-            # Extract the actual image tensor
-            batch_images = images['images']
-            # Get targets and annotations if available in dict
-            if targets is None and 'labels' in images:
-                targets = images['labels']
-            if annotations is None and 'annotations' in images:
-                annotations = images['annotations']
-        else:
-            # Images is already a tensor
-            batch_images = images
-        # Now proceed with normal processing
-        # if self.training and annotations is not None:
-        #     # Training mode: use provided annotations to extract patches
-        #     batch_data = self.extract_patches_from_annotations(images, targets, annotations)
-        # else:
-            # Inference mode: use CRAFT to extract patches
-            batch_data = self.extract_patches_with_craft_batch(batch_images)
-        if targets is not None:
-            batch_data['labels'] = targets.to(self.device)
+        # 1. Get preprocessed images and ratios from DataLoader
+        images = batch['images'].to(self.device)  # [B, C, H, W]
+        ratios_w = batch['ratio_w'].to(self.device)
+        ratios_h = batch['ratio_h'].to(self.device)
 
-        # Process patches with font classifier
-        output = self.font_classifier(
-            batch_data['patches'], 
-            batch_data['attention_mask']
-        )
+        # 2. Batch polygon detection (entirely on GPU)
+        batch_polys = self.craft.get_batch_polygons(images, ratios_w, ratios_h)
 
-        # Add labels to output if available
-        if 'labels' in batch_data:
-            output['labels'] = batch_data['labels']
-            
-        return output
+        # 3. Batch patch extraction (no CPU sync)
+        patches, mask = self.extract_patches_batch(images, batch_polys)
+        
+        # 4. Process through classifier
+        return self.font_classifier(patches, mask)
+
+        

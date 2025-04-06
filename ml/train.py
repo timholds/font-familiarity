@@ -58,7 +58,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
 
             # TODO visualize model inputs here to validate range and shape
 
-            outputs = model(images, targets, annotations)
+            outputs = model(batch_data)
             
             # Handle different output formats from model
             if isinstance(outputs, tuple):
@@ -105,7 +105,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             # Extract patches for visualization
             if char_model and hasattr(model, 'visualize_char_preds'):
                 with torch.no_grad(): 
-                    patch_data = model.extract_patches_with_craft_batch(images) # images BHWC
+                    patch_data = model.extract_patches_with_craft(images) # images BHWC
                     model.visualize_char_preds(
                         patches=patch_data['patches'],
                         attention_mask=patch_data['attention_mask'],

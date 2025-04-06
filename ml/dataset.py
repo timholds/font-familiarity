@@ -321,20 +321,17 @@ class CombinedTransform:
             tuple: (img_tensor, ratio_h, ratio_w)
         """
         # Ensure image is uint8 for ToPILImage
-        print(f"~~~~~~~~ Image to combinedtransforms dtype: {img.dtype}, shape: {img.shape}")
         height, width = img.shape[:2]
         
         # Calculate target size
+        scaled_size = int(self.canvas_size * self.craft_mag_ratio)
         target_size = self.canvas_size
-        if self.craft_mag_ratio > 0:
-            magnified_size = max(height, width) * self.craft_mag_ratio
-            if magnified_size > target_size:
-                target_size = magnified_size
-                
-        ratio = min(target_size / height, target_size / width)
-        target_h, target_w = int(height * ratio), int(width * ratio)
+
+        ratio = max(height, width) / float(scaled_size)
+        target_h = int(height / ratio)
+        target_w = int(width / ratio)
         
-        # Calculate ratios for polygon restoration
+        # Calculate inverse ratios for coordinate mapping
         ratio_h = height / target_h
         ratio_w = width / target_w
         
@@ -348,7 +345,7 @@ class CombinedTransform:
         img_resized = cv2.resize(img, (target_w, target_h))
         
         # Normalize (replicates normalizeMeanVariance)
-        img_normalized = (img_resized / 255.0 - self.mean) / self.std
+        img_normalized = (img_resized / 255.0 - self.norm_mean) / self.norm_std
         
         # Convert to tensor in CHW format
         img_tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).float()
