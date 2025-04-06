@@ -48,7 +48,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         if char_model:
             # For character-based model (with CRAFT)
             # Batch data is a dictionary with images, labels, and annotations
-            images = batch_data['images'].to(device)
+            images = batch_data['images'].to(device) # images are BHWC
             targets = batch_data['labels'].to(device)
             annotations = batch_data['annotations'] if 'annotations' in batch_data else None
             batch_size = targets.size(0)
@@ -105,7 +105,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             # Extract patches for visualization
             if char_model and hasattr(model, 'visualize_char_preds'):
                 with torch.no_grad(): 
-                    patch_data = model.extract_patches_with_craft(images) # images BHWC
+                    patch_data = model.extract_patches_with_craft_batch(images) # images BHWC
                     model.visualize_char_preds(
                         patches=patch_data['patches'],
                         attention_mask=patch_data['attention_mask'],
@@ -425,8 +425,6 @@ def main():
             f"Critical Error: Model initialized with wrong number of classes. "
             f"Got {actual_classes}, expected {num_classes}"
         )
-        
-
         print(f"Model initialized with classifier shape: {model.classifier.weight.shape}")
         print(f"Number of classes from loader: {num_classes}")
         print(f"Model number of classes: {model.classifier.weight.shape[0]}")
@@ -434,6 +432,7 @@ def main():
     if args.pretrained_model:
         model.load_state_dict(checkpoint['model_state_dict'])
         print("Model state loaded from checkpoint")
+
     total_params     = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'Total params {total_params}')
@@ -517,6 +516,7 @@ def main():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = checkpoint_lr
     else:
+        start_epoch = 0
         # Initialize schedulers fresh 
         warmup_scheduler = LinearLR(
             optimizer,

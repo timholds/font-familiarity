@@ -3,6 +3,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import Tuple
+import json
+from torchvision import transforms
+import torch.nn.functional as F
+import cv2
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -183,104 +187,209 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
               Expecting riginal to be >= 1"
         return images, labels
 
-def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, train=True):
-    """
-    Create a dataloader with character patches extracted by CRAFT
+# def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, train=True):
+#     """
+#     Create a dataloader with character patches extracted by CRAFT
     
-    Args:
-        data_dir: Directory containing font dataset
-        craft_model: Initialized CRAFT model
-        batch_size: Batch size for dataloader
-        num_workers: Number of workers for dataloader
+#     Args:
+#         data_dir: Directory containing font dataset
+#         craft_model: Initialized CRAFT model
+#         batch_size: Batch size for dataloader
+#         num_workers: Number of workers for dataloader
         
-    Returns:
-        DataLoader with pre-extracted character patches
-    """
-    from PIL import Image
+#     Returns:
+#         DataLoader with pre-extracted character patches
+#     """
+#     from PIL import Image
     
-    # Use your existing dataset class
-    train_dataset = CharacterFontDataset(data_dir, train=train, use_annotations=False)
+#     # Use your existing dataset class
+#     train_dataset = CharacterFontDataset(data_dir, train=train, use_annotations=False)
     
-    # Process each image to extract character patches
-    processed_data = []
+#     # Process each image to extract character patches
+#     processed_data = []
     
-    print("Preprocessing dataset with CRAFT character detection...")
-    for idx in tqdm(range(len(train_dataset))):
-        img, target = train_dataset[idx]
+#     print("Preprocessing dataset with CRAFT character detection...")
+#     for idx in tqdm(range(len(train_dataset))):
+#         img, target = train_dataset[idx]
         
-        # Convert tensor to image format for CRAFT
-        img_np = img.numpy().transpose(1, 2, 0)  # CHW -> HWC
-        img_np = (img_np * 255).astype(np.uint8)
+#         # Convert tensor to image format for CRAFT
+#         img_np = img.numpy().transpose(1, 2, 0)  # CHW -> HWC
+#         img_np = (img_np * 255).astype(np.uint8)
         
-        # Handle grayscale vs RGB
-        if img_np.shape[-1] == 1:
-            img_np = np.squeeze(img_np)
-            if len(img_np.shape) == 2:
-                img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
+#         # Handle grayscale vs RGB
+#         if img_np.shape[-1] == 1:
+#             img_np = np.squeeze(img_np)
+#             if len(img_np.shape) == 2:
+#                 img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
         
-        pil_img = Image.fromarray(img_np)
+#         pil_img = Image.fromarray(img_np)
         
-        # Get character polygons from CRAFT
-        polygons = craft_model.get_polygons(pil_img)
+#         # Get character polygons from CRAFT
+#         polygons = craft_model.get_polygons(pil_img)
         
-        # Extract patches
-        char_patches = []
-        for polygon in polygons:
-            # Convert polygon to bounding box
-            x_coords = [p[0] for p in polygon]
-            y_coords = [p[1] for p in polygon]
+#         # Extract patches
+#         char_patches = []
+#         for polygon in polygons:
+#             # Convert polygon to bounding box
+#             x_coords = [p[0] for p in polygon]
+#             y_coords = [p[1] for p in polygon]
             
-            x1, y1 = max(0, min(x_coords)), max(0, min(y_coords))
-            x2, y2 = min(img_np.shape[1], max(x_coords)), min(img_np.shape[0], max(y_coords))
+#             x1, y1 = max(0, min(x_coords)), max(0, min(y_coords))
+#             x2, y2 = min(img_np.shape[1], max(x_coords)), min(img_np.shape[0], max(y_coords))
             
-            # Skip very small regions
-            if x2-x1 < 3 or y2-y1 < 3:
-                continue
+#             # Skip very small regions
+#             if x2-x1 < 3 or y2-y1 < 3:
+#                 continue
                 
-            # Extract patch
-            patch = img_np[y1:y2, x1:x2].copy()
+#             # Extract patch
+#             patch = img_np[y1:y2, x1:x2].copy()
             
-            # Convert to grayscale if needed
-            if len(patch.shape) == 3 and patch.shape[2] == 3:
-                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+#             # Convert to grayscale if needed
+#             if len(patch.shape) == 3 and patch.shape[2] == 3:
+#                 patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
                 
-            # Normalize and resize to standard size
-            patch = cv2.resize(patch, (32, 32))
-            patch = patch.astype(np.float32) / 255.0
+#             # Normalize and resize to standard size
+#             patch = cv2.resize(patch, (32, 32))
+#             patch = patch.astype(np.float32) / 255.0
             
-            # Convert to tensor format
-            patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dim
-            char_patches.append(patch_tensor)
+#             # Convert to tensor format
+#             patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dim
+#             char_patches.append(patch_tensor)
         
-        # If no patches found, use whole image
-        if not char_patches:
-            if len(img_np.shape) == 3 and img_np.shape[2] == 3:
-                img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-            else:
-                img_gray = img_np
+#         # If no patches found, use whole image
+#         if not char_patches:
+#             if len(img_np.shape) == 3 and img_np.shape[2] == 3:
+#                 img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+#             else:
+#                 img_gray = img_np
             
-            patch = cv2.resize(img_gray, (32, 32))
-            patch = patch.astype(np.float32) / 255.0
-            patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)
-            char_patches = [patch_tensor]
+#             patch = cv2.resize(img_gray, (32, 32))
+#             patch = patch.astype(np.float32) / 255.0
+#             patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)
+#             char_patches = [patch_tensor]
         
-        # Stack patches and store with font label
-        patches_tensor = torch.stack(char_patches)
-        processed_data.append({
-            'patches': patches_tensor,
-            'label': target,
-            'num_patches': len(char_patches)
-        })
+#         # Stack patches and store with font label
+#         patches_tensor = torch.stack(char_patches)
+#         processed_data.append({
+#             'patches': patches_tensor,
+#             'label': target,
+#             'num_patches': len(char_patches)
+#         })
     
-    # Create dataloader with custom collate function
-    return DataLoader(
-        processed_data,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        collate_fn=char_collate_fn  # Reuse your existing collate function
-    )
+#     # Create dataloader with custom collate function
+#     return DataLoader(
+#         processed_data,
+#         batch_size=batch_size,
+#         shuffle=True,
+#         num_workers=num_workers,
+#         collate_fn=char_collate_fn  # Reuse your existing collate function
+#     )
 
+class CombinedTransform:
+    """Combined transformation pipeline for font images with CRAFT preprocessing"""
+    def __init__(self, use_augmentation=False, canvas_size=1280, craft_mag_ratio=1.5):
+        self.canvas_size = canvas_size
+        self.craft_mag_ratio = craft_mag_ratio
+        self.use_augmentation = use_augmentation
+
+        # CRAFT-specific normalization values (ImageNet stats)
+        self.norm_mean = [0.485, 0.456, 0.406]
+        self.norm_std = [0.229, 0.224, 0.225]
+
+        base_transforms = [
+            # Normalize using the correct values for CRAFT
+            transforms.ToTensor(),  # Convert to tensor
+            transforms.Normalize(mean=self.norm_mean, std=self.norm_std),
+        ]
+        
+        if use_augmentation:
+            # Note: These would need to be tensor-compatible transforms
+            aug_transforms = []
+            self.transforms = transforms.Compose([*aug_transforms, *base_transforms])
+        else:
+            self.transforms = transforms.Compose(base_transforms)
+        
+        
+    
+    def __call__(self, img):
+        """Process single image through augmentation and CRAFT preprocessing
+        
+        Args:
+            img: Numpy array in HWC format
+            
+        Returns:
+            tuple: (img_tensor, ratio_h, ratio_w)
+        """
+        # Ensure image is uint8 for ToPILImage
+        print(f"~~~~~~~~ Image to combinedtransforms dtype: {img.dtype}, shape: {img.shape}")
+        height, width = img.shape[:2]
+        
+        # Calculate target size
+        target_size = self.canvas_size
+        if self.craft_mag_ratio > 0:
+            magnified_size = max(height, width) * self.craft_mag_ratio
+            if magnified_size > target_size:
+                target_size = magnified_size
+                
+        ratio = min(target_size / height, target_size / width)
+        target_h, target_w = int(height * ratio), int(width * ratio)
+        
+        # Calculate ratios for polygon restoration
+        ratio_h = height / target_h
+        ratio_w = width / target_w
+        
+        # Convert to RGB if grayscale
+        if len(img.shape) == 2:
+            img = np.stack([img, img, img], axis=2)
+        elif img.shape[2] == 1:
+            img = np.concatenate([img, img, img], axis=2)
+            
+        # Resize image
+        img_resized = cv2.resize(img, (target_w, target_h))
+        
+        # Normalize (replicates normalizeMeanVariance)
+        img_normalized = (img_resized / 255.0 - self.mean) / self.std
+        
+        # Convert to tensor in CHW format
+        img_tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).float()
+        
+        return img_tensor, ratio_h, ratio_w
+
+
+
+
+
+        ratio = max(height, width) / float(target_size)
+        target_h, target_w = int(height / ratio), int(width / ratio)
+        
+        # Calculate ratios for polygon restoration
+        ratio_h = height / target_h
+        ratio_w = width / target_w
+
+        if len(img.shape) == 3:  # Color image
+            img_tensor = torch.from_numpy(img).permute(2, 0, 1).float()
+        else:  # Grayscale
+            img_tensor = torch.from_numpy(img).unsqueeze(0).float()
+            # Expand to 3 channels for CRAFT
+            img_tensor = img_tensor.repeat(3, 1, 1)
+        
+        print(f"~~~~~~~~ Image shape: {img_tensor.shape}")
+        # Resize using PyTorch (stays on GPU)
+        resized = F.interpolate(
+            img_tensor.unsqueeze(0),  # Add batch dimension for F.interpolate
+            size=(target_h, target_w),
+            mode='bilinear',
+            align_corners=False
+        ).squeeze(0)  # Remove batch dimension
+        
+
+        # Apply normalization
+        # TODO this should be a numpy array going into transform?
+        normalized = self.transforms(resized)
+        
+        # Return processed tensor and ratios
+        return normalized, ratio_h, ratio_w
+    
 class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
@@ -331,6 +440,12 @@ class CharacterFontDataset(Dataset):
         if self.use_annotations:
             print(f"Using character annotations. Found {len(self.char_mapping)} character mappings.")
             print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
+
+        self.transform = CombinedTransform(
+            use_augmentation=train,  
+            canvas_size=1280,  # Adjust as needed
+            craft_mag_ratio=1.5      # Adjust as needed
+        )
         
     def _load_char_mapping(self, mapping_file: str) -> dict:
         """Load mapping from class_id to character."""
@@ -467,25 +582,20 @@ class CharacterFontDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx: int):
-        # Get original image and its font target
-        # img = self.data[idx].astype(np.float32)
-        # target = self.targets[idx]
-
-        img = self.data[idx].astype(np.float32)
+        img = self.data[idx].astype(np.float32) #HWC
         target = int(self.targets[idx])  # Ensure it's an integer
         target = torch.tensor(target, dtype=torch.long)  # Convert to torch.long tensor
 
 
         # Convert the full image to tensor
-        img_tensor = torch.from_numpy(img).float()
-
-        # Add channel dimension if needed
-        if img_tensor.dim() == 2:  # If grayscale without channel
-            img_tensor = img_tensor.unsqueeze(0)
-        
+        #img_tensor = torch.from_numpy(img).float()
+        img_tensor, ratio_h, ratio_w = self.transform(img) #img_tensor is CHW [0,1]
         # Skip annotation processing if not using annotations
         if not self.use_annotations:
-            return img_tensor, target, []
+            return {'images': img_tensor, 
+                    'labels': target, 
+                    'ratio_h': ratio_h, 
+                    'ratio_w': ratio_w}
 
         # Get font name for annotation lookup
         font_idx = target
@@ -511,29 +621,35 @@ class CharacterFontDataset(Dataset):
             except Exception as e:
                 print(f"Error processing YOLO annotations for {yolo_path}: {e}")
 
-        return img_tensor, target, annotations
+        return {'images': img_tensor, 
+            'labels': target, 
+            'annotations': annotations,
+            'ratio_h': ratio_h, 
+            'ratio_w': ratio_w}
 
 def char_collate_fn(batch):
     """
     Custom collate function for batches with images and annotations.
-    
-    Args:
-        batch: List of (image, target, annotations) tuples from dataset
-        
-    Returns:
-        Dictionary with batched data
     """
-    # Separate images, labels, and annotations
-    images, targets, annotations_list = zip(*batch)
+    # Extract items from each batch element
+    images = [item['images'] for item in batch]
+    targets = [item['labels'] for item in batch]
+    ratio_h = [item['ratio_h'] for item in batch]
+    ratio_w = [item['ratio_w'] for item in batch]
+    
+    # Get annotations if they exist
+    annotations = [item.get('annotations', []) for item in batch]
     
     # Stack images and convert targets to tensor
     images_batch = torch.stack(images)
-    targets_batch = torch.tensor(targets)
+    targets_batch = torch.stack(targets)
     
     return {
-        'images': images_batch,          # [batch_size, channels, H, W]
-        'labels': targets_batch,         # [batch_size]
-        'annotations': annotations_list  # List of annotation lists
+        'images': images_batch,
+        'labels': targets_batch,
+        'annotations': annotations,
+        'ratio_h': torch.tensor(ratio_h),
+        'ratio_w': torch.tensor(ratio_w)
     }
 
 

@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 
 
-from CRAFT import CRAFTModel, draw_polygons
+from CRAFT import CRAFTModel
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
@@ -530,10 +530,10 @@ class CRAFTFontClassifier(nn.Module):
         attention_masks = []
 
         for i in range(batch_size):
-            if len(images[i].shape) == 3 and images[i].shape[0] in [1, 3]:
-                img_np = images[i].permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
-            else:
-                img_np = images[i].cpu().numpy() # HWC
+            # if len(images[i].shape) == 3 and images[i].shape[0] in [1, 3]:
+            #     img_np = images[i].permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
+            # else:
+            #     img_np = images[i].cpu().numpy() # HWC
         
 
             # Step 1: Convert tensor to numpy with proper format handling
@@ -545,19 +545,19 @@ class CRAFTFontClassifier(nn.Module):
             #     img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
             
             # Ensure uint8 range
-            if img_np.max() <= 1.0:
-                print(f"!!!!! Converting image to uint8 from float range [0, 1]")
-                img_np = (img_np * 255).astype(np.uint8)
-            else:
-                img_np = img_np.astype(np.uint8)
+            # if img_np.max() <= 1.0:
+            #     print(f"!!!!! Converting image to uint8 from float range [0, 1]")
+            #     img_np = (img_np * 255).astype(np.uint8)
+            # else:
+            #     img_np = img_np.astype(np.uint8)
             
-            # Convert to PIL for CRAFT
-            pil_img = Image.fromarray(img_np)
+            # # Convert to PIL for CRAFT
+            # pil_img = Image.fromarray(img_np)
 
         
             # Get polygons from CRAFT
             try:
-                polygons = self.craft.get_polygons(pil_img)
+                polygons = self.craft.get_polygons(images[i])
             except Exception as e:
                 print(f"CRAFT error: {e}")
                 polygons = []
@@ -600,6 +600,133 @@ class CRAFTFontClassifier(nn.Module):
             # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
                 img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if len(img_np.shape) == 3 else img_np
+                img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
+                normalized = img_resized.astype(np.float32) / 255.0
+                patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
+                img_patches = [patch_tensor]
+            
+            # Stack patches for this image [num_patches, 1, H, W]
+            img_patches_tensor = torch.stack(img_patches)
+            all_patches.append(img_patches_tensor)
+            attention_masks.append(torch.ones(len(img_patches)))
+                
+        max_patches = max(p.size(0) for p in all_patches)
+        if max_patches > 100:
+            max_patches = min(max_patches, 100)
+
+        # Pad to same number of patches
+        padded_patches = []
+        padded_masks = []
+
+        for patches, mask in zip(all_patches, attention_masks):
+            # Limit number of patches if needed
+            if patches.size(0) > max_patches:
+                patches = patches[:max_patches]
+                mask = mask[:max_patches]
+            
+            # Pad if needed
+            if patches.size(0) < max_patches:
+                padding = torch.zeros(
+                    (max_patches - patches.size(0), 1, self.patch_size, self.patch_size),
+                    dtype=patches.dtype, device=patches.device
+                )
+                padded = torch.cat([patches, padding], dim=0)
+                
+                # Extend mask
+                pad_mask = torch.cat([
+                    mask,
+                    torch.zeros(max_patches - mask.size(0), device=mask.device)
+                ])
+            else:
+                padded = patches
+                pad_mask = mask
+            
+            padded_patches.append(padded)
+            padded_masks.append(pad_mask)
+
+        # Stack into batch, final shape [batch_size, max_patches, 1, H, W]
+        patches_batch = torch.stack(padded_patches).to(self.device)
+        attention_batch = torch.stack(padded_masks).to(self.device)
+
+
+        return {
+            'patches': patches_batch,
+            'attention_mask': attention_batch
+        }
+    
+    def extract_patches_with_craft_batch(self, images, ratio_w=None, ratio_h=None):
+        batch_size = images.size(0)
+        all_patches = []
+        attention_masks = []
+
+        for i in range(batch_size):
+            if ratio_w is not None:
+                if isinstance(ratio_w, torch.Tensor) and len(ratio_w.shape) > 0:
+                    # It's a batch tensor, extract the specific item
+                    ratio_w = ratio_w[i].item()
+                else:
+                    # It's a scalar value (same for all images)
+                    ratio_w = ratio_w if not isinstance(ratio_w, torch.Tensor) else ratio_w.item()
+            else:
+                ratio_w = None
+                
+            # Handle ratio_h properly for all possible cases  
+            if ratio_h is not None:
+                if isinstance(ratio_h, torch.Tensor) and len(ratio_h.shape) > 0:
+                    # It's a batch tensor, extract the specific item
+                    ratio_h = ratio_h[i].item()
+                else:
+                    # It's a scalar value (same for all images)
+                    ratio_h = ratio_h if not isinstance(ratio_h, torch.Tensor) else ratio_h.item()
+            else:
+                ratio_h = None
+            # Get polygons from CRAFT
+            try:
+                # images is BCHW
+                polygons = self.craft.get_polygons(images[i], ratio_w, ratio_h)
+            except Exception as e:
+                print(f"CRAFT error: {e}")
+                polygons = []
+            
+            # Extract character patches
+            img_patches = []
+            for polygon in polygons:
+                # polygon = self.add_padding_to_polygons(polygon)
+
+                # Convert polygon to bounding box
+                x_coords = [p[0] for p in polygon]
+                y_coords = [p[1] for p in polygon]
+                
+                x1, y1 = min(x_coords), min(y_coords)
+                x2, y2 = max(x_coords), max(y_coords)
+                
+                # Ensure integer coordinates and minimum size
+                x1, y1 = max(0, int(x1)), max(0, int(y1))
+                x2, y2 = min(images[i].shape[1], int(x2)), min(images[i].shape[0], int(y2))
+                
+                # Skip very small regions
+                if x2-x1 < 3 or y2-y1 < 3:
+                    continue
+                
+                # Extract patch
+                patch = images[i][y1:y2, x1:x2].copy()
+                
+                # Convert to grayscale
+                # breakpoint()
+                if len(patch.shape) == 3 and patch.shape[2] == 3:
+                    patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+                
+                # Resize and normalize (returns a 2D array)
+                normalized_patch = self._normalize_patch(patch)
+                
+                # Convert to tensor with channel dimension [1, H, W] - PyTorch format
+                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+                img_patches.append(patch_tensor)
+
+                     
+            # Step 6: If no valid patches, create a default patch from the whole image
+            if not img_patches:
+                img_gray = cv2.cvtColor(images[i], cv2.COLOR_RGB2GRAY) if len(images[i].shape) == 3 else images[i]
                 img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
                 normalized = img_resized.astype(np.float32) / 255.0
                 patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
@@ -707,25 +834,26 @@ class CRAFTFontClassifier(nn.Module):
             Dictionary with model outputs
         """
 
-        if len(images.shape) == 4 and images.shape[3] in [1, 3]:  # HWC format
-            # Permute dimensions: [B, H, W, C] -> [B, C, H, W]
-            images = images.permute(0, 3, 1, 2)
-
-        # Check if input is a dictionary (from dataloader)
         if isinstance(images, dict):
-            # Extract components from dictionary
-            batch_data = images
-            images = batch_data['images']
-            targets = batch_data['labels'] if 'labels' in batch_data else None
-            annotations = batch_data['annotations'] if 'annotations' in batch_data else None
-
+            ratio_h = images.get('ratio_h')
+            ratio_w = images.get('ratio_w')
+            # Extract the actual image tensor
+            batch_images = images['images']
+            # Get targets and annotations if available in dict
+            if targets is None and 'labels' in images:
+                targets = images['labels']
+            if annotations is None and 'annotations' in images:
+                annotations = images['annotations']
+        else:
+            # Images is already a tensor
+            batch_images = images
         # Now proceed with normal processing
         # if self.training and annotations is not None:
         #     # Training mode: use provided annotations to extract patches
         #     batch_data = self.extract_patches_from_annotations(images, targets, annotations)
         # else:
             # Inference mode: use CRAFT to extract patches
-        batch_data = self.extract_patches_with_craft(images)
+            batch_data = self.extract_patches_with_craft_batch(batch_images)
         if targets is not None:
             batch_data['labels'] = targets.to(self.device)
 
