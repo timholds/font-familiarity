@@ -1,3 +1,0 @@
-[submodule "CRAFT-text-detection"]
-	path = CRAFT
-	url = https://github.com/timholds/CRAFT-text-detection.git
