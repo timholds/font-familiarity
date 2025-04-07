@@ -275,52 +275,79 @@ class CRAFTFontClassifier(nn.Module):
     def extract_patches_batch(self, batch_images: torch.Tensor, batch_polys: list):
         """Fully GPU-based patch extraction"""
         # Convert polygons to ROI tensors
+        batch_size = batch_images.size(0)
         rois = []
         for b_idx, polys in enumerate(batch_polys):
             if not polys:  # Fallback to full image
-                rois.append([b_idx, 0, 0, 1, 1])  # Will be scaled later
+                h, w = batch_images.shape[2], batch_images.shape[3]
+                rois.append([b_idx, 0, 0, h, w])
                 continue
                 
             for poly in polys:
-                x_coords = poly[:, 0]
-                y_coords = poly[:, 1]
-                x1 = x_coords.min()
-                y1 = y_coords.min()
-                x2 = x_coords.max()
-                y2 = y_coords.max()
-                rois.append([b_idx, y1, x1, y2, x2])
+                # Get bounding box corners
+                x_min = poly[:, 0].min().item()
+                y_min = poly[:, 1].min().item()
+                x_max = poly[:, 0].max().item()
+                y_max = poly[:, 1].max().item()
+                
+                # Add to ROIs in [batch_idx, y1, x1, y2, x2] format for ROI Align
+                rois.append([b_idx, y_min, x_min, y_max, x_max])
 
         # Handle empty case
         if not rois: 
-            return torch.zeros(), torch.zeros()
+            return torch.zeros((batch_size, 1, 1, self.patch_size, self.patch_size), device=self.device), \
+                torch.zeros((batch_size, 1), device=self.device)
 
-        # Convert to tensor and normalize coordinates
+        # Convert to tensor
         roi_tensor = torch.tensor(rois, dtype=torch.float32, device=self.device)
-        roi_tensor[:, 1:] /= torch.tensor([
-            batch_images.shape[2],  # Height
-            batch_images.shape[3],  # Width
-            batch_images.shape[2],
-            batch_images.shape[3]
-        ], device=self.device)
-
-        # Batch extract using ROI align
+        
+        # For roi_align, format correctly: [batch_idx, x1, y1, x2, y2], normalized to [0, 1]
+        h, w = batch_images.shape[2], batch_images.shape[3]
+        boxes = torch.zeros_like(roi_tensor)
+        boxes[:, 0] = roi_tensor[:, 0]  # batch index
+        boxes[:, 1] = roi_tensor[:, 2] / w  # x1 normalized
+        boxes[:, 2] = roi_tensor[:, 1] / h  # y1 normalized
+        boxes[:, 3] = roi_tensor[:, 4] / w  # x2 normalized
+        boxes[:, 4] = roi_tensor[:, 3] / h  # y2 normalized
+        
+        # Extract patches using ROI Align
         patches = torchvision.ops.roi_align(
-            batch_images,
-            roi_tensor,
+            batch_images, 
+            boxes, 
             output_size=(self.patch_size, self.patch_size)
         )
 
-        # Create attention mask
-        valid_counts = [len(p) if p else 1 for p in batch_polys]
-        max_patches = max(valid_counts)
-        mask = torch.zeros(
-            (batch_images.size(0), max_patches),
+        # Convert RGB patches to grayscale if needed
+        if patches.size(1) == 3:  # If RGB
+            # Standard RGB to grayscale conversion weights
+            rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=patches.device).view(1, 3, 1, 1)
+            patches = (patches * rgb_weights).sum(dim=1, keepdim=True)  # Convert to grayscale
+
+
+        # Count patches per batch item
+        patch_counts = [len(polys) if polys else 1 for polys in batch_polys]
+        max_patches = max(patch_counts)
+        
+        # Create output tensors with the right dimensions
+        batched_patches = torch.zeros(
+            (batch_size, max_patches, 1, self.patch_size, self.patch_size),
             device=self.device
         )
-        for i, count in enumerate(valid_counts):
-            mask[i, :count] = 1
+        attention_mask = torch.zeros(
+            (batch_size, max_patches), 
+            device=self.device
+        )
+        
+        # Fill in patches and mask
+        start_idx = 0
+        for b_idx, count in enumerate(patch_counts):
+            if count > 0:
+                end_idx = start_idx + count
+                batched_patches[b_idx, :count] = patches[start_idx:end_idx]
+                attention_mask[b_idx, :count] = 1
+                start_idx = end_idx
 
-        return patches, mask
+        return batched_patches, attention_mask
     
     
     def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
@@ -731,7 +758,11 @@ class CRAFTFontClassifier(nn.Module):
                     ratio_h = ratio_h if not isinstance(ratio_h, torch.Tensor) else ratio_h.item()
             else:
                 ratio_h = None
+            
+            
             # Get polygons from CRAFT
+
+            
             try:
                 # images is BCHW
                 # polygons = self.craft.get_polygons(images[i], ratio_w, ratio_h)

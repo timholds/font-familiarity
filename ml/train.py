@@ -103,26 +103,26 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
 
             # Extract patches for visualization
-            if char_model and hasattr(model, 'visualize_char_preds'):
-                with torch.no_grad(): 
-                    patch_data = model.extract_patches_with_craft(images) # images BHWC
-                    model.visualize_char_preds(
-                        patches=patch_data['patches'],
-                        attention_mask=patch_data['attention_mask'],
-                        predictions=pred,
-                        targets=targets,
-                        save_path=vis_path
-                    )
+            # if char_model and hasattr(model, 'visualize_char_preds'):
+            #     with torch.no_grad(): 
+            #         patch_data = model.extract_patches_with_craft(images) # images BHWC
+            #         model.visualize_char_preds(
+            #             patches=patch_data['patches'],
+            #             attention_mask=patch_data['attention_mask'],
+            #             predictions=pred,
+            #             targets=targets,
+            #             save_path=vis_path
+            #         )
 
         
             # Add CRAFT detection visualization
-            if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
-                model.visualize_craft_detections(
-                    images=images,  # Original images
-                    targets=targets,
-                    label_mapping=train_loader.dataset.label_mapping,
-                    save_path=vis_path
-                )
+            # if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
+            #     model.visualize_craft_detections(
+            #         images=images,  # Original images
+            #         targets=targets,
+            #         label_mapping=train_loader.dataset.label_mapping,
+            #         save_path=vis_path
+            #     )
 
         # Compute and log batch metrics
         if batch_idx % 50 == 0:
@@ -174,8 +174,8 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
                 annotations = batch_data['annotations'] if 'annotations' in batch_data else None
 
                 # Forward pass with whole images
-                outputs = model(images, targets, annotations)
-
+                # outputs = model(images, targets, annotations)
+                outputs = model(batch_data)
                 # Extract logits from outputs
                 if isinstance(outputs, dict):
                     logits = outputs['logits']
