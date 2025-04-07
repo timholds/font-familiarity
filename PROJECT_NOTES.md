@@ -53,6 +53,12 @@ Feed grayscale patches to the character classifier
 - CRAFT expects 3 channel image  
 - Patch level character CNN should probably just be in grayscale since we care about shape not color and that should still be preserved. 
 
+The official craft implementation by default tests with 768x768 images (https://github.com/clovaai/CRAFT-pytorch/blob/master/craft.py#L84C5-L84C58)
+`output, _ = model(torch.randn(1, 3, 768, 768).cuda())`  
+ 
+ 
+so if nothing else we can use that as a prior on what size we should feed in if we want the best results out of craft without having to do any tuning. That said, "the most performance you get without without tweaking the weight" is like "the most fun you can have with your pants on", but we will save this for after we do more data augmentations to the input images. 
+
 ### Challenge: currently the character detection labels we have are non rectangular
 - Fixed-size square patches: Force all bounding boxes to be squares with consistent dimensions, even if that means including more whitespace for some characters. This ensures consistent scale, but loses aspect ratio information.
 - Augmentation: Use data augmentation to help the network become invariant to aspect ratio and size variations.
@@ -372,3 +378,7 @@ Upload an image or screenshot
 Going from 2d to 3d means reworking the model to be character based instead of string based. Since we have new degrees of freedom for the input, it would be tremendously helpful to remove some others, lest we have to scale up the amount of data disproportionately. Btw, we don't hear much about the curse of dimensionality too much these days, do we?
 
 First, I got some appropriate CRAFT parameters for my particular image and font sizes that would give me character level patches and used Colab to visualize the patches for a single image. Then I added a visualization function as part of the training loop that would show me the 
+
+
+# Getting CRAFT on device and parallelized
+craft was made to take in images one by one does image preprocessing using opencv, which operates on numpy arrays that are on the CPU. 
