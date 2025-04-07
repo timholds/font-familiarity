@@ -382,3 +382,47 @@ First, I got some appropriate CRAFT parameters for my particular image and font 
 
 # Getting CRAFT on device and parallelized
 craft was made to take in images one by one does image preprocessing using opencv, which operates on numpy arrays that are on the CPU. 
+
+## the default default workflow
+the goal is to keep all the data on the gpu to avoid roundtripping it back to the cpu and to avoid having a for loop in our model. we have already added the code to normalize the data and permute the channles in chw into the data loader so that we can skip the preprocess_image() step.
+
+the original get_polygons() which runs the images sequentially calls out to a few functions
+- preprocess_image, which we have already wrapped into the data loader
+- get_text_map()
+- getDetBoxes()
+   - getDetBoxes_core()
+   - getPoly_core()
+- adjustResultCoordinates()
+
+
+
+(for me, convert back from pytorch tensor on the gpu that my data loader created to a pil image on the cpu)
+- PIL image --> get_polygons() 
+  - np array, HWC [0, 255] --> preprocess_image() --> pytorch Variable, BCHW [0, 1]. This is already one extra GPU CPU GPU round trip extra. 
+  - tensor --> get_text_map() 
+    - pass tensor through refiner net
+    - --> numpy array for link and score text
+  - np array --> getDetBoxes_core()
+  - getDetBoxes()
+    - np array -->getPoly_core()
+  - adjustResultCoordinates()
+
+## my workflow
+pytorch tensor from dataloader BHWC [0, 1] --> get_polygons_batch() 
+  - skip preprocess_image() and fold channel permutation and normalization into the data loader--> pytorch Variable, BCHW [0, 1]. This is already one extra GPU CPU GPU round trip extra. 
+  ```
+  base_transforms = [
+            # Normalize using the correct values for CRAFT
+            transforms.ToTensor(),  # Convert to tensor
+            transforms.Normalize(mean=self.norm_mean, std=self.norm_std),
+        ]
+  ```
+
+  - tensor --> get_text_map() 
+    - pass tensor through refiner net
+    - --> numpy array for link and score text
+  - np array --> getDetBoxes_core()
+  - getDetBoxes()
+    - np array -->getPoly_core()
+  - adjustResultCoordinates()
+

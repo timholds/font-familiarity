@@ -298,6 +298,7 @@ def main():
     parser.add_argument("--initial_channels", type=int, default=16)
     parser.add_argument("--char_model", action="store_true", help="Use character-based model")
     parser.add_argument("--pretrained_model", type=str, default=None, help="Path to pretrained model")
+    parser.add_argument("--full_precision", action="store_true", help="Use mixed precision training")
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -372,7 +373,8 @@ def main():
         try:
             print("Initializing CRAFT model...")
             # Try with reduced precision to save memory
-            use_fp16 = True if device.type == 'cuda' else False
+            use_fp16 = False if args.full_precision else True
+            print(f"Using fp16: {use_fp16}")
             
             # Clear cache before initialization
             if device.type == 'cuda':

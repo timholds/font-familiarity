@@ -895,7 +895,6 @@ class CRAFTFontClassifier(nn.Module):
 
         # 2. Batch polygon detection (entirely on GPU)
         batch_polys = self.craft.get_batch_polygons(images, ratios_w, ratios_h)
-
         # 3. Batch patch extraction (no CPU sync)
         patches, mask = self.extract_patches_batch(images, batch_polys)
         
