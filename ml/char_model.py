@@ -347,6 +347,7 @@ class CRAFTFontClassifier(nn.Module):
                 attention_mask[b_idx, :count] = 1
                 start_idx = end_idx
 
+        torch.cuda.empty_cache()
         return batched_patches, attention_mask
     
     
