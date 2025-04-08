@@ -134,13 +134,13 @@ def load_model_and_embeddings(model_path: str,
         logger.error(traceback.format_exc())
         raise
 
-def create_app(model_path=None, data_dir=None, embeddings_path=None):
+def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mapping_file=None):
     """Factory function to create and configure Flask app instance."""
     app = Flask(__name__)
     
     # Handle both factory and command-line initialization
     if model_path and data_dir and embeddings_path:
-        label_mapping_path = os.path.join(data_dir, "label_mapping.npy")
+        label_mapping_path = os.path.join(data_dir, label_mapping_file)
         load_model_and_embeddings(model_path, embeddings_path, label_mapping_path)
     
     @app.route('/test')
@@ -228,10 +228,11 @@ def main():
     parser.add_argument("--model_path", required=True, help="Path to trained model .pt file")
     parser.add_argument("--data_dir", required=True, help="Directory containing embeddings and label mapping")
     parser.add_argument("--embeddings_path", required=True, help="Path to class_embeddings.npy")
+    parser.add_argument("--label_mapping_file", default="label_mapping.npy", help="Label mapping file name")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     
-    app = create_app(args.model_path, args.data_dir, args.embeddings_path)
+    app = create_app(args.model_path, args.data_dir, args.embeddings_path, args.label_mapping_file)
     app.run(host='0.0.0.0', port=args.port, debug=True)
 
 if __name__ == '__main__':
