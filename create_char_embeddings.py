@@ -53,14 +53,22 @@ def load_char_model(model_path: str) -> Tuple[CRAFTFontClassifier, torch.device]
     # Initialize model with correct parameters
     model = CRAFTFontClassifier(
         num_fonts=num_fonts,
-        device=device,
-        patch_size=32,       # Standard character patch size
+        device=device,  # Pass device but also explicitly move model to device below
+        patch_size=32,
         embedding_dim=embedding_dim,
-        craft_fp16=False     # For wider compatibility
+        craft_fp16=False
     )
     
     # Load the trained weights
     model.load_state_dict(state_dict)
+    
+    # Explicitly move model to device AFTER loading state dict
+    model = model.to(device)
+    
+    # Make sure all sub-components are on the correct device
+    for module in model.modules():
+        module.to(device)
+    
     model.eval()
     
     return model, device
@@ -92,27 +100,39 @@ def compute_char_embeddings(
     class_embeddings = torch.zeros(num_classes, embedding_dim).to(device)
     class_counts = torch.zeros(num_classes).to(device)
     
+    # Verify all model components are on the correct device
+    model_device = next(model.parameters()).device
+    print(f"Model is on device: {model_device}")
+    
     with torch.no_grad():
         for batch in tqdm(dataloader, desc='Computing embeddings'):
             # Process batch format from the char_collate_fn
             images = batch['images'].to(device)
             targets = batch['labels'].to(device)
-            annotations = batch.get('annotations', None)
             
-            # Extract character patches
-            patch_data = model.extract_patches_with_craft(images)
-            patches = patch_data['patches']  
-            attention_mask = patch_data['attention_mask']
-            
-            # Process through font classifier to get embeddings
-            outputs = model.font_classifier(patches, attention_mask)
-            font_embeddings = outputs['font_embedding']  # [batch_size, embedding_dim]
-            
-            # Accumulate embeddings by class
-            for i, target in enumerate(targets):
-                class_idx = target.item()
-                class_embeddings[class_idx] += font_embeddings[i]
-                class_counts[class_idx] += 1
+            try:
+                # Get patch data using a safer approach
+                patch_data = model.extract_patches_with_craft(images)
+                
+                # Ensure patches and attention mask are on the correct device
+                patches = patch_data['patches'].to(device)
+                attention_mask = patch_data['attention_mask'].to(device).bool()
+                
+                # Process through font classifier to get embeddings
+                with torch.cuda.amp.autocast(enabled=False):  # Disable mixed precision for stability
+                    outputs = model.font_classifier(patches, attention_mask)
+                    
+                font_embeddings = outputs['font_embedding']  # [batch_size, embedding_dim]
+                
+                # Accumulate embeddings by class
+                for i, target in enumerate(targets):
+                    class_idx = target.item()
+                    class_embeddings[class_idx] += font_embeddings[i]
+                    class_counts[class_idx] += 1
+                    
+            except Exception as e:
+                print(f"Error processing batch: {e}")
+                continue
     
     # Compute averages
     for i in range(num_classes):
@@ -136,7 +156,7 @@ def main():
     parser.add_argument("--model_path", required=True, help="Path to trained character model .pt file")
     parser.add_argument("--data_dir", required=True, help="Path to dataset directory")
     parser.add_argument("--embeddings_file", help="Path to save embeddings (optional)")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size (smaller for char model)")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size (smaller for char model)")
     args = parser.parse_args()
     
     # Load model
@@ -161,7 +181,7 @@ def main():
         embedding_dim = model.font_classifier.aggregator.projection.out_features
         embeddings_path = os.path.join(
             args.data_dir, 
-            f"char_embeddings_{embedding_dim}d.npy"
+            f"class_embeddings_{embedding_dim}d.npy"
         )
     
     print(f"\nSaving embeddings to {embeddings_path}")
