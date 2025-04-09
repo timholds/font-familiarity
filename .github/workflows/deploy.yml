@@ -25,7 +25,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      SERVER_IP: 65.109.7.198
+      SERVER_IP: 135.181.104.207
       IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
