@@ -6,8 +6,8 @@
 # gunicorn
 
 # PyTorch stack (CPU version)
-torch==2.0.0+cpu --index-url https://download.pytorch.org/whl/cpu
-torchvision==0.15.1+cpu --index-url https://download.pytorch.org/whl/cpu
+torch==2.0.0 --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.15.1 --index-url https://download.pytorch.org/whl/cpu
 
 # Web server
 Flask
