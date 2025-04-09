@@ -323,7 +323,7 @@ def main():
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     
-    app = create_app(args.model_path, args.data_dir, args.embeddings_path, args.lab)
+    app = create_app(args.model_path, args.data_dir, args.embeddings_path, args.label_mapping_file)
     app.run(host='0.0.0.0', port=args.port, debug=True)
 
 if __name__ == '__main__':
