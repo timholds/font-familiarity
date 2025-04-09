@@ -1,7 +1,25 @@
-# torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# # torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# torch --index-url https://download.pytorch.org/whl/cpu
+# torchvision --index-url https://download.pytorch.org/whl/cpu
+# torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Flask
+# numpy
+# gunicorn
+
+# PyTorch stack (CPU version)
 torch --index-url https://download.pytorch.org/whl/cpu
 torchvision --index-url https://download.pytorch.org/whl/cpu
 torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Web server
 Flask
-numpy
 gunicorn
+
+# Core dependencies
+numpy
+Pillow
+opencv-python-headless==4.7.0.72  # Headless version for server environments
+shapely  # For polygon operations
+
+# CRAFT text detection
+git+https://github.com/timholds/CRAFT-text-detection.git#egg=craft
