@@ -250,56 +250,59 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             
         if 'image' not in request.files:
             return jsonify({'error': 'No image provided'}), 400
-        
+
         try:
             # Get and preprocess image
             image_bytes = request.files['image'].read()
             
-            # Convert uploaded image bytes to tensor
-            image = Image.open(io.BytesIO(image_bytes))#.convert('L')
+            # Convert uploaded image bytes to tensor 
+            image = Image.open(io.BytesIO(image_bytes))  # expectign color image
             transform = transforms.Compose([
-                transforms.Resize((512, 512)),
+                transforms.Resize((512, 512)), 
                 transforms.ToTensor(),
             ])
             image_tensor = transform(image).unsqueeze(0).to(device)
             
             with torch.no_grad():
-                # Get embedding and classifier output
-                embedding = model.get_embedding(image_tensor)
-                logits = model.classifier(embedding)
+                if isinstance(model, CRAFTFontClassifier):
+                    # Character model - get embedding and logits
+                    outputs = model(image_tensor)
+                    embedding = outputs['font_embedding']
+                    logits = outputs['logits']
+                else:
+                    # Original model approach
+                    embedding = model.get_embedding(image_tensor)
+                    logits = model.classifier(embedding)
                 
                 # Get predictions using both methods
                 # Embedding similarity approach
-                query_embedding = F.normalize(embedding, p=2, dim=1)
-                similarities = torch.mm(query_embedding, class_embeddings.t())
-                top_k_similarities, emb_indices = similarities[0].topk(5)
+                top_k_indices, top_k_similarities = get_top_k_similar_fonts(embedding, k=5)
                 
                 # Classifier approach
-                probabilities = F.softmax(logits, dim=1)
-                top_k_probs, cls_indices = probabilities[0].topk(5)
+                top_k_cls_indices, top_k_probs = get_top_k_predictions(logits, k=5)
                 
                 # Format results
                 embedding_results = [
                     {
-                        'font': label_mapping.get(idx.item(), f'Unknown Font ({idx.item()})'),
+                        'font': label_mapping.get(idx, f'Unknown Font ({idx})'),
                         'similarity': float(score)
                     }
-                    for idx, score in zip(emb_indices, top_k_similarities)
+                    for idx, score in zip(top_k_indices, top_k_similarities)
                 ]
                 
                 classifier_results = [
                     {
-                        'font': label_mapping.get(idx.item(), f'Unknown Font ({idx.item()})'),
+                        'font': label_mapping.get(idx, f'Unknown Font ({idx})'),
                         'probability': float(prob)
                     }
-                    for idx, prob in zip(cls_indices, top_k_probs)
+                    for idx, prob in zip(top_k_cls_indices, top_k_probs)
                 ]
                 
                 return jsonify({
                     'embedding_similarity': embedding_results,
                     'classifier_predictions': classifier_results
                 })
-        
+
         except Exception as e:
             logger.error(f"Error processing prediction: {str(e)}")
             logger.error(traceback.format_exc())
