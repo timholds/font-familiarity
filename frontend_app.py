@@ -258,7 +258,7 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             # Convert uploaded image bytes to tensor
             image = Image.open(io.BytesIO(image_bytes))#.convert('L')
             transform = transforms.Compose([
-                transforms.Resize((64, 64)),
+                transforms.Resize((512, 512)),
                 transforms.ToTensor(),
             ])
             image_tensor = transform(image).unsqueeze(0).to(device)
