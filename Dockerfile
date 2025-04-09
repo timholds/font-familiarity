@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir -r frontend_requirements.txt
 RUN git clone https://github.com/timholds/CRAFT-text-detection.git /tmp/CRAFT \
     && cd /tmp/CRAFT \
     && pip install -e .
+
 # Runtime stage
 FROM python:3.9-slim
 
@@ -39,6 +40,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Python packages from builder
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /tmp/CRAFT /tmp/CRAFT
+# Also ensure Python can find it:
+ENV PYTHONPATH="${PYTHONPATH}:/tmp"
+
 
 # Copy application code
 COPY frontend_app.py .
