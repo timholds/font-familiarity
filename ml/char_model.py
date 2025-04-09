@@ -297,7 +297,9 @@ class CRAFTFontClassifier(nn.Module):
             outputs = self.font_classifier(patches, attention_mask)
             
             # Return font embeddings
-            return outputs['font_embedding']    
+            return outputs['font_embedding']
+
+
     def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
         """
         Visualize character patches (for debugging)
@@ -553,34 +555,64 @@ class CRAFTFontClassifier(nn.Module):
         return padded_polygons
     
     def extract_patches_with_craft(self, images):
+        # Add debug prints and more robust tensor handling
+        print(f"Input tensor shape: {images.shape}")
+
+        # Ensure 4D tensor with batch dimension
+        if len(images.shape) == 3:
+            images = images.unsqueeze(0)
+            print(f"Added batch dimension, new shape: {images.shape}")
+
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
 
         for i in range(batch_size):
-            if len(images[i].shape) == 3 and images[i].shape[0] in [1, 3]:
-                img_np = images[i].permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
-            else:
-                img_np = images[i].cpu().numpy() # HWC
-        
-
-            # Step 1: Convert tensor to numpy with proper format handling
-            # img_tensor = images[i].cpu().numpy().astype(np.uint8)
-            # img_np = img_tensor.permute(1, 2, 0).numpy()  # Convert CHW to HWC
-
-            # Ensure correct RGB format for CRAFT
-            # if img_np.shape[2] == 1:
-            #     img_np = cv2.cvtColor(img_np.squeeze(2), cv2.COLOR_GRAY2RGB)
+            image_tensor = images[i]
+            print(f"Processing image with shape: {image_tensor.shape}")
             
-            # Ensure uint8 range
+            # Handle tensor with explicit shape checking
+            if len(image_tensor.shape) == 3:  # [C, H, W]
+                # Standard CHW format
+                img_np = image_tensor.permute(1, 2, 0).cpu().numpy()
+            elif len(image_tensor.shape) == 2:  # [H, W]
+                # Grayscale without channel dimension
+                img_np = image_tensor.cpu().numpy()
+                img_np = np.expand_dims(img_np, axis=2)  # Add channel dimension for consistency
+            else:
+                print(f"WARNING: Unexpected tensor shape: {image_tensor.shape}")
+                # Create fallback image
+                img_np = np.zeros((64, 64, 1), dtype=np.uint8)
+            
+            print(f"Numpy array shape after conversion: {img_np.shape}")
+            
+            # Validate image dimensions
+            if img_np.shape[0] < 4 or img_np.shape[1] < 4:
+                print(f"ERROR: Image too small: {img_np.shape}, creating fallback")
+                img_np = np.zeros((64, 64, 1), dtype=np.uint8)
+            
+            # Handle uint8 conversion
             if img_np.max() <= 1.0:
-                print(f"!!!!! Converting image to uint8 from float range [0, 1]")
+                print(f"Converting image from [0,1] to [0,255]")
                 img_np = (img_np * 255).astype(np.uint8)
             else:
                 img_np = img_np.astype(np.uint8)
             
-            # Convert to PIL for CRAFT
-            pil_img = Image.fromarray(img_np)
+            # Create PIL image with appropriate mode
+            try:
+                if len(img_np.shape) == 3 and img_np.shape[2] == 1:
+                    pil_img = Image.fromarray(img_np.squeeze(2), mode='L')
+                elif len(img_np.shape) == 3 and img_np.shape[2] == 3:
+                    pil_img = Image.fromarray(img_np, mode='RGB')
+                else:
+                    pil_img = Image.fromarray(img_np, mode='L')
+                    
+                print(f"Created PIL image size: {pil_img.size}")
+            except Exception as e:
+                print(f"ERROR creating PIL image: {e}, shape: {img_np.shape}, dtype: {img_np.dtype}")
+                # Create fallback image
+                img_np = np.zeros((64, 64), dtype=np.uint8)
+                pil_img = Image.fromarray(img_np, mode='L')
 
         
             # Get polygons from CRAFT

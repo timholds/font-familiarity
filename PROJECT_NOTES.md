@@ -339,11 +339,15 @@ try some different text sizes for data augmentation
 # Known issues
 The labels in the npz file are off by one, so we need to subtract by one in the `FontDataset`: `self.targets = data['labels']-1`
 
+Note to end user: This works better on square images with black text on white background. YMMV
 
 # Project Notes
 ## Notes
 ## Experiments
 ## Challenges
+
+### Getting craft to accept batches
+The dataloader converts the input images to tensors and the craft model immediately sends those back to the cpu to do image preprocessing with numpy. I tried folding some of this preprocessing like channel permutation and normalization into the the data loader to do some of the preprocessing on the GPU and was hoping to write the post processing and patch extraction to run on the gpu but this proved to be pain and I was getting different patches extracted than I expected
 ## TODOs
 [ ] get the results on the frontend to be rendered in the font themselves! this should help visually add a sanity check to the results
 
