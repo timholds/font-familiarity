@@ -14,14 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \      
     && rm -rf /var/lib/apt/lists/*
 
+
+# Install Python dependencies
+RUN pip install --no-cache-dir numpy==1.26.4  # Install NumPy first
+COPY frontend_requirements.txt .
+RUN pip install --no-cache-dir -r frontend_requirements.txt
 RUN git clone https://github.com/timholds/CRAFT-text-detection.git /tmp/CRAFT \
     && cd /tmp/CRAFT \
     && pip install -e .
-
-# Install Python dependencies
-COPY frontend_requirements.txt .
-RUN pip install --no-cache-dir -r frontend_requirements.txt
-
 # Runtime stage
 FROM python:3.9-slim
 
