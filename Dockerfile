@@ -14,6 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \      
     && rm -rf /var/lib/apt/lists/*
 
+RUN git clone https://github.com/timholds/CRAFT-text-detection.git /tmp/CRAFT \
+    && cd /tmp/CRAFT \
+    && pip install -e .
+
 # Install Python dependencies
 COPY frontend_requirements.txt .
 RUN pip install --no-cache-dir -r frontend_requirements.txt
@@ -28,7 +32,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo \
     libpng16-16 \
     curl \
-    git \
     libgl1-mesa-glx \ 
     libglib2.0-0 \     
     && rm -rf /var/lib/apt/lists/*

@@ -22,4 +22,4 @@ opencv-python-headless==4.7.0.72  # Headless version for server environments
 shapely  # For polygon operations
 
 # CRAFT text detection
-git+https://github.com/timholds/CRAFT-text-detection.git#egg=craft
+#git+https://github.com/timholds/CRAFT-text-detection.git#egg=craft
