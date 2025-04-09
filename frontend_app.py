@@ -27,29 +27,29 @@ device = None
 label_mapping = None
 is_initialized = False
 
-def preprocess_image(image_bytes: bytes) -> torch.Tensor:
-    """Convert uploaded image bytes to tensor."""
-    try:
-        # Open image and convert to grayscale
-        image = Image.open(io.BytesIO(image_bytes)).convert('L')
-        logger.info(f"Loaded image, size: {image.size}")
+# def preprocess_image(image_bytes: bytes) -> torch.Tensor:
+#     """Convert uploaded image bytes to tensor."""
+#     try:
+#         # Open image and convert to grayscale
+#         image = Image.open(io.BytesIO(image_bytes)).convert('L')
+#         logger.info(f"Loaded image, size: {image.size}")
         
-        # Define preprocessing
-        transform = transforms.Compose([
-            transforms.Resize((64, 64)),
-            transforms.ToTensor(),
-        ])
+#         # Define preprocessing
+#         transform = transforms.Compose([
+#             transforms.Resize((64, 64)),
+#             transforms.ToTensor(),
+#         ])
         
-        # Apply preprocessing and add batch dimension
-        tensor = transform(image).unsqueeze(0)
-        logger.info(f"Preprocessed tensor shape: {tensor.shape}")
+#         # Apply preprocessing and add batch dimension
+#         tensor = transform(image).unsqueeze(0)
+#         logger.info(f"Preprocessed tensor shape: {tensor.shape}")
         
-        return tensor.to(device)
+#         return tensor.to(device)
         
-    except Exception as e:
-        logger.error(f"Error preprocessing image: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise
+#     except Exception as e:
+#         logger.error(f"Error preprocessing image: {str(e)}")
+#         logger.error(traceback.format_exc())
+#         raise
 
 def get_top_k_similar_fonts(query_embedding: torch.Tensor, k: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """Find k most similar fonts using embedding similarity."""
@@ -256,7 +256,7 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             image_bytes = request.files['image'].read()
             
             # Convert uploaded image bytes to tensor
-            image = Image.open(io.BytesIO(image_bytes)).convert('L')
+            image = Image.open(io.BytesIO(image_bytes))#.convert('L')
             transform = transforms.Compose([
                 transforms.Resize((64, 64)),
                 transforms.ToTensor(),
