@@ -7,9 +7,9 @@ name: Claude Project Sync
 
 on:
   push:
-    branches: [data_aug, main]
+    branches: [data_aug]
   pull_request:
-    branches: [data_aug, main]
+    branches: [data_aug]
   # Allow manual triggering
   workflow_dispatch:
 
