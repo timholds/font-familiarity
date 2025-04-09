@@ -21,7 +21,7 @@ COPY frontend_requirements.txt .
 RUN pip install --no-cache-dir -r frontend_requirements.txt
 RUN git clone https://github.com/timholds/CRAFT-text-detection.git /tmp/CRAFT \
     && cd /tmp/CRAFT \
-    && pip install -e .
+    && pip install .
 
 # Runtime stage
 FROM python:3.9-slim
