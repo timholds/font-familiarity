@@ -269,7 +269,35 @@ class CRAFTFontClassifier(nn.Module):
         
         self.device = device
         self.patch_size = patch_size
-        
+
+
+    def get_embedding(self, images):
+        """
+        Extract font embeddings from images for similarity comparisons.
+
+        Args:
+            images: Tensor of shape [batch_size, channels, height, width]
+
+        Returns:
+            embeddings: Tensor of shape [batch_size, embedding_dim]
+        """
+        # Make sure we're in eval mode
+        self.eval()
+
+        # Extract patches using CRAFT
+        with torch.no_grad():
+            # Process through CRAFT to get character patches
+            patch_data = self.extract_patches_with_craft(images)
+            
+            # Get patches and attention mask
+            patches = patch_data['patches']
+            attention_mask = patch_data['attention_mask']
+            
+            # Process through font classifier
+            outputs = self.font_classifier(patches, attention_mask)
+            
+            # Return font embeddings
+            return outputs['font_embedding']    
     def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
         """
         Visualize character patches (for debugging)
