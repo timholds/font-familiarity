@@ -60,7 +60,7 @@ jobs:
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.HETZNER_SSH_KEY }}
-          known_hosts: ${{ secrets.HETZNER_KNOWN_HOST }}
+          known_hosts: ${{ secrets.HETZNER_KNOWN_HOSTS }}
           
       # Verify server connection
       - name: Check server connection
