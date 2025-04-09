@@ -57,8 +57,8 @@ jobs:
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
-          key: ${{ secrets.DIGITAL_OCEAN_SSH_KEY }}
-          known_hosts: ${{ secrets.KNOWN_HOST }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          known_hosts: ${{ secrets.HETZNER_KNOWN_HOST }}
           
       # Verify server connection
       - name: Check server connection
