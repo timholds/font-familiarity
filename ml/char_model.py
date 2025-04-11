@@ -254,7 +254,7 @@ class CRAFTFontClassifier(nn.Module):
         self.craft = CRAFTModel(
             cache_dir=craft_weights_dir,
             device=device,
-            use_refiner=True,
+            use_refiner=False,
             fp16=craft_fp16, 
             link_threshold=1.9,
             text_threshold=.5,
@@ -738,88 +738,88 @@ class CRAFTFontClassifier(nn.Module):
         all_patches = []
         attention_masks = []
 
-        for i in range(batch_size):
-            if ratio_w is not None:
-                if isinstance(ratio_w, torch.Tensor) and len(ratio_w.shape) > 0:
-                    # It's a batch tensor, extract the specific item
-                    ratio_w = ratio_w[i].item()
-                else:
-                    # It's a scalar value (same for all images)
-                    ratio_w = ratio_w if not isinstance(ratio_w, torch.Tensor) else ratio_w.item()
+        #for i in range(batch_size):
+        if ratio_w is not None:
+            if isinstance(ratio_w, torch.Tensor) and len(ratio_w.shape) > 0:
+                # It's a batch tensor, extract the specific item
+                ratio_w = ratio_w[0].item()
             else:
-                ratio_w = None
-                
-            # Handle ratio_h properly for all possible cases  
-            if ratio_h is not None:
-                if isinstance(ratio_h, torch.Tensor) and len(ratio_h.shape) > 0:
-                    # It's a batch tensor, extract the specific item
-                    ratio_h = ratio_h[i].item()
-                else:
-                    # It's a scalar value (same for all images)
-                    ratio_h = ratio_h if not isinstance(ratio_h, torch.Tensor) else ratio_h.item()
+                # It's a scalar value (same for all images)
+                ratio_w = ratio_w if not isinstance(ratio_w, torch.Tensor) else ratio_w.item()
+        else:
+            ratio_w = None
+            
+        # Handle ratio_h properly for all possible cases  
+        if ratio_h is not None:
+            if isinstance(ratio_h, torch.Tensor) and len(ratio_h.shape) > 0:
+                # It's a batch tensor, extract the specific item
+                ratio_h = ratio_h[0].item()
             else:
-                ratio_h = None
-            
-            
-            # Get polygons from CRAFT
+                # It's a scalar value (same for all images)
+                ratio_h = ratio_h if not isinstance(ratio_h, torch.Tensor) else ratio_h.item()
+        else:
+            ratio_h = None
+        
+        
+        # Get polygons from CRAFT
 
+        
+        try:
+            # images is BCHW
+            # polygons = self.craft.get_polygons(images[i], ratio_w, ratio_h)
+            polygons = self.craft.get_batch_polygons(images, ratio_w, ratio_h)
+        except Exception as e:
+            print(f"CRAFT error: {e}")
+            polygons = []
             
-            try:
-                # images is BCHW
-                # polygons = self.craft.get_polygons(images[i], ratio_w, ratio_h)
-                polygons = self.craft.get_batch_polygons(images, ratio_w, ratio_h)
-            except Exception as e:
-                print(f"CRAFT error: {e}")
-                polygons = []
-            
-            # Extract character patches
-            img_patches = []
-            for polygon in polygons:
-                # polygon = self.add_padding_to_polygons(polygon)
+        # Extract character patches
+        img_patches = []
+        for polygon in polygons:
+            # polygon = self.add_padding_to_polygons(polygon)
 
-                # Convert polygon to bounding box
-                x_coords = [p[0] for p in polygon]
-                y_coords = [p[1] for p in polygon]
-                
-                x1, y1 = min(x_coords), min(y_coords)
-                x2, y2 = max(x_coords), max(y_coords)
-                
-                # Ensure integer coordinates and minimum size
-                x1, y1 = max(0, int(x1)), max(0, int(y1))
-                x2, y2 = min(images[i].shape[1], int(x2)), min(images[i].shape[0], int(y2))
-                
-                # Skip very small regions
-                if x2-x1 < 3 or y2-y1 < 3:
-                    continue
-                
-                # Extract patch
-                patch = images[i][:, y1:y2, x1:x2]  # CHW format
-                
-                # Convert to grayscale
-                # breakpoint()
-                if len(patch.shape) == 3 and patch.shape[2] == 3:
-                    patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-                
-                # Resize and normalize (returns a 2D array)
-                normalized_patch = self._normalize_patch(patch)
-                
-                # Convert to tensor with channel dimension [1, H, W] - PyTorch format
-                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
-                img_patches.append(patch_tensor)
-
-                     
-            # Step 6: If no valid patches, create a default patch from the whole image
-            if not img_patches:
-                img_gray = cv2.cvtColor(images[i], cv2.COLOR_RGB2GRAY) if len(images[i].shape) == 3 else images[i]
-                img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
-                normalized = img_resized.astype(np.float32) / 255.0
-                patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
-                img_patches = [patch_tensor]
+            # Convert polygon to bounding box
+            x_coords = [p[0] for p in polygon]
+            y_coords = [p[1] for p in polygon]
             
-            # Stack patches for this image [num_patches, 1, H, W]
-            img_patches_tensor = torch.stack(img_patches)
-            all_patches.append(img_patches_tensor)
-            attention_masks.append(torch.ones(len(img_patches)))
+            x1, y1 = min(x_coords), min(y_coords)
+            x2, y2 = max(x_coords), max(y_coords)
+            
+            # Ensure integer coordinates and minimum size
+            x1, y1 = max(0, int(x1)), max(0, int(y1))
+            x2, y2 = min(images[i].shape[1], int(x2)), min(images[i].shape[0], int(y2))
+            
+            # Skip very small regions
+            if x2-x1 < 3 or y2-y1 < 3:
+                continue
+            
+            # Extract patch
+            patch = images[i][:, y1:y2, x1:x2]  # CHW format
+            
+            # Convert to grayscale
+            # breakpoint()
+            if len(patch.shape) == 3 and patch.shape[2] == 3:
+                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+            
+            # Resize and normalize (returns a 2D array)
+            normalized_patch = self._normalize_patch(patch)
+            
+            # Convert to tensor with channel dimension [1, H, W] - PyTorch format
+            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+            img_patches.append(patch_tensor)
+
+                    
+        # Step 6: If no valid patches, create a default patch from the whole image
+        if not img_patches:
+            img_gray = cv2.cvtColor(images[i], cv2.COLOR_RGB2GRAY) if len(images[i].shape) == 3 else images[i]
+            img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
+            normalized = img_resized.astype(np.float32) / 255.0
+            patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
+            img_patches = [patch_tensor]
+        
+        # Stack patches for this image [num_patches, 1, H, W]
+        img_patches_tensor = torch.stack(img_patches)
+        all_patches.append(img_patches_tensor)
+        attention_masks.append(torch.ones(len(img_patches)))
                 
         max_patches = max(p.size(0) for p in all_patches)
         if max_patches > 100:
