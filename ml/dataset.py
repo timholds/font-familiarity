@@ -486,115 +486,117 @@ class CharacterFontDataset(Dataset):
     def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list) -> tuple:
         """Extract character patches from image using precomputed bounding boxes."""
         patches = []
-        
+
+        # Debug information
+        print(f"Input image shape: {image.shape}, dtype: {image.dtype}")
+
+        # Fix dimension ordering if needed - handle (height, channels, width) format
+        if len(image.shape) == 3 and image.shape[1] == 3 and image.shape[0] > 10 and image.shape[2] > 10:
+            print(f"Fixing swapped dimensions from {image.shape}")
+            image = np.transpose(image, (0, 2, 1))  # Convert to (height, width, channels)
+            print(f"Transposed to {image.shape}")
+
+        # Convert to uint8 if needed
+        if image.dtype != np.uint8:
+            if image.max() <= 1.0:
+                print(f"Converting from float [0,1] to uint8")
+                image = (image * 255).astype(np.uint8)
+
+        # Ensure image has proper dimensions
+        height, width = image.shape[:2]
+        print(f"Image dimensions: height={height}, width={width}")
+
+        # Handle grayscale or other formats
+        if len(image.shape) == 2:
+            # Convert grayscale to 3-channel for consistent processing
+            image = np.stack([image, image, image], axis=2)
+            print(f"Converted grayscale to 3-channel image: {image.shape}")
+        elif len(image.shape) == 3 and image.shape[2] == 1:
+            # Single channel image - expand to 3 channels
+            image = np.concatenate([image, image, image], axis=2)
+            print(f"Expanded 1-channel to 3-channel image: {image.shape}")
+
+        # Process each box
         for box in boxes:
-            x1, y1, x2, y2 = box
-            
-            # Ensure valid coordinates
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
-            
-            # Skip very small regions
-            if x2-x1 < 3 or y2-y1 < 3:
+            try:
+                # Handle different box formats
+                if len(box) == 4:
+                    x1, y1, x2, y2 = box
+                else:
+                    print(f"Skipping unsupported box format: {box}")
+                    continue
+                    
+                # Ensure valid coordinates
+                x1, y1 = max(0, int(x1)), max(0, int(y1))
+                x2, y2 = min(width, int(x2)), min(height, int(y2))
+                
+                # Skip very small regions
+                if x2-x1 < 3 or y2-y1 < 3:
+                    continue
+                
+                # Extract patch
+                patch = image[y1:y2, x1:x2].copy()
+                
+                # Safely convert to grayscale
+                try:
+                    if len(patch.shape) == 3 and patch.shape[2] == 3:
+                        patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+                    elif len(patch.shape) == 3 and patch.shape[2] == 1:
+                        patch = patch.squeeze(-1)
+                except Exception as e:
+                    print(f"Error in grayscale conversion: {e}, shape={patch.shape}")
+                    # Fallback to manual grayscale conversion
+                    if len(patch.shape) == 3:
+                        patch = np.mean(patch, axis=2).astype(np.uint8)
+                
+                # Normalize patch
+                normalized_patch = self._normalize_patch(patch)
+                
+                # Convert to tensor
+                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+                patches.append(patch_tensor)
+                
+            except Exception as e:
+                print(f"Error processing box {box}: {e}")
                 continue
-            
-            # Extract patch
-            patch = image[y1:y2, x1:x2].copy()
-            
-            # Convert to grayscale if needed
-            if len(patch.shape) == 3 and patch.shape[2] == 3:
-                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-            elif len(patch.shape) == 3 and patch.shape[2] == 1:
-                patch = patch.squeeze(-1)
-            
-            # Normalize patch
-            normalized_patch = self._normalize_patch(patch)
-            
-            # Convert to tensor
-            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
-            patches.append(patch_tensor)
-        
+
         # If no valid patches, create a default patch from the whole image
         if not patches:
-            # Create a grayscale version if image is RGB
-            if len(image.shape) == 3 and image.shape[2] == 3:
-                gray_img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-            elif len(image.shape) == 3 and image.shape[2] == 1:
-                gray_img = image.squeeze(-1)
-            else:
-                gray_img = image
-            
-            img_resized = cv2.resize(gray_img, (self.char_size, self.char_size))
-            normalized = img_resized.astype(np.float32) / 255.0
-            patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
-            patches = [patch_tensor]
-        
-        # Limit to max_chars and stack
+            print(f"No valid patches, creating fallback from whole image")
+            try:
+                # Try to create grayscale version of the whole image
+                if len(image.shape) == 3:
+                    try:
+                        gray_img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                    except Exception as e:
+                        print(f"Fallback grayscale error: {e}")
+                        # Manual grayscale conversion
+                        gray_img = np.mean(image, axis=2).astype(np.uint8)
+                else:
+                    gray_img = image
+                    
+                # Resize to standard size
+                img_resized = cv2.resize(gray_img, (self.char_size, self.char_size))
+                normalized = img_resized.astype(np.float32) / 255.0
+                patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
+                patches = [patch_tensor]
+            except Exception as e:
+                print(f"Error creating fallback: {e}")
+                # Last resort - create an empty patch
+                empty_patch = np.zeros((self.char_size, self.char_size), dtype=np.float32)
+                patch_tensor = torch.from_numpy(empty_patch).float().unsqueeze(0)
+                patches = [patch_tensor]
+
+        # Stack patches and create mask
         patches = patches[:self.max_chars]
         stacked_patches = torch.stack(patches)
-        
-        # Create attention mask (1 for valid patches)
         attention_mask = torch.ones(len(patches))
-        
+
         return stacked_patches, attention_mask
-    
+
     def __len__(self) -> int:
         return len(self.data)
 
-    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list) -> tuple:
-        """Extract character patches from image using precomputed bounding boxes."""
-        patches = []
-        
-        for box in boxes:
-            x1, y1, x2, y2 = box
-            
-            # Ensure valid coordinates
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
-            
-            # Skip very small regions
-            if x2-x1 < 3 or y2-y1 < 3:
-                continue
-            
-            # Extract patch
-            patch = image[y1:y2, x1:x2].copy()
-            
-            # Convert to grayscale if needed
-            if len(patch.shape) == 3 and patch.shape[2] == 3:
-                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-            elif len(patch.shape) == 3 and patch.shape[2] == 1:
-                patch = patch.squeeze(-1)
-            
-            # Normalize patch
-            normalized_patch = self._normalize_patch(patch)
-            
-            # Convert to tensor
-            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
-            patches.append(patch_tensor)
-        
-        # If no valid patches, create a default patch from the whole image
-        if not patches:
-            # Create a grayscale version if image is RGB
-            if len(image.shape) == 3 and image.shape[2] == 3:
-                gray_img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-            elif len(image.shape) == 3 and image.shape[2] == 1:
-                gray_img = image.squeeze(-1)
-            else:
-                gray_img = image
-            
-            img_resized = cv2.resize(gray_img, (self.char_size, self.char_size))
-            normalized = img_resized.astype(np.float32) / 255.0
-            patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
-            patches = [patch_tensor]
-        
-        # Limit to max_chars and stack
-        patches = patches[:self.max_chars]
-        stacked_patches = torch.stack(patches)
-        
-        # Create attention mask (1 for valid patches)
-        attention_mask = torch.ones(len(patches))
-        
-        return stacked_patches, attention_mask
     
     def __getitem__(self, idx: int):
         img = self.data[idx].astype(np.float32)  # HWC

@@ -9,7 +9,7 @@ from ml.char_model import CRAFTFontClassifier
 from ml.dataset import get_char_dataloaders
 from ml.utils import get_embedding_path
 
-def load_char_model(model_path: str) -> Tuple[CRAFTFontClassifier, torch.device]:
+def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tuple[CRAFTFontClassifier, torch.device]:
     """
     Load the trained character-based font classifier model.
     
@@ -56,7 +56,8 @@ def load_char_model(model_path: str) -> Tuple[CRAFTFontClassifier, torch.device]
         device=device,  # Pass device but also explicitly move model to device below
         patch_size=32,
         embedding_dim=embedding_dim,
-        craft_fp16=False
+        craft_fp16=False,
+        use_precomputed_craft=use_precomputed_craft
     )
     
     # Load the trained weights
@@ -106,22 +107,35 @@ def compute_char_embeddings(
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc='Computing embeddings'):
-            # Process batch format from the char_collate_fn
-            images = batch['images'].to(device)
+            # Get targets, which should be present in all batches
             targets = batch['labels'].to(device)
             
             try:
-                # Get patch data using a safer approach
-                patch_data = model.extract_patches_with_craft(images)
-                
-                # Ensure patches and attention mask are on the correct device
-                patches = patch_data['patches'].to(device)
-                attention_mask = patch_data['attention_mask'].to(device).bool()
-                
-                # Process through font classifier to get embeddings
-                with torch.cuda.amp.autocast(enabled=False):  # Disable mixed precision for stability
-                    outputs = model.font_classifier(patches, attention_mask)
+                # Check if we're using precomputed patches
+                if 'patches' in batch and 'attention_mask' in batch:
+                    # Using precomputed patches - move to device
+                    patches = batch['patches'].to(device)
+                    attention_mask = batch['attention_mask'].to(device).bool()
                     
+                    # Process through font classifier directly
+                    with torch.cuda.amp.autocast(enabled=False):
+                        outputs = model.font_classifier(patches, attention_mask)
+                else:
+                    # Original code path for processing images with CRAFT
+                    if 'images' not in batch:
+                        raise ValueError("Batch does not contain 'images' key")
+                    
+                    images = batch['images'].to(device)
+                    
+                    # Get patch data using CRAFT
+                    patch_data = model.extract_patches_with_craft(images)
+                    patches = patch_data['patches'].to(device)
+                    attention_mask = patch_data['attention_mask'].to(device).bool()
+                    
+                    # Process through font classifier
+                    with torch.cuda.amp.autocast(enabled=False):
+                        outputs = model.font_classifier(patches, attention_mask)
+                
                 font_embeddings = outputs['font_embedding']  # [batch_size, embedding_dim]
                 
                 # Accumulate embeddings by class
@@ -157,17 +171,21 @@ def main():
     parser.add_argument("--data_dir", required=True, help="Path to dataset directory")
     parser.add_argument("--embeddings_file", help="Path to save embeddings (optional)")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size (smaller for char model)")
+    parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT boxes from data_dir")
+
     args = parser.parse_args()
     
     # Load model
     print("Loading character-based model...")
-    model, device = load_char_model(args.model_path)
+    model, device = load_char_model(args.model_path, use_precomputed_craft=args.use_precomputed_craft)
+
     
     # Get dataloaders for character-based model
     print("Loading character dataset...")
     test_loader, _, num_classes = get_char_dataloaders(
         data_dir=args.data_dir,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        use_precomputed_craft=args.use_precomputed_craft,
     )
     
     # Compute embeddings
@@ -181,7 +199,7 @@ def main():
         embedding_dim = model.font_classifier.aggregator.projection.out_features
         embeddings_path = os.path.join(
             args.data_dir, 
-            f"class_embeddings_{embedding_dim}d.npy"
+            f"class_embeddings_{embedding_dim}.npy"
         )
     
     print(f"\nSaving embeddings to {embeddings_path}")
