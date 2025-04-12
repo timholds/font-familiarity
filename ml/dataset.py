@@ -288,14 +288,13 @@ class CharacterFontDataset(Dataset):
     
     def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
                   max_chars: int = 50, use_annotations=False, 
-                  use_precomputed_craft=False, craft_results_dir=None):
+                  use_precomputed_craft=False):
         self.root_dir = root_dir
         self.char_size = char_size
         self.max_chars = max_chars
         self.use_annotations = use_annotations
 
         self.use_precomputed_craft = use_precomputed_craft
-        self.craft_results_dir = craft_results_dir
         
         # Load font data using original approach
         mode = 'train' if train else 'test'
@@ -339,8 +338,8 @@ class CharacterFontDataset(Dataset):
             print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
         
         self.precomputed_boxes = None
-        if self.use_precomputed_craft and self.craft_results_dir is not None:
-            craft_file = os.path.join(self.craft_results_dir, f'{mode}_craft_boxes.npz')
+        if self.use_precomputed_craft:
+            craft_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.npz')
             if os.path.exists(craft_file):
                 try:
                     loaded_data = np.load(craft_file, allow_pickle=True)
@@ -730,7 +729,6 @@ def get_char_dataloaders(
     num_workers: int = 4, 
     use_annotations: bool = False,
     use_precomputed_craft: bool = False,
-    craft_results_dir: str = None
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
@@ -739,14 +737,12 @@ def get_char_dataloaders(
         data_dir, train=True, 
         use_annotations=use_annotations,
         use_precomputed_craft=use_precomputed_craft,
-        craft_results_dir=craft_results_dir
     )
     
     test_dataset = CharacterFontDataset(
         data_dir, train=False, 
         use_annotations=use_annotations,
         use_precomputed_craft=use_precomputed_craft,
-        craft_results_dir=craft_results_dir
     )
 
     assert train_dataset.num_classes == test_dataset.num_classes, (

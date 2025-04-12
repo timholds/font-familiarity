@@ -294,6 +294,9 @@ class CRAFTFontClassifier(nn.Module):
         # Extract patches using CRAFT
         with torch.no_grad():
             # Process through CRAFT to get character patches
+            # if self.use_precomputed_craft:
+            #     # Use precomputed patches directly
+            #     patch_data = images
             patch_data = self.extract_patches_with_craft(images)
             
             # Get patches and attention mask
@@ -761,56 +764,67 @@ class CRAFTFontClassifier(nn.Module):
             # Always return grayscale
             return np.zeros((self.patch_size, self.patch_size), dtype=np.float32)
     
-    def forward(self, images, targets=None, annotations=None):
+    def forward(self, inputs, targets=None, annotations=None):
         """
         Forward pass that handles both training and inference modes
 
         Args:
-            images: Tensor of shape [batch_size, channels, height, width]
+            inputs: Either a tensor of shape [batch_size, channels, height, width]
+                    or a dictionary containing batch data
             targets: Optional font class targets (for training)
             annotations: Optional character annotations (for training)
             
         Returns:
             Dictionary with model outputs
         """
-
-        if isinstance(images, dict):
-            batch_data = images
+        # Check if input is a dictionary (from dataloader)
+        if isinstance(inputs, dict):
+            batch_data = inputs
             
-            # If precomputed patches are provided, use them directly
+            # CASE 1: Precomputed patches provided directly
             if 'patches' in batch_data and 'attention_mask' in batch_data:
-                # Move to device if needed
-                patches = batch_data['patches'].to(self.device)
-                attention_mask = batch_data['attention_mask'].to(self.device)
-                
                 # Process patches with font classifier
-                output = self.font_classifier(patches, attention_mask)
+                output = self.font_classifier(
+                    batch_data['patches'].to(self.device), 
+                    batch_data['attention_mask'].to(self.device)
+                )
                 
                 # Add labels to output if available
                 if 'labels' in batch_data:
                     output['labels'] = batch_data['labels'].to(self.device)
                     
                 return output
+            
+            # CASE 2: Images provided in batch_data
+            elif 'images' in batch_data:
+                images = batch_data['images']
+                targets = batch_data.get('labels', targets)
+                annotations = batch_data.get('annotations', annotations)
+            else:
+                raise ValueError("Batch data must contain either 'patches' or 'images'")
+        else:
+            # CASE 3: Direct tensor input
+            images = inputs
 
+        # Process images (Cases 2 & 3)
+        # Ensure correct format: [B, C, H, W]
         if len(images.shape) == 4 and images.shape[3] in [1, 3]:  # HWC format
             # Permute dimensions: [B, H, W, C] -> [B, C, H, W]
             images = images.permute(0, 3, 1, 2)
 
-        # Check if input is a dictionary (from dataloader)
-        if isinstance(images, dict):
-            # Extract components from dictionary
-            batch_data = images
-            images = batch_data['images']
-            targets = batch_data['labels'] if 'labels' in batch_data else None
-            annotations = batch_data['annotations'] if 'annotations' in batch_data else None
+        # Check configuration
+        if self.use_precomputed_craft:
+            # We should have already returned in CASE 1 when using precomputed CRAFT
+            raise RuntimeError(
+                "Incorrect usage of precomputed CRAFT mode: Received raw images instead of " 
+                "precomputed patches. Make sure your dataloader is returning 'patches' and "
+                "'attention_mask' when use_precomputed_craft=True"
+            )
 
-        # Now proceed with normal processing
-        # if self.training and annotations is not None:
-        #     # Training mode: use provided annotations to extract patches
-        #     batch_data = self.extract_patches_from_annotations(images, targets, annotations)
-        # else:
-            # Inference mode: use CRAFT to extract patches
+        # Extract patches with CRAFT (only done once now)
         batch_data = self.extract_patches_with_craft(images)
+
+        # Add labels if available
         if targets is not None:
             batch_data['labels'] = targets.to(self.device)
 

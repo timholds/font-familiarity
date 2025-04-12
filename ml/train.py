@@ -48,18 +48,28 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         if char_model:
             # For character-based model (with CRAFT)
             # Batch data is a dictionary with images, labels, and annotations
-            images = batch_data['images'].to(device)
+            # First, get the labels which should always be present
             targets = batch_data['labels'].to(device)
-            annotations = batch_data['annotations'] if 'annotations' in batch_data else None
             batch_size = targets.size(0)
 
-            # Forward pass - pass everything to the model
-            optimizer.zero_grad()
+            # Check if we're using precomputed patches
+            if 'patches' in batch_data and 'attention_mask' in batch_data:
+                # We have precomputed patches - just ensure they're on the right device
+                batch_data['patches'] = batch_data['patches'].to(device)
+                batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
+                
+                # Forward pass with the batch data directly
+                optimizer.zero_grad()
+                outputs = model(batch_data)
+            else:
+                # Traditional path with images
+                images = batch_data['images'].to(device)
+                annotations = batch_data['annotations'] if 'annotations' in batch_data else None
+                
+                # Forward pass with separate arguments
+                optimizer.zero_grad()
+                outputs = model(images, targets, annotations)
 
-            # TODO visualize model inputs here to validate range and shape
-
-            outputs = model(images, targets, annotations)
-            
             # Handle different output formats from model
             if isinstance(outputs, tuple):
                 # Model returns logits and attention weights
@@ -70,6 +80,26 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             else:
                 # Model directly returns logits
                 logits = outputs
+        if char_model:
+            # For character-based model (with CRAFT)
+            # Batch data could contain either images or precomputed patches
+            targets = batch_data['labels'].to(device)
+            batch_size = targets.size(0)
+
+            # Check if we're using precomputed patches
+            if 'patches' in batch_data and 'attention_mask' in batch_data:
+                # We have precomputed patches - just ensure they're on the right device
+                batch_data['patches'] = batch_data['patches'].to(device)
+                batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
+            elif 'images' in batch_data:
+                # We have images - move them to the device
+                batch_data['images'] = batch_data['images'].to(device)
+                if 'annotations' in batch_data:
+                    # We're using annotations too (leave them as is, they're usually a Python list)
+                    pass
+            else:
+                raise ValueError("Batch data missing both 'images' and 'patches' keys")
+
         else:
             data, targets = batch_data
             data, targets = data.to(device), targets.to(device)
@@ -98,12 +128,52 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
+        # if batch_idx % 100 == 0:
+        #     # Visualize a few samples from the batch
+        #     vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
+
+        #     # Extract patches for visualization
+        #     if char_model and hasattr(model, 'visualize_char_preds'):
+        #         with torch.no_grad(): 
+        #             patch_data = model.extract_patches_with_craft(images) # images BHWC
+        #             model.visualize_char_preds(
+        #                 patches=patch_data['patches'],
+        #                 attention_mask=patch_data['attention_mask'],
+        #                 predictions=pred,
+        #                 targets=targets,
+        #                 save_path=vis_path
+        #             )
+
+        
+        #     # Add CRAFT detection visualization
+        #     if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
+        #         model.visualize_craft_detections(
+        #             images=images,  # Original images
+        #             targets=targets,
+        #             label_mapping=train_loader.dataset.label_mapping,
+        #             save_path=vis_path
+        #         )
         if batch_idx % 100 == 0:
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
 
-            # Extract patches for visualization
-            if char_model and hasattr(model, 'visualize_char_preds'):
+            # Extract patches for visualization - handle both cases
+            if 'patches' in batch_data and char_model:
+                patches = batch_data['patches'].to(device)
+                attention_mask = batch_data['attention_mask'].to(device)
+                
+                # If model has visualization method, use it
+                if hasattr(model, 'visualize_char_preds'):
+                    with torch.no_grad():
+                        model.visualize_char_preds(
+                            patches=patches,
+                            attention_mask=attention_mask,
+                            predictions=pred,
+                            targets=targets,
+                            save_path=vis_path
+                        )
+            elif char_model and hasattr(model, 'extract_patches_with_craft') and not model.use_precomputed_craft:
+                # Only try to extract patches if not using precomputed and CRAFT is available
                 with torch.no_grad(): 
                     patch_data = model.extract_patches_with_craft(images) # images BHWC
                     model.visualize_char_preds(
@@ -114,9 +184,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                         save_path=vis_path
                     )
 
-        
-            # Add CRAFT detection visualization
-            if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
+            # Add CRAFT detection visualization - only if not using precomputed
+            if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections') and not model.use_precomputed_craft:
                 model.visualize_craft_detections(
                     images=images,  # Original images
                     targets=targets,
@@ -169,19 +238,35 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
             # Handle different data formats based on model type
             if char_model:
                 # For character-based model with CRAFT
-                images = batch_data['images'].to(device)
+                
+                # Move labels to device (should always be present)
                 targets = batch_data['labels'].to(device)
-                annotations = batch_data['annotations'] if 'annotations' in batch_data else None
+                
+                # Check if we're using precomputed patches or images
+                if 'patches' in batch_data and 'attention_mask' in batch_data:
+                    # Using precomputed patches - move to device
+                    batch_data['patches'] = batch_data['patches'].to(device)
+                    batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
+                elif 'images' in batch_data:
+                    # Using images - move to device
+                    batch_data['images'] = batch_data['images'].to(device)
+                else:
+                    raise ValueError("Batch data must contain either 'patches' or 'images'")
 
-                # Forward pass with whole images
-                outputs = model(images, targets, annotations)
-
+                # Forward pass with the batch data
+                outputs = model(batch_data)
+                
                 # Extract logits from outputs
                 if isinstance(outputs, dict):
                     logits = outputs['logits']
                 else:
                     logits = outputs
-                            
+            else:
+                # Original code for non-character models
+                data, targets = batch_data
+                data, targets = data.to(device), targets.to(device)
+                logits = model(data)
+                
             # Accumulate tensors for advanced metrics
             all_logits.append(logits)
             all_targets.append(targets)
@@ -299,7 +384,6 @@ def main():
     parser.add_argument("--char_model", action="store_true", help="Use character-based model")
     parser.add_argument("--pretrained_model", type=str, default=None, help="Path to pretrained model")
     parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT results")
-    parser.add_argument("--craft_results_dir", type=str, default=None, help="Path to precomputed CRAFT results")
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -334,6 +418,8 @@ def main():
         num_classes = checkpoint['num_classes']
         
         print(f"Resuming from epoch {start_epoch}/{args.epochs} with previous best test accuracy {best_test_acc:.2f}%")
+    else:
+        start_epoch = 0
 
     # Load data
     print("Loading data...")
@@ -343,7 +429,6 @@ def main():
             batch_size=args.batch_size,
             use_annotations=False,
             use_precomputed_craft=args.use_precomputed_craft,
-            craft_results_dir=args.craft_results_dir
         )
     else:
         train_loader, test_loader, num_classes = get_dataloaders(
