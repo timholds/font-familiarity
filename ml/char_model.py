@@ -247,18 +247,25 @@ class CRAFTFontClassifier(nn.Module):
     During inference, uses CRAFT to extract character patches.
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
-                 patch_size=32, embedding_dim=256, craft_fp16=False):
+                 patch_size=32, embedding_dim=256, craft_fp16=False, 
+                 use_precomputed_craft=False):
         super().__init__()
+
+        self.use_precomputed_craft = use_precomputed_craft
+
         # Initialize CRAFT model for text detection
-        self.craft = CRAFTModel(
-            cache_dir=craft_weights_dir,
-            device=device,
-            use_refiner=True,
-            fp16=craft_fp16, 
-            link_threshold=1.9,
-            text_threshold=.5,
-            low_text=.5,
-        )
+        if not use_precomputed_craft:
+            self.craft = CRAFTModel(
+                cache_dir=craft_weights_dir,
+                device=device,
+                use_refiner=True,
+                fp16=craft_fp16, 
+                link_threshold=1.9,
+                text_threshold=.5,
+                low_text=.5,
+            )
+        else:
+            self.craft = None
         
         # Initialize the font classifier
         self.font_classifier = CharacterBasedFontClassifier(
@@ -766,6 +773,24 @@ class CRAFTFontClassifier(nn.Module):
         Returns:
             Dictionary with model outputs
         """
+
+        if isinstance(images, dict):
+            batch_data = images
+            
+            # If precomputed patches are provided, use them directly
+            if 'patches' in batch_data and 'attention_mask' in batch_data:
+                # Move to device if needed
+                patches = batch_data['patches'].to(self.device)
+                attention_mask = batch_data['attention_mask'].to(self.device)
+                
+                # Process patches with font classifier
+                output = self.font_classifier(patches, attention_mask)
+                
+                # Add labels to output if available
+                if 'labels' in batch_data:
+                    output['labels'] = batch_data['labels'].to(self.device)
+                    
+                return output
 
         if len(images.shape) == 4 and images.shape[3] in [1, 3]:  # HWC format
             # Permute dimensions: [B, H, W, C] -> [B, C, H, W]

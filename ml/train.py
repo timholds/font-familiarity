@@ -298,6 +298,8 @@ def main():
     parser.add_argument("--initial_channels", type=int, default=16)
     parser.add_argument("--char_model", action="store_true", help="Use character-based model")
     parser.add_argument("--pretrained_model", type=str, default=None, help="Path to pretrained model")
+    parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT results")
+    parser.add_argument("--craft_results_dir", type=str, default=None, help="Path to precomputed CRAFT results")
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -338,7 +340,10 @@ def main():
     if args.char_model:
         train_loader, test_loader, num_classes = get_char_dataloaders(
             data_dir=args.data_dir,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            use_annotations=False,
+            use_precomputed_craft=args.use_precomputed_craft,
+            craft_results_dir=args.craft_results_dir
         )
     else:
         train_loader, test_loader, num_classes = get_dataloaders(
@@ -383,7 +388,8 @@ def main():
                 device=device,
                 patch_size=32,
                 embedding_dim=args.embedding_dim,
-                craft_fp16=use_fp16
+                craft_fp16=use_fp16,
+                use_precomputed_craft=args.use_precomputed_craft,
             ).to(device)
             
             # print("\nTesting batch independence...")

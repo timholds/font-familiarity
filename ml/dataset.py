@@ -728,13 +728,26 @@ def get_char_dataloaders(
     data_dir: str,
     batch_size: int = 32,
     num_workers: int = 4, 
-    use_annotations: bool = False
+    use_annotations: bool = False,
+    use_precomputed_craft: bool = False,
+    craft_results_dir: str = None
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
     """
-    train_dataset = CharacterFontDataset(data_dir, train=True, use_annotations=use_annotations)
-    test_dataset = CharacterFontDataset(data_dir, train=False, use_annotations=use_annotations)
+    train_dataset = CharacterFontDataset(
+        data_dir, train=True, 
+        use_annotations=use_annotations,
+        use_precomputed_craft=use_precomputed_craft,
+        craft_results_dir=craft_results_dir
+    )
+    
+    test_dataset = CharacterFontDataset(
+        data_dir, train=False, 
+        use_annotations=use_annotations,
+        use_precomputed_craft=use_precomputed_craft,
+        craft_results_dir=craft_results_dir
+    )
 
     assert train_dataset.num_classes == test_dataset.num_classes, (
         f"Mismatch between train ({train_dataset.num_classes}) and "
