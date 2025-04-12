@@ -3,6 +3,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import Tuple
+import cv2
+import tqdm
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -285,11 +287,15 @@ class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
     def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
-                  max_chars: int = 50, use_annotations=False):
+                  max_chars: int = 50, use_annotations=False, 
+                  use_precomputed_craft=False, craft_results_dir=None):
         self.root_dir = root_dir
         self.char_size = char_size
         self.max_chars = max_chars
         self.use_annotations = use_annotations
+
+        self.use_precomputed_craft = use_precomputed_craft
+        self.craft_results_dir = craft_results_dir
         
         # Load font data using original approach
         mode = 'train' if train else 'test'
@@ -332,6 +338,21 @@ class CharacterFontDataset(Dataset):
             print(f"Using character annotations. Found {len(self.char_mapping)} character mappings.")
             print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
         
+        self.precomputed_boxes = None
+        if self.use_precomputed_craft and self.craft_results_dir is not None:
+            craft_file = os.path.join(self.craft_results_dir, f'{mode}_craft_boxes.npz')
+            if os.path.exists(craft_file):
+                try:
+                    loaded_data = np.load(craft_file, allow_pickle=True)
+                    self.precomputed_boxes = loaded_data['boxes']
+                    print(f"Loaded precomputed CRAFT boxes for {len(self.precomputed_boxes)} images")
+                except Exception as e:
+                    print(f"Error loading precomputed CRAFT boxes: {e}")
+                    self.precomputed_boxes = None
+            else:
+                print(f"Warning: Precomputed CRAFT file not found at {craft_file}")
+    
+
     def _load_char_mapping(self, mapping_file: str) -> dict:
         """Load mapping from class_id to character."""
         mapping = {}
@@ -463,55 +484,176 @@ class CharacterFontDataset(Dataset):
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
     
+    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list) -> tuple:
+        """Extract character patches from image using precomputed bounding boxes."""
+        patches = []
+        
+        for box in boxes:
+            x1, y1, x2, y2 = box
+            
+            # Ensure valid coordinates
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
+            
+            # Skip very small regions
+            if x2-x1 < 3 or y2-y1 < 3:
+                continue
+            
+            # Extract patch
+            patch = image[y1:y2, x1:x2].copy()
+            
+            # Convert to grayscale if needed
+            if len(patch.shape) == 3 and patch.shape[2] == 3:
+                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+            elif len(patch.shape) == 3 and patch.shape[2] == 1:
+                patch = patch.squeeze(-1)
+            
+            # Normalize patch
+            normalized_patch = self._normalize_patch(patch)
+            
+            # Convert to tensor
+            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+            patches.append(patch_tensor)
+        
+        # If no valid patches, create a default patch from the whole image
+        if not patches:
+            # Create a grayscale version if image is RGB
+            if len(image.shape) == 3 and image.shape[2] == 3:
+                gray_img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            elif len(image.shape) == 3 and image.shape[2] == 1:
+                gray_img = image.squeeze(-1)
+            else:
+                gray_img = image
+            
+            img_resized = cv2.resize(gray_img, (self.char_size, self.char_size))
+            normalized = img_resized.astype(np.float32) / 255.0
+            patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
+            patches = [patch_tensor]
+        
+        # Limit to max_chars and stack
+        patches = patches[:self.max_chars]
+        stacked_patches = torch.stack(patches)
+        
+        # Create attention mask (1 for valid patches)
+        attention_mask = torch.ones(len(patches))
+        
+        return stacked_patches, attention_mask
+    
     def __len__(self) -> int:
         return len(self.data)
+
+    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list) -> tuple:
+        """Extract character patches from image using precomputed bounding boxes."""
+        patches = []
+        
+        for box in boxes:
+            x1, y1, x2, y2 = box
+            
+            # Ensure valid coordinates
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
+            
+            # Skip very small regions
+            if x2-x1 < 3 or y2-y1 < 3:
+                continue
+            
+            # Extract patch
+            patch = image[y1:y2, x1:x2].copy()
+            
+            # Convert to grayscale if needed
+            if len(patch.shape) == 3 and patch.shape[2] == 3:
+                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+            elif len(patch.shape) == 3 and patch.shape[2] == 1:
+                patch = patch.squeeze(-1)
+            
+            # Normalize patch
+            normalized_patch = self._normalize_patch(patch)
+            
+            # Convert to tensor
+            patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+            patches.append(patch_tensor)
+        
+        # If no valid patches, create a default patch from the whole image
+        if not patches:
+            # Create a grayscale version if image is RGB
+            if len(image.shape) == 3 and image.shape[2] == 3:
+                gray_img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            elif len(image.shape) == 3 and image.shape[2] == 1:
+                gray_img = image.squeeze(-1)
+            else:
+                gray_img = image
+            
+            img_resized = cv2.resize(gray_img, (self.char_size, self.char_size))
+            normalized = img_resized.astype(np.float32) / 255.0
+            patch_tensor = torch.from_numpy(normalized).float().unsqueeze(0)
+            patches = [patch_tensor]
+        
+        # Limit to max_chars and stack
+        patches = patches[:self.max_chars]
+        stacked_patches = torch.stack(patches)
+        
+        # Create attention mask (1 for valid patches)
+        attention_mask = torch.ones(len(patches))
+        
+        return stacked_patches, attention_mask
     
     def __getitem__(self, idx: int):
-        # Get original image and its font target
-        # img = self.data[idx].astype(np.float32)
-        # target = self.targets[idx]
-
-        img = self.data[idx].astype(np.float32)
-        target = int(self.targets[idx])  # Ensure it's an integer
-        target = torch.tensor(target, dtype=torch.long)  # Convert to torch.long tensor
-
-
-        # Convert the full image to tensor
-        img_tensor = torch.from_numpy(img).float()
-
-        # Add channel dimension if needed
-        if img_tensor.dim() == 2:  # If grayscale without channel
-            img_tensor = img_tensor.unsqueeze(0)
+        img = self.data[idx].astype(np.float32)  # HWC
+        target = int(self.targets[idx])
+        target = torch.tensor(target, dtype=torch.long)
         
-        # Skip annotation processing if not using annotations
-        if not self.use_annotations:
-            return img_tensor, target, []
-
-        # Get font name for annotation lookup
-        font_idx = target
-        font_name = self.idx_to_font.get(font_idx, f"unknown_font_{font_idx}")
-        sample_id = f"sample_{idx:04d}"
-        yolo_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.txt")
+        # Check if we should use precomputed CRAFT boxes
+        if self.use_precomputed_craft and self.precomputed_boxes is not None:
+            # Extract boxes for this image
+            boxes = self.precomputed_boxes[idx]
+            
+            # Extract patches using precomputed boxes
+            patches, attention_mask = self._extract_patches_from_boxes(img, boxes)
+            
+            # Return patches directly
+            return {
+                'patches': patches,
+                'attention_mask': attention_mask,
+                'labels': target
+            }
         
-        # Process YOLO format annotations if available
-        annotations = []
-        if os.path.exists(yolo_path):
-            try:
-                with open(yolo_path, 'r') as f:
-                    for line in f:
-                        parts = line.strip().split()
-                        if len(parts) >= 5:
-                            # Format: class_id, x_center, y_center, w, h
-                            class_id = int(parts[0])
-                            x_center = float(parts[1])
-                            y_center = float(parts[2])
-                            w = float(parts[3])
-                            h = float(parts[4])
-                            annotations.append([class_id, x_center, y_center, w, h])
-            except Exception as e:
-                print(f"Error processing YOLO annotations for {yolo_path}: {e}")
+        else:
+            # Convert the full image to tensor
+            img_tensor = torch.from_numpy(img).float()
 
-        return img_tensor, target, annotations
+            # Add channel dimension if needed
+            if img_tensor.dim() == 2:  # If grayscale without channel
+                img_tensor = img_tensor.unsqueeze(0)
+            
+            # Skip annotation processing if not using annotations
+            if not self.use_annotations:
+                return img_tensor, target, []
+
+            # Get font name for annotation lookup
+            font_idx = target
+            font_name = self.idx_to_font.get(font_idx, f"unknown_font_{font_idx}")
+            sample_id = f"sample_{idx:04d}"
+            yolo_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.txt")
+            
+            # Process YOLO format annotations if available
+            annotations = []
+            if os.path.exists(yolo_path):
+                try:
+                    with open(yolo_path, 'r') as f:
+                        for line in f:
+                            parts = line.strip().split()
+                            if len(parts) >= 5:
+                                # Format: class_id, x_center, y_center, w, h
+                                class_id = int(parts[0])
+                                x_center = float(parts[1])
+                                y_center = float(parts[2])
+                                w = float(parts[3])
+                                h = float(parts[4])
+                                annotations.append([class_id, x_center, y_center, w, h])
+                except Exception as e:
+                    print(f"Error processing YOLO annotations for {yolo_path}: {e}")
+
+            return img_tensor, target, annotations
 
 def char_collate_fn(batch):
     """
@@ -524,17 +666,62 @@ def char_collate_fn(batch):
         Dictionary with batched data
     """
     # Separate images, labels, and annotations
-    images, targets, annotations_list = zip(*batch)
-    
-    # Stack images and convert targets to tensor
-    images_batch = torch.stack(images)
-    targets_batch = torch.tensor(targets)
-    
-    return {
-        'images': images_batch,          # [batch_size, channels, H, W]
-        'labels': targets_batch,         # [batch_size]
-        'annotations': annotations_list  # List of annotation lists
-    }
+    if 'patches' in batch[0]:
+        # Extract items from each batch element
+        patches = [item['patches'] for item in batch]
+        attention_masks = [item['attention_mask'] for item in batch]
+        targets = [item['labels'] for item in batch]
+        
+        # Get max number of patches
+        max_patches = max(p.size(0) for p in patches)
+        
+        # Pad patches and attention masks
+        padded_patches = []
+        padded_masks = []
+        
+        for patch_set, mask in zip(patches, attention_masks):
+            if patch_set.size(0) < max_patches:
+                # Create padding
+                padding = torch.zeros(
+                    (max_patches - patch_set.size(0), 1, patch_set.size(2), patch_set.size(3)),
+                    dtype=patch_set.dtype
+                )
+                padded = torch.cat([patch_set, padding], dim=0)
+                
+                # Extend mask
+                pad_mask = torch.cat([
+                    mask,
+                    torch.zeros(max_patches - mask.size(0))
+                ])
+            else:
+                padded = patch_set
+                pad_mask = mask
+            
+            padded_patches.append(padded)
+            padded_masks.append(pad_mask)
+        
+        # Stack into batch tensors
+        patches_batch = torch.stack(padded_patches)
+        attention_batch = torch.stack(padded_masks)
+        targets_batch = torch.stack(targets)
+        
+        return {
+            'patches': patches_batch,
+            'attention_mask': attention_batch,
+            'labels': targets_batch
+        }
+    else:
+        images, targets, annotations_list = zip(*batch)
+
+        # Stack images and convert targets to tensor
+        images_batch = torch.stack(images)
+        targets_batch = torch.tensor(targets)
+
+        return {
+            'images': images_batch,          # [batch_size, channels, H, W]
+            'labels': targets_batch,         # [batch_size]
+            'annotations': annotations_list  # List of annotation lists
+        }
 
 
 def get_char_dataloaders(

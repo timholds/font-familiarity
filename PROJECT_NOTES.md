@@ -53,6 +53,12 @@ Feed grayscale patches to the character classifier
 - CRAFT expects 3 channel image  
 - Patch level character CNN should probably just be in grayscale since we care about shape not color and that should still be preserved. 
 
+The official craft implementation by default tests with 768x768 images (https://github.com/clovaai/CRAFT-pytorch/blob/master/craft.py#L84C5-L84C58)
+`output, _ = model(torch.randn(1, 3, 768, 768).cuda())`  
+ 
+ 
+so if nothing else we can use that as a prior on what size we should feed in if we want the best results out of craft without having to do any tuning. That said, "the most performance you get without without tweaking the weight" is like "the most fun you can have with your pants on", but we will save this for after we do more data augmentations to the input images. 
+
 ### Challenge: currently the character detection labels we have are non rectangular
 - Fixed-size square patches: Force all bounding boxes to be squares with consistent dimensions, even if that means including more whitespace for some characters. This ensures consistent scale, but loses aspect ratio information.
 - Augmentation: Use data augmentation to help the network become invariant to aspect ratio and size variations.
@@ -339,15 +345,11 @@ try some different text sizes for data augmentation
 # Known issues
 The labels in the npz file are off by one, so we need to subtract by one in the `FontDataset`: `self.targets = data['labels']-1`
 
-Note to end user: This works better on square images with black text on white background. YMMV
 
 # Project Notes
 ## Notes
 ## Experiments
 ## Challenges
-
-### Getting craft to accept batches
-The dataloader converts the input images to tensors and the craft model immediately sends those back to the cpu to do image preprocessing with numpy. I tried folding some of this preprocessing like channel permutation and normalization into the the data loader to do some of the preprocessing on the GPU and was hoping to write the post processing and patch extraction to run on the gpu but this proved to be pain and I was getting different patches extracted than I expected
 ## TODOs
 [ ] get the results on the frontend to be rendered in the font themselves! this should help visually add a sanity check to the results
 
@@ -376,3 +378,58 @@ Upload an image or screenshot
 Going from 2d to 3d means reworking the model to be character based instead of string based. Since we have new degrees of freedom for the input, it would be tremendously helpful to remove some others, lest we have to scale up the amount of data disproportionately. Btw, we don't hear much about the curse of dimensionality too much these days, do we?
 
 First, I got some appropriate CRAFT parameters for my particular image and font sizes that would give me character level patches and used Colab to visualize the patches for a single image. Then I added a visualization function as part of the training loop that would show me the 
+
+
+# Getting CRAFT on device and parallelized
+craft was made to take in images one by one does image preprocessing using opencv, which operates on numpy arrays that are on the CPU. 
+
+## Intermediate steps
+- get craft working in a colab on a single general test image, verify that the library is not going to be super inconvenient to use package dependency wise
+- get craft to work on one of my training images
+- tune the craft parameters on a handful of single images manually until we are getting character level bounding boxes
+- integrate craft into our model, operating on single images at a time in a for loop
+  - make sure the inputs are the right data type, shape, and size for craft
+
+## the default default workflow
+the goal is to keep all the data on the gpu to avoid roundtripping it back to the cpu and to avoid having a for loop in our model. we have already added the code to normalize the data and permute the channles in chw into the data loader so that we can skip the preprocess_image() step.
+
+the original get_polygons() which runs the images sequentially calls out to a few functions
+- preprocess_image, which we have already wrapped into the data loader
+- get_text_map()
+- getDetBoxes()
+   - getDetBoxes_core()
+   - getPoly_core()
+- adjustResultCoordinates()
+
+
+
+(for me, convert back from pytorch tensor on the gpu that my data loader created to a pil image on the cpu)
+- PIL image --> get_polygons() 
+  - np array, HWC [0, 255] --> preprocess_image() --> pytorch Variable, BCHW [0, 1]. This is already one extra GPU CPU GPU round trip extra. 
+  - tensor --> get_text_map() 
+    - pass tensor through refiner net
+    - --> numpy array for link and score text
+  - np array --> getDetBoxes_core()
+  - getDetBoxes()
+    - np array -->getPoly_core()
+  - adjustResultCoordinates()
+
+## my workflow
+pytorch tensor from dataloader BHWC [0, 1] --> get_polygons_batch() 
+  - skip preprocess_image() and fold channel permutation and normalization into the data loader--> pytorch Variable, BCHW [0, 1]. This is already one extra GPU CPU GPU round trip extra. 
+  ```
+  base_transforms = [
+            # Normalize using the correct values for CRAFT
+            transforms.ToTensor(),  # Convert to tensor
+            transforms.Normalize(mean=self.norm_mean, std=self.norm_std),
+        ]
+  ```
+
+  - tensor --> get_text_map() 
+    - pass tensor through refiner net
+    - --> numpy array for link and score text
+  - np array --> getDetBoxes_core()
+  - getDetBoxes()
+    - np array -->getPoly_core()
+  - adjustResultCoordinates()
+
