@@ -1,15 +1,17 @@
-from pathlib import Path
-from typing import List
-from dataclasses import dataclass
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 import os
 from PIL import Image
 import io
 import json
 import socket
+import argparse
+import random
 
+from pathlib import Path
+from typing import List
+from dataclasses import dataclass
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from flask import Flask, render_template
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -18,7 +20,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.chrome.service import Service
-import argparse
 
 # Configure logging
 logging.basicConfig(
@@ -87,14 +88,94 @@ class FontConfig:
     image_width: int = 512
     image_height: int = 512
     font_size: int = 24
+    font_weight: int = 400      
+    letter_spacing: str = 0
+    line_height: float = 1.5   
+    font_style: str = "normal"  
+    text_color: str = "#000000"  
+    bg_color: str = "#FFFFFF"   
     samples_per_font: int = 10
+
+class TextAugmentation:
+    """Generates continuous text augmentation parameters for dataset diversity."""
+    
+    def __init__(self, 
+                 font_size_range=(16, 36),
+                 weight_primary_modes=[400, 700],  # Common font weights
+                 weight_primary_prob=0.7,          # Probability of using common weights
+                 letter_spacing_range=(-0.1, 0.4), # em units
+                 line_height_range=(1.1, 1.9)):
+        
+        self.font_size_range = font_size_range
+        self.weight_primary_modes = weight_primary_modes
+        self.weight_primary_prob = weight_primary_prob
+        self.letter_spacing_range = letter_spacing_range
+        self.line_height_range = line_height_range
+        
+        # Valid font weights (100-900 in increments of 100)
+        self.valid_weights = list(range(100, 1000, 100))
+        
+    def sample_font_size(self):
+        """Sample a font size from the specified range."""
+        return round(random.uniform(*self.font_size_range))
+    
+    def sample_font_weight(self):
+        """Sample a font weight using a mixture model approach.
+        
+        This uses a bimodal distribution favoring common weights (400, 700)
+        while still occasionally sampling from the full range for robustness.
+        """
+        if random.random() < self.weight_primary_prob:
+            # Sample from primary modes (regular or bold)
+            return random.choice(self.weight_primary_modes)
+        else:
+            # Sample from full range for diversity
+            return random.choice(self.valid_weights)
+    
+    def sample_letter_spacing(self):
+        """Sample a letter spacing value as a continuous parameter.
+        
+        Returns a CSS value like '0.03em' or '-0.02em'.
+        """
+        spacing = random.uniform(*self.letter_spacing_range)
+        return f"{spacing:.2f}em"
+    
+    def sample_line_height(self):
+        """Sample a line height multiplier."""
+        return round(random.uniform(*self.line_height_range), 2)
+    
+    def generate_config(self, font_name, output_dir, **kwargs):
+        """Generate a FontConfig with augmented parameters."""
+        font_size = self.sample_font_size()
+        font_weight = self.sample_font_weight()
+        letter_spacing = self.sample_letter_spacing()
+        line_height = self.sample_line_height()
+        
+        # Create unique identifier for this configuration
+        config_id = f"{font_name.lower().replace(' ', '_')}_s{font_size}_w{font_weight}_ls{letter_spacing.replace('.', 'p').replace('-', 'n')}_lh{str(line_height).replace('.', 'p')}"
+        
+        return FontConfig(
+            name=font_name,
+            output_path=Path(output_dir) / config_id,
+            image_width=kwargs.get('image_width', 512),
+            image_height=kwargs.get('image_height', 512),
+            font_size=font_size,
+            font_weight=font_weight,
+            letter_spacing=letter_spacing,
+            line_height=line_height,
+            font_style=kwargs.get('font_style', 'normal'),
+            text_color=kwargs.get('text_color', '#000000'),
+            bg_color=kwargs.get('bg_color', '#FFFFFF'),
+            samples_per_font=kwargs.get('samples_per_font', 10)
+        )
 
 class FontRenderer:
     def __init__(self, fonts_file: str = 'fonts.txt', text_file: str = 'lorem_ipsum.txt',
                  output_dir: str = 'font-images', template_dir: str = 'templates',
                  port: int = 5100, image_size: tuple = (256, 256), image_quality: int = 80,
                  num_samples_per_font: int = 10, font_size: int = 24, line_height: float = 1.5,
-                 detection_mode: bool = False):
+                 detection_mode: bool = False, backgrounds_dir: str = None,
+                 background_blend_mode: str = 'overlay', background_probability: float = 0.5):
         
         self.font_size = font_size
         self.line_height = line_height
@@ -107,6 +188,11 @@ class FontRenderer:
         self.template_dir = Path(template_dir)
         self.flask_app = None
         self.server_thread = None
+
+        self.backgrounds_dir = Path(backgrounds_dir) if backgrounds_dir else None
+        self.background_blend_mode = background_blend_mode  # 'overlay', 'multiply', etc.
+        self.background_probability = background_probability  # Chance of using a background (0-1)
+        # self.text_contrast = text_contrast  # Enhancing text contrast before overlaying
 
         self.port = find_available_port(port)
         if self.port != port:
@@ -187,7 +273,30 @@ class FontRenderer:
     def generate_dataset(self):
         self.start_flask()
         logger.info(f"Starting parallel processing with {len(self.fonts)} fonts")
+        augmenter = TextAugmentation(
+            font_size_range=(16, 36),
+            weight_primary_modes=[400, 700],
+            weight_primary_prob=0.7,
+            letter_spacing_range=(-0.05, 0.1),
+            line_height_range=(1.1, 1.9)
+        )
 
+        versions_per_font = self.num_samples_per_font
+        all_font_configs = []
+        for font in self.fonts:
+            # Generate a unique configuration for each sample
+            for _ in range(versions_per_font):
+                config = augmenter.generate_config(
+                    font, 
+                    str(self.output_dir),
+                    image_width=self.image_size[0],
+                    image_height=self.image_size[1],
+                    # Only take one sample per configuration
+                    samples_per_font=1  
+                )
+                all_font_configs.append(config)
+        logger.info(f"Generated {len(all_font_configs)} total font configurations")
+      
         with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = [
                 executor.submit(
@@ -350,10 +459,57 @@ class FontRendererWorker:
 
     def _save_screenshot(self, element, path):
         png_data = element.screenshot_as_png
-        with Image.open(io.BytesIO(png_data)) as img:
-            if img.size != self.image_size:
-                img = img.resize(self.image_size, Image.Resampling.LANCZOS)
-            img.save(path, quality=self.image_quality, optimize=True)
+        with Image.open(io.BytesIO(png_data)) as text_img:
+            if text_img.size != self.image_size:
+                text_img = text_img.resize(self.image_size, Image.Resampling.LANCZOS)
+            
+            if self.backgrounds_dir is None or random.random() > self.background_probability:
+                text_img.save(path, quality=self.image_quality, optimize=True)
+                return
+            # Process the text image to create a mask (white text on transparent background)
+            # Convert to RGBA if not already
+            if text_img.mode != 'RGBA':
+                text_img = text_img.convert('RGBA')
+                
+            # Enhance contrast if specified
+            # if self.text_contrast > 1:
+            #     from PIL import ImageEnhance
+            #     enhancer = ImageEnhance.Contrast(text_img)
+            #     text_img = enhancer.enhance(self.text_contrast)
+            
+            # Create a mask where white pixels (text) are opaque and background is transparent
+            r, g, b, a = text_img.split()
+            # Create mask where white (255,255,255) becomes opaque (255) and everything else transparent
+            mask = Image.eval(r, lambda px: 255 if px > 240 else 0)
+            
+            # Choose a random background
+            background_files = list(self.backgrounds_dir.glob('*.jpg')) + \
+                                list(self.backgrounds_dir.glob('*.png'))
+            
+            if not background_files:
+                logger.warning(f"No background images found in {self.backgrounds_dir}")
+                text_img.save(path, quality=self.image_quality, optimize=True)
+                return
+                
+            background_file = random.choice(background_files)
+            
+            try:
+                with Image.open(background_file) as bg:
+                    # Resize background to match our dimensions
+                    bg = bg.resize(self.image_size, Image.Resampling.LANCZOS)
+                    
+                    # Create a new image with the background
+                    result = bg.copy()
+                    
+                    # Composite the text onto the background using the mask
+                    result.paste(text_img, (0, 0), mask)
+                    
+                    # Save the final image
+                    result.save(path, quality=self.image_quality, optimize=True)
+            except Exception as e:
+                logger.error(f"Error processing background image: {e}")
+                # Fallback to original image
+                text_img.save(path, quality=self.image_quality, optimize=True)
 
     def _save_annotations(self, annotations_dir, index):
         detection_data = self.driver.execute_script("return window.detectionData;")
@@ -454,6 +610,11 @@ def main():
     parser.add_argument('--font_size', type=int, default=24)
     parser.add_argument('--line_height', type=float, default=1.5)
     parser.add_argument('--detection_mode', action='store_true')
+    parser.add_argument('--backgrounds_dir', default=None, help='Directory containing background images')
+    parser.add_argument('--background_probability', type=float, default=1.0,
+                    help='Probability of using a background (0-1)')
+    # parser.add_argument('--text_contrast', type=float, default=1.2,
+    #                 help='Text contrast enhancement factor')
 
     args = parser.parse_args()
 
