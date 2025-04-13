@@ -338,7 +338,7 @@ class FontRenderer:
                     str(self.output_dir),
                     image_width=self.image_size[0],
                     image_height=self.image_size[1],
-                    samples_per_font=1,
+                    samples_per_font=self.num_samples_per_font,
                     sample_id=sample_id,
                 )
                 all_font_configs.append(config)
