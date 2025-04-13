@@ -128,31 +128,6 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
-        # if batch_idx % 100 == 0:
-        #     # Visualize a few samples from the batch
-        #     vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
-
-        #     # Extract patches for visualization
-        #     if char_model and hasattr(model, 'visualize_char_preds'):
-        #         with torch.no_grad(): 
-        #             patch_data = model.extract_patches_with_craft(images) # images BHWC
-        #             model.visualize_char_preds(
-        #                 patches=patch_data['patches'],
-        #                 attention_mask=patch_data['attention_mask'],
-        #                 predictions=pred,
-        #                 targets=targets,
-        #                 save_path=vis_path
-        #             )
-
-        
-        #     # Add CRAFT detection visualization
-        #     if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections'):
-        #         model.visualize_craft_detections(
-        #             images=images,  # Original images
-        #             targets=targets,
-        #             label_mapping=train_loader.dataset.label_mapping,
-        #             save_path=vis_path
-        #         )
         if batch_idx % 100 == 0:
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
@@ -266,7 +241,7 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
                 data, targets = batch_data
                 data, targets = data.to(device), targets.to(device)
                 logits = model(data)
-                
+
             # Accumulate tensors for advanced metrics
             all_logits.append(logits)
             all_targets.append(targets)

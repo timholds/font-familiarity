@@ -516,7 +516,6 @@ class CharacterFontDataset(Dataset):
         
         # Process each box
         for box in boxes:
-            print(f"Processing box: {box}")
             try:
                 # Handle different box formats
                 if len(box) == 4:
