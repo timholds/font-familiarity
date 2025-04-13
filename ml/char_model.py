@@ -579,51 +579,28 @@ class CRAFTFontClassifier(nn.Module):
 
         for i in range(batch_size):
             image_tensor = images[i]
-            print(f"Processing image with shape: {image_tensor.shape}")
+            #print(f"Processing image with shape: {image_tensor.shape}")
             
             # Handle tensor with explicit shape checking
             if len(image_tensor.shape) == 3:  # [C, H, W]
                 # Standard CHW format
-                img_np = image_tensor.permute(1, 2, 0).cpu().numpy()
-            elif len(image_tensor.shape) == 2:  # [H, W]
-                # Grayscale without channel dimension
-                img_np = image_tensor.cpu().numpy()
-                img_np = np.expand_dims(img_np, axis=2)  # Add channel dimension for consistency
+                img_np = image_tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8) # HWC for craft
             else:
-                print(f"WARNING: Unexpected tensor shape: {image_tensor.shape}")
-                # Create fallback image
-                img_np = np.zeros((64, 64, 1), dtype=np.uint8)
-            
-            print(f"Numpy array shape after conversion: {img_np.shape}")
+                raise ValueError(f"Unexpected tensor shape: {image_tensor.shape}")
+               
+            #print(f"Numpy array shape after conversion: {img_np.shape}")
             
             # Validate image dimensions
             if img_np.shape[0] < 4 or img_np.shape[1] < 4:
-                print(f"ERROR: Image too small: {img_np.shape}, creating fallback")
-                img_np = np.zeros((64, 64, 1), dtype=np.uint8)
-            
-            # Handle uint8 conversion
-            if img_np.max() <= 1.0:
-                print(f"Converting image from [0,1] to [0,255]")
-                img_np = (img_np * 255).astype(np.uint8)
-            else:
-                img_np = img_np.astype(np.uint8)
-            
+                raise ValueError(f"Image dimensions too small: {img_np.shape}")
+                    
             # Create PIL image with appropriate mode
             try:
                 if len(img_np.shape) == 3 and img_np.shape[2] == 1:
-                    pil_img = Image.fromarray(img_np.squeeze(2), mode='L')
-                elif len(img_np.shape) == 3 and img_np.shape[2] == 3:
                     pil_img = Image.fromarray(img_np, mode='RGB')
-                else:
-                    pil_img = Image.fromarray(img_np, mode='L')
-                    
-                print(f"Created PIL image size: {pil_img.size}")
             except Exception as e:
-                print(f"ERROR creating PIL image: {e}, shape: {img_np.shape}, dtype: {img_np.dtype}")
-                # Create fallback image
-                img_np = np.zeros((64, 64), dtype=np.uint8)
-                pil_img = Image.fromarray(img_np, mode='L')
-
+                raise ValueError(f"Error creating PIL image: {e}, shape: {img_np.shape}, dtype: {img_np.dtype}")
+               
         
             # Get polygons from CRAFT
             try:
