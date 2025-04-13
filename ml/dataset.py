@@ -366,88 +366,6 @@ class CharacterFontDataset(Dataset):
         except Exception as e:
             print(f"Warning: Could not load character mapping: {e}")
         return mapping
-        
-    def _extract_char_patches(self, image: np.ndarray, font_idx: int, img_idx: int) -> list:
-        """Extract character patches using YOLO annotations."""
-        # Construct annotation path based on font name and image index
-        font_name = self.idx_to_font.get(font_idx, f"unknown_font_{font_idx}")
-        sample_id = f"sample_{img_idx:04d}"
-        
-        # Try to find annotations (YOLO format preferred, fallback to JSON)
-        yolo_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.txt")
-        json_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.json")
-        
-        patches = []
-        height, width = image.shape[:2]
-        
-        # Process YOLO format annotations
-        if os.path.exists(yolo_path):
-            try:
-                with open(yolo_path, 'r') as f:
-                    for line in f:
-                        parts = line.strip().split()
-                        if len(parts) >= 5:
-                            class_id = int(parts[0])
-                            x_center = float(parts[1]) * width
-                            y_center = float(parts[2]) * height
-                            w = float(parts[3]) * width
-                            h = float(parts[4]) * height
-                            
-                            # Convert to pixel coordinates
-                            x1 = max(0, int(x_center - w/2))
-                            y1 = max(0, int(y_center - h/2))
-                            x2 = min(width, int(x_center + w/2))
-                            y2 = min(height, int(y_center + h/2))
-                            
-                            # Extract and preprocess patch
-                            if x2-x1 > 2 and y2-y1 > 2:  # Ensure minimum size
-                                patch = image[y1:y2, x1:x2].copy()
-                                if len(patch.shape) == 3 and patch.shape[2] == 3:
-                                    patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-                                normalized_patch = self._normalize_patch(patch)
-                                
-                                char = self.char_mapping.get(class_id, '?')
-                                patches.append({
-                                    'patch': normalized_patch,
-                                    'class_id': class_id,
-                                    'char': char
-                                })
-            except Exception as e:
-                print(f"Error processing YOLO annotations for {yolo_path}: {e}")
-        
-        # Process JSON format annotations if YOLO not available
-        elif os.path.exists(json_path):
-            try:
-                with open(json_path, 'r') as f:
-                    data = json.load(f)
-                    
-                for char_info in data.get('characters', []):
-                    x = char_info.get('x', 0)
-                    y = char_info.get('y', 0)
-                    w = char_info.get('width', 0)
-                    h = char_info.get('height', 0)
-                    char = char_info.get('char', '?')
-                    
-                    # Extract and preprocess patch
-                    if w > 2 and h > 2:  # Ensure minimum size
-                        x1, y1 = max(0, x), max(0, y)
-                        x2, y2 = min(width, x + w), min(height, y + h)
-                        
-                        patch = image[y1:y2, x1:x2].copy()
-                        normalized_patch = self._normalize_patch(patch)
-                        
-                        # Find class ID for this character if possible
-                        class_id = next((k for k, v in self.char_mapping.items() if v == char), -1)
-                        patches.append({
-                            'patch': normalized_patch,
-                            'class_id': class_id,
-                            'char': char
-                        })
-            except Exception as e:
-                print(f"Error processing JSON annotations for {json_path}: {e}")
-        
-        # Limit to max_chars
-        return patches[:self.max_chars]
     
     def _normalize_patch(self, patch: np.ndarray) -> np.ndarray:
         """Normalize a character patch to standard size with preserved aspect ratio."""
@@ -469,7 +387,6 @@ class CharacterFontDataset(Dataset):
         
         try:
             # Resize the patch
-            import cv2
             resized = cv2.resize(patch, (new_w, new_h))
             
             # Create a blank canvas and center the resized patch
@@ -484,35 +401,24 @@ class CharacterFontDataset(Dataset):
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
     
     def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list) -> tuple:
-        """Extract character patches from image using precomputed bounding boxes."""
+        """Extract character patches from image using precomputed bounding boxes.
+        Images HWC [0, 255]"""
+
+        assert image.shape[2] == 3, f"Expecting HWC w/ RGB format (3 channels), got {image.shape}"
         patches = []
 
-        # Fix dimension ordering if needed - handle (height, channels, width) format
-        if len(image.shape) == 3 and image.shape[1] == 3 and image.shape[0] > 10 and image.shape[2] > 10:
-            print(f"Fixing swapped dimensions from {image.shape}")
-            image = np.transpose(image, (0, 2, 1))  # Convert to (height, width, channels)
-            print(f"Transposed to {image.shape}")
+        
+        if image.max() <= 1.0:
+            print(f"Converting from float [0,1] to uint8")
+            image = (image * 255).astype(np.uint8)
 
-        # Convert to uint8 if needed
         if image.dtype != np.uint8:
-            if image.max() <= 1.0:
-                print(f"Converting from float [0,1] to uint8")
-                image = (image * 255).astype(np.uint8)
+            print(f"Converting image to uint8")    
+            image.astype(np.uint8)
 
         # Ensure image has proper dimensions
         height, width = image.shape[:2]
         #print(f"Image dimensions: height={height}, width={width}")
-
-        # Handle grayscale or other formats
-        if len(image.shape) == 2:
-            # Convert grayscale to 3-channel for consistent processing
-            image = np.stack([image, image, image], axis=2)
-            print(f"Converted grayscale to 3-channel image: {image.shape}")
-        elif len(image.shape) == 3 and image.shape[2] == 1:
-            # Single channel image - expand to 3 channels
-            image = np.concatenate([image, image, image], axis=2)
-            print(f"Expanded 1-channel to 3-channel image: {image.shape}")
-
         
         # Process each box
         for box in boxes:
@@ -529,7 +435,7 @@ class CharacterFontDataset(Dataset):
                 x2, y2 = min(width, int(x2)), min(height, int(y2))
                 
                 # Skip very small regions
-                if x2-x1 < 3 or y2-y1 < 3:
+                if x2-x1 < 5 or y2-y1 < 5:
                     continue
                 
                 # Extract patch
@@ -538,7 +444,7 @@ class CharacterFontDataset(Dataset):
                 # Safely convert to grayscale
                 try:
                     if len(patch.shape) == 3 and patch.shape[2] == 3:
-                        patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+                        patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY) 
                     elif len(patch.shape) == 3 and patch.shape[2] == 1:
                         patch = patch.squeeze(-1)
                 except Exception as e:
@@ -607,7 +513,8 @@ class CharacterFontDataset(Dataset):
             boxes = self.precomputed_boxes[idx]
             
             # Extract patches using precomputed boxes
-            patches, attention_mask = self._extract_patches_from_boxes(img, boxes)
+            print(f"Extracting patches for image {img.shape} with {len(boxes)} boxes")
+            patches, attention_mask = self._extract_patches_from_boxes(img, boxes) # HWC
             
             # Return patches directly
             return {

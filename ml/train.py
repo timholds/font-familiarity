@@ -160,6 +160,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                     )
 
             # Add CRAFT detection visualization - only if not using precomputed
+            # bc if we are using precompute, data loader is not returning original images, just patches
             if char_model and hasattr(model, 'craft') and hasattr(model, 'visualize_craft_detections') and not model.use_precomputed_craft:
                 model.visualize_craft_detections(
                     images=images,  # Original images

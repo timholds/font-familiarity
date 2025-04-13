@@ -432,108 +432,6 @@ class CRAFTFontClassifier(nn.Module):
                 pil_img.save(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
             else:
                 pil_img.show()  # Display directly with PIL
-           
-
-    def extract_patches_from_annotations(self, images, targets, annotations):
-        """
-        Extract character patches using ground truth annotations during training
-        
-        Args:
-            images: Tensor of shape [batch_size, channels, height, width]
-            targets: Font class targets
-            annotations: List of character annotations for each image
-            
-        Returns:
-            Dictionary with patches, attention_mask and targets
-        """
-        batch_size = images.size(0)
-        all_patches = []
-        attention_masks = []
-        
-        for i in range(batch_size):
-            img = images[i].cpu().numpy().transpose(1, 2, 0)  # CHW -> HWC
-            img = (img * 255).astype(np.uint8)
-            
-            # Get annotations for this image
-            char_anns = annotations[i]
-            height, width = img.shape[:2]
-            
-            # Extract patches for this image
-            img_patches = []
-            for ann in char_anns:
-                # Extract coordinates from annotation (YOLO format: class_id, x_center, y_center, w, h)
-                class_id, x_center, y_center, w, h = ann
-                
-                # Convert to pixel coordinates
-                x_center = float(x_center) * width
-                y_center = float(y_center) * height
-                w = float(w) * width
-                h = float(h) * height
-                
-                # Calculate corner coordinates
-                x1 = max(0, int(x_center - w/2))
-                y1 = max(0, int(y_center - h/2))
-                x2 = min(width, int(x_center + w/2))
-                y2 = min(height, int(y_center + h/2))
-                
-                # Extract patch
-                if x2-x1 > 2 and y2-y1 > 2:  # Ensure minimum size
-                    patch = img[y1:y2, x1:x2].copy()
-                    
-                    # Resize and normalize
-                    patch = self._normalize_patch(patch)
-                    patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dimension
-                    # print(f"Patch shape: {patch.shape}, tensor shape: {patch_tensor.shape}")
-                    img_patches.append(patch_tensor)
-            
-            # If no valid patches, create a default patch from the whole image
-            if not img_patches:
-                img_resized = cv2.resize(img, (self.patch_size, self.patch_size))
-                img_norm = img_resized.astype(np.float32) / 255.0
-                patch_tensor = torch.from_numpy(img_norm).float().unsqueeze(0)
-                img_patches = [patch_tensor]
-            
-            # Stack patches for this image and create attention mask
-            img_patches_tensor = torch.stack(img_patches)
-            all_patches.append(img_patches_tensor)
-            attention_masks.append(torch.ones(len(img_patches)))
-        
-        # Pad to same number of patches in batch
-        max_patches = max(p.size(0) for p in all_patches)
-        padded_patches = []
-        padded_masks = []
-        
-        for patches, mask in zip(all_patches, attention_masks):
-            if patches.size(0) < max_patches:
-                padding = torch.zeros(
-                    (max_patches - patches.size(0), 1, self.patch_size, self.patch_size), 
-                    dtype=patches.dtype, device=patches.device
-                )
-                padded = torch.cat([patches, padding], dim=0)
-                
-                # Extend mask
-                pad_mask = torch.cat([
-                    mask, 
-                    torch.zeros(max_patches - mask.size(0), device=mask.device)
-                ])
-            else:
-                padded = patches
-                pad_mask = mask
-                
-            padded_patches.append(padded)
-            padded_masks.append(pad_mask)
-        
-        # Stack into batch tensors
-        patches_batch = torch.stack(padded_patches).to(self.device)
-        attention_batch = torch.stack(padded_masks).to(self.device)
-        targets_batch = targets.to(self.device)
-        
-        return {
-            'patches': patches_batch,
-            'attention_mask': attention_batch,
-            'labels': targets_batch
-        }
-    
 
     def add_padding_to_polygons(polygons, padding_x=5, padding_y=8):
         padded_polygons = []
@@ -587,9 +485,7 @@ class CRAFTFontClassifier(nn.Module):
                 img_np = image_tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8) # HWC for craft
             else:
                 raise ValueError(f"Unexpected tensor shape: {image_tensor.shape}")
-               
-            #print(f"Numpy array shape after conversion: {img_np.shape}")
-            
+                           
             # Validate image dimensions
             if img_np.shape[0] < 4 or img_np.shape[1] < 4:
                 raise ValueError(f"Image dimensions too small: {img_np.shape}")
