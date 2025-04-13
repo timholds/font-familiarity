@@ -542,6 +542,7 @@ class CRAFTFontClassifier(nn.Module):
                         
             # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
+                print(f"WARNING: No valid patches found for image {i}, using whole image as patch")
                 img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if len(img_np.shape) == 3 else img_np
                 img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
                 normalized = img_resized.astype(np.float32) / 255.0

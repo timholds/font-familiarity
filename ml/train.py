@@ -128,7 +128,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
-        if batch_idx % 100 == 0:
+        if batch_idx % 1000 == 0:
             # Visualize a few samples from the batch
             vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
 
@@ -363,7 +363,7 @@ def main():
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
-    torch.manual_seed(0)
+    torch.manual_seed(1)
     
     # Set up metrics logging
     wandb.init(

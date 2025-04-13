@@ -287,7 +287,7 @@ class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
     def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
-                  max_chars: int = 50, use_annotations=False, 
+                  max_chars: int = 100, use_annotations=False, 
                   use_precomputed_craft=False):
         self.root_dir = root_dir
         self.char_size = char_size
@@ -400,7 +400,7 @@ class CharacterFontDataset(Dataset):
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
     
-    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list) -> tuple:
+    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx) -> tuple:
         """Extract character patches from image using precomputed bounding boxes.
         Images HWC [0, 255]"""
 
@@ -413,7 +413,7 @@ class CharacterFontDataset(Dataset):
             image = (image * 255).astype(np.uint8)
 
         if image.dtype != np.uint8:
-            print(f"Converting image to uint8")    
+            # print(f"Converting image to uint8")    
             image.astype(np.uint8)
 
         # Ensure image has proper dimensions
@@ -466,7 +466,7 @@ class CharacterFontDataset(Dataset):
 
         # If no valid patches, create a default patch from the whole image
         if not patches:
-            print(f"No valid patches, creating fallback from whole image")
+            # print(f"WARNING: No valid patches for img {idx}, creating fallback from whole image")
             try:
                 # Try to create grayscale version of the whole image
                 if len(image.shape) == 3:
@@ -513,9 +513,10 @@ class CharacterFontDataset(Dataset):
             boxes = self.precomputed_boxes[idx]
             
             # Extract patches using precomputed boxes
-            print(f"Extracting patches for image {img.shape} with {len(boxes)} boxes")
-            patches, attention_mask = self._extract_patches_from_boxes(img, boxes) # HWC
-            
+            # todo if no patches found in image, lets save it to the debug folder
+
+            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx) # HWC
+    
             # Return patches directly
             return {
                 'patches': patches,
