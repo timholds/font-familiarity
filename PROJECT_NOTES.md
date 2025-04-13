@@ -433,6 +433,24 @@ pytorch tensor from dataloader BHWC [0, 1] --> get_polygons_batch()
     - np array -->getPoly_core()
   - adjustResultCoordinates()
 
+
+Finding out that Keras OCR is also based on craft was interested because it gave me something to sanity check against. For example, in their data_generation module they download a folder full of backgrounds and render the PIL images with the backgrounds, which is a wonderful data augmentation for me to yoink
+
+# Data Augmentation Strategy  
+There are three levels we could be doing data augmentation at:  
+- Baked into the training images  
+- Whole image with pytorch transforms  
+- Character level with pytorch transforms  
+
+
+There are also a number of transforms that could be applied at any of the layers. To balance our limited number of training examples per class with the expanding number of input features we want to cover, we can be strategic about which level we do the augmentations at. As a heuristic, we should fill out the baked-in dataset with the augmentations that will affect the patch location, like text size and spacing, and then handle the rest of the augmentations like noise as part of the epoch-level pytorch transforms. 
+
+
+Path dependency altert: choosing to preextract the craft patches means any data augmentations need to not affect the locations of the character bounding boxes. Ideally, we could do all sorts of whole image level augmentations like shearing and warping, but this would require us to re-extract the patches. It's ideal because our model is trying to fit the input space of character patches to font labels, and having a wider variety of charcter patches from craft means the model will be better suited to charcter patches from the wild. 
+
+That said, we aren't doing the ideal thing, but rather finding a nice tradeoff in between data augmentation manifold coverage and training speed. since training with craft patch extraction in the loop is god awful slow and i cant be bothered to make all the post processing run on the gpu quite yet, we will just do a bunch of data augmentations on the base dataset and save this as a big dtataset. It makes sense because it means trading a few dozen GB of diskspace for a 50x speedup in training time. No brainer.  
+
   
 
-Note to user: the close to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
+# Note to user: 
+The closer to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 

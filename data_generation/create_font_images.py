@@ -169,6 +169,44 @@ class TextAugmentation:
             samples_per_font=kwargs.get('samples_per_font', 10)
         )
 
+
+def process_font_config(font_config, **kwargs):
+    """Process a font with specified configuration parameters."""
+    try:
+        logger.info(f"Starting worker for font config: {font_config.name} (size: {font_config.font_size}, weight: {font_config.font_weight})")
+        
+        # Update kwargs to include font config parameters
+        font_worker_kwargs = {
+            'font': font_config.name,
+            'port': kwargs['port'],
+            'output_dir': kwargs['output_dir'],
+            'num_samples': font_config.samples_per_font,
+            'detection_mode': kwargs['detection_mode'],
+            'image_size': kwargs['image_size'],
+            'image_quality': kwargs['image_quality'],
+            'font_size': font_config.font_size,
+            'line_height': font_config.line_height,
+            'font_weight': font_config.font_weight,
+            'letter_spacing': font_config.letter_spacing,
+            'font_style': font_config.font_style,
+            'text_color': font_config.text_color,
+            'bg_color': font_config.bg_color,
+            'output_subdir': font_config.output_path.name,  # Use the unique config ID as subdir
+            'backgrounds_dir': kwargs.get('backgrounds_dir', None),
+            'background_probability': kwargs.get('background_probability', 0.0)
+        }
+        
+        worker = FontRendererWorker(**font_worker_kwargs)
+        worker.process()
+        
+        logger.info(f"Completed processing for font config: {font_config.name} (size: {font_config.font_size})")
+        return True
+    except Exception as e:
+        import traceback
+        error_msg = f"Error processing font {font_config.name}: {e}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        raise RuntimeError(f"Processing font config '{font_config.name}' failed: {e}")
+    
 class FontRenderer:
     def __init__(self, fonts_file: str = 'fonts.txt', text_file: str = 'lorem_ipsum.txt',
                  output_dir: str = 'font-images', template_dir: str = 'templates',
@@ -291,7 +329,6 @@ class FontRenderer:
                     str(self.output_dir),
                     image_width=self.image_size[0],
                     image_height=self.image_size[1],
-                    # Only take one sample per configuration
                     samples_per_font=1  
                 )
                 all_font_configs.append(config)
@@ -300,17 +337,14 @@ class FontRenderer:
         with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = [
                 executor.submit(
-                    process_font_worker,
-                    font=font,
+                    process_font_config,  # New worker function for configs
+                    font_config=config,
                     port=self.port,
                     output_dir=str(self.output_dir),
-                    num_samples=self.num_samples_per_font,
                     detection_mode=self.detection_mode,
                     image_size=self.image_size,
-                    image_quality=self.image_quality,
-                    font_size=self.font_size,
-                    line_height=self.line_height
-                ) for font in self.fonts
+                    image_quality=self.image_quality
+                ) for config in all_font_configs  # Use augmented configs instead of fonts
             ]
 
             for future in as_completed(futures):
@@ -339,6 +373,17 @@ class FontRendererWorker:
         self.image_quality = kwargs['image_quality']
         self.font_size = kwargs['font_size']
         self.line_height = kwargs['line_height']
+        self.font_weight = kwargs.get('font_weight', 400)
+        self.letter_spacing = kwargs.get('letter_spacing', 'normal')
+        self.font_style = kwargs.get('font_style', 'normal')
+        self.text_color = kwargs.get('text_color', '#000000')
+        self.bg_color = kwargs.get('bg_color', '#FFFFFF')
+        self.output_subdir = kwargs.get('output_subdir', None)  # For unique subdirectory
+        
+        # Background settings
+        self.backgrounds_dir = kwargs.get('backgrounds_dir', None)
+        self.background_probability = kwargs.get('background_probability', 0.0)
+
 
         self.driver = self._setup_driver()
 
