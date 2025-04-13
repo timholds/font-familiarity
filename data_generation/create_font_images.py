@@ -7,6 +7,7 @@ import json
 import socket
 import argparse
 import random
+import uuid
 
 from pathlib import Path
 from typing import List
@@ -168,8 +169,8 @@ class TextAugmentation:
             font_style=kwargs.get('font_style', 'normal'),
             text_color=kwargs.get('text_color', '#000000'),
             bg_color=kwargs.get('bg_color', '#FFFFFF'),
-            # samples_per_font=kwargs.get('samples_per_font', 10),
-            samples_per_font=1
+            samples_per_font=kwargs.get('samples_per_font', 10),
+            #samples_per_font=1
         )
 
 
@@ -183,7 +184,7 @@ def process_font_config(font_config, **kwargs):
             'font': font_config.name,
             'port': kwargs['port'],
             'output_dir': kwargs['output_dir'],
-            'num_samples': 1, 
+            'num_samples': font_config.samples_per_font,
             'detection_mode': kwargs['detection_mode'],
             'image_size': kwargs['image_size'],
             'image_quality': kwargs['image_quality'],
@@ -194,9 +195,11 @@ def process_font_config(font_config, **kwargs):
             'font_style': font_config.font_style,
             'text_color': font_config.text_color,
             'bg_color': font_config.bg_color,
-            'output_subdir': font_config.output_path.name,  # Use the unique config ID as subdir
+            'output_subdir': font_config.name.lower().replace(' ', '_'), 
             'backgrounds_dir': kwargs.get('backgrounds_dir', None),
-            'background_probability': kwargs.get('background_probability', 0.0)
+            'background_probability': kwargs.get('background_probability', 0.0),
+            'sample_id': kwargs.get('sample_id', 0),
+            'config_id': kwargs.get('config_id'),  
         }
         
         worker = FontRendererWorker(**font_worker_kwargs)
@@ -235,6 +238,7 @@ class FontRenderer:
         self.background_probability = background_probability  # Chance of using a background (0-1)
         # self.text_contrast = text_contrast  # Enhancing text contrast before overlaying
 
+        self.config_registry = {}
         self.port = find_available_port(port)
         if self.port != port:
             logger.info(f"Port {port} was in use. Using port {self.port} instead.")
@@ -269,15 +273,17 @@ class FontRenderer:
         def health_check():
             return "OK"
 
-        @app.route('/font/<font_name>')
-        def render_font(font_name):
-            font_config = FontConfig(
-                name=font_name,
-                output_path=self.output_dir / font_name.lower().replace(' ', '_'),
-                image_width=self.image_size[0],
-                image_height=self.image_size[1],
-                font_size=self.font_size,
-                samples_per_font=self.num_samples_per_font
+        @app.route('/font/<font_name>/<config_id>')
+        def render_font(font_name, config_id):
+            font_config = self.config_registry.get(config_id)
+            if not font_config:    
+                font_config = FontConfig(
+                    name=font_name,
+                    output_path=self.output_dir / font_name.lower().replace(' ', '_'),
+                    image_width=self.image_size[0],
+                    image_height=self.image_size[1],
+                    font_size=self.font_size,
+                    samples_per_font=self.num_samples_per_font
             )
 
             template = 'single_font_detection.html' if self.detection_mode else 'single_font.html'
@@ -338,18 +344,24 @@ class FontRenderer:
                 all_font_configs.append(config)
         logger.info(f"Generated {len(all_font_configs)} total font configurations")
       
+        for config in all_font_configs:
+            config_id = f"{config.name.lower().replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
+            self.config_registry[config_id] = config
+
         with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-            futures = [
-                executor.submit(
-                    process_font_config,  # New worker function for configs
+            futures = []
+            for config_id, config in self.config_registry.items():
+                futures.append(executor.submit(
+                    process_font_config,
                     font_config=config,
                     port=self.port,
                     output_dir=str(self.output_dir),
                     detection_mode=self.detection_mode,
                     image_size=self.image_size,
-                    image_quality=self.image_quality
-                ) for config in all_font_configs  # Use augmented configs instead of fonts
-            ]
+                    image_quality=self.image_quality,
+                    config_id=config_id,
+                    sample_id=getattr(config, 'sample_id', 0)  # Safely get sample_id if it exists
+                ))
 
             for future in as_completed(futures):
                 try:
@@ -370,7 +382,6 @@ class FontRendererWorker:
     def __init__(self, **kwargs):
         self.font = kwargs['font']
         self.port = kwargs['port']
-        self.output_dir = Path(kwargs['output_dir'])
         self.num_samples = kwargs['num_samples']
         self.detection_mode = kwargs['detection_mode']
         self.image_size = kwargs['image_size']
@@ -382,7 +393,17 @@ class FontRendererWorker:
         self.font_style = kwargs.get('font_style', 'normal')
         self.text_color = kwargs.get('text_color', '#000000')
         self.bg_color = kwargs.get('bg_color', '#FFFFFF')
-        self.output_subdir = kwargs.get('output_subdir', None)  # For unique subdirectory
+        
+        # self.output_dir = Path(kwargs['output_dir'])
+        # self.output_subdir = kwargs.get('output_subdir', None)  # For unique subdirectory
+        base_output_dir = Path(kwargs['output_dir']) 
+        self.output_subdir = kwargs.get('output_subdir', self.font.lower().replace(' ', '_'))
+        self.font_dir = base_output_dir / self.output_subdir
+        
+        self.sample_id = kwargs.get('sample_id', 0)
+        self.config_id = kwargs.get('config_id')
+        self.output_subdir = kwargs.get('output_subdir', None)
+    
         
         # Background settings
         self.backgrounds_dir = kwargs.get('backgrounds_dir', None)
@@ -411,10 +432,13 @@ class FontRendererWorker:
             self.driver.quit()
 
     def _capture_standard(self):
-        font_dir = self.output_dir / self.font.lower().replace(' ', '_')
+        font_dir = self.font_dir
+        annotations_dir = font_dir / "annotations"
+
         font_dir.mkdir(parents=True, exist_ok=True)
 
-        self.driver.get(f"http://localhost:{self.port}/font/{self.font.replace(' ', '%20')}")
+        self.driver.get(f"http://localhost:{self.port}/font/{self.font.replace(' ', '%20')}/{self.config_id}")
+
         # Add a small delay to ensure the page is fully loaded
         time.sleep(1)
 
@@ -434,7 +458,8 @@ class FontRendererWorker:
         if total_height <= visible_height:
             logger.warning(f"Text content for font {self.font} is too short for {self.num_samples} samples")
             # Just take one screenshot if content is too short
-            self._save_screenshot(container, font_dir / f"sample_0000.jpg")
+            filename = f"sample_{self.sample_id:04d}_0000.jpg"  # Fixed: use 0 when no scroll
+            self._save_screenshot(container, font_dir / filename)
             return
             
         scroll_step = (total_height - visible_height) / max(1, self.num_samples - 1)
@@ -448,11 +473,10 @@ class FontRendererWorker:
                 text_block
             )
             
-            # Instead of waiting for style to contain, use a small delay or check via JavaScript
-            # Option 1: Small delay
+            # Small delay
             time.sleep(0.1)
             
-            # Option 2: Verify via JavaScript (better)
+            # Verify via JavaScript
             scroll_complete = self.driver.execute_script(
                 """
                 var style = window.getComputedStyle(arguments[0]);
@@ -465,7 +489,8 @@ class FontRendererWorker:
             if not scroll_complete:
                 logger.warning(f"Scroll verification failed for font {self.font} at position {scroll_pos}")
             
-            self._save_screenshot(container, font_dir / f"sample_{i:04d}.jpg")
+            filename = f"sample_{i:04d}.jpg"
+            self._save_screenshot(container, font_dir / filename)
             
     def _capture_with_detection(self):
         font_dir = self.output_dir / self.font.lower().replace(' ', '_')
@@ -503,8 +528,9 @@ class FontRendererWorker:
             WebDriverWait(self.driver, 5).until(
                 javascript_returns_true("window.detectionData?.characters?.length > 0")
             )
-            self._save_screenshot(container, font_dir / f"sample_{i:04d}.jpg")
-            self._save_annotations(annotations_dir, i)
+            filename = f"sample_{i:04d}.jpg"
+            self._save_screenshot(container, font_dir / filename)
+            self._save_annotations(annotations_dir, i, self.sample_id)
 
     def _save_screenshot(self, element, path):
         png_data = element.screenshot_as_png
@@ -560,17 +586,15 @@ class FontRendererWorker:
                 # Fallback to original image
                 text_img.save(path, quality=self.image_quality, optimize=True)
 
-    def _save_annotations(self, annotations_dir, index):
+    def _save_annotations(self, annotations_dir, index, sample_id):
         detection_data = self.driver.execute_script("return window.detectionData;")
 
         if not detection_data or 'characters' not in detection_data:
             logger.warning(f"No detection data available for {self.font} sample {index}")
             return
 
-        # Save YOLO annotations
         yolo_path = annotations_dir / f"sample_{index:04d}.txt"
         json_path = annotations_dir / f"sample_{index:04d}.json"
-
         visible_chars = [
             char for char in detection_data['characters']
             if (0 <= char['y'] <= self.image_size[1] - char['height'] - 5 and 
