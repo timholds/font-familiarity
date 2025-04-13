@@ -185,103 +185,103 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
               Expecting riginal to be >= 1"
         return images, labels
 
-def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, train=True):
-    """
-    Create a dataloader with character patches extracted by CRAFT
+# def preprocess_with_craft(data_dir, craft_model, batch_size=32, num_workers=4, train=True):
+#     """
+#     Create a dataloader with character patches extracted by CRAFT
     
-    Args:
-        data_dir: Directory containing font dataset
-        craft_model: Initialized CRAFT model
-        batch_size: Batch size for dataloader
-        num_workers: Number of workers for dataloader
+#     Args:
+#         data_dir: Directory containing font dataset
+#         craft_model: Initialized CRAFT model
+#         batch_size: Batch size for dataloader
+#         num_workers: Number of workers for dataloader
         
-    Returns:
-        DataLoader with pre-extracted character patches
-    """
-    from PIL import Image
+#     Returns:
+#         DataLoader with pre-extracted character patches
+#     """
+#     from PIL import Image
     
-    # Use your existing dataset class
-    train_dataset = CharacterFontDataset(data_dir, train=train, use_annotations=False)
+#     # Use your existing dataset class
+#     train_dataset = CharacterFontDataset(data_dir, train=train, use_annotations=False)
     
-    # Process each image to extract character patches
-    processed_data = []
+#     # Process each image to extract character patches
+#     processed_data = []
     
-    print("Preprocessing dataset with CRAFT character detection...")
-    for idx in tqdm(range(len(train_dataset))):
-        img, target = train_dataset[idx]
+#     print("Preprocessing dataset with CRAFT character detection...")
+#     for idx in tqdm(range(len(train_dataset))):
+#         img, target = train_dataset[idx]
         
-        # Convert tensor to image format for CRAFT
-        img_np = img.numpy().transpose(1, 2, 0)  # CHW -> HWC
-        img_np = (img_np * 255).astype(np.uint8)
+#         # Convert tensor to image format for CRAFT
+#         img_np = img.numpy().transpose(1, 2, 0)  # CHW -> HWC
+#         img_np = (img_np * 255).astype(np.uint8)
         
-        # Handle grayscale vs RGB
-        if img_np.shape[-1] == 1:
-            img_np = np.squeeze(img_np)
-            if len(img_np.shape) == 2:
-                img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
+#         # Handle grayscale vs RGB
+#         if img_np.shape[-1] == 1:
+#             img_np = np.squeeze(img_np)
+#             if len(img_np.shape) == 2:
+#                 img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
         
-        pil_img = Image.fromarray(img_np)
+#         pil_img = Image.fromarray(img_np)
         
-        # Get character polygons from CRAFT
-        polygons = craft_model.get_polygons(pil_img)
+#         # Get character polygons from CRAFT
+#         polygons = craft_model.get_polygons(pil_img)
         
-        # Extract patches
-        char_patches = []
-        for polygon in polygons:
-            # Convert polygon to bounding box
-            x_coords = [p[0] for p in polygon]
-            y_coords = [p[1] for p in polygon]
+#         # Extract patches
+#         char_patches = []
+#         for polygon in polygons:
+#             # Convert polygon to bounding box
+#             x_coords = [p[0] for p in polygon]
+#             y_coords = [p[1] for p in polygon]
             
-            x1, y1 = max(0, min(x_coords)), max(0, min(y_coords))
-            x2, y2 = min(img_np.shape[1], max(x_coords)), min(img_np.shape[0], max(y_coords))
+#             x1, y1 = max(0, min(x_coords)), max(0, min(y_coords))
+#             x2, y2 = min(img_np.shape[1], max(x_coords)), min(img_np.shape[0], max(y_coords))
             
-            # Skip very small regions
-            if x2-x1 < 3 or y2-y1 < 3:
-                continue
+#             # Skip very small regions
+#             if x2-x1 < 3 or y2-y1 < 3:
+#                 continue
                 
-            # Extract patch
-            patch = img_np[y1:y2, x1:x2].copy()
+#             # Extract patch
+#             patch = img_np[y1:y2, x1:x2].copy()
             
-            # Convert to grayscale if needed
-            if len(patch.shape) == 3 and patch.shape[2] == 3:
-                patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+#             # Convert to grayscale if needed
+#             if len(patch.shape) == 3 and patch.shape[2] == 3:
+#                 patch = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
                 
-            # Normalize and resize to standard size
-            patch = cv2.resize(patch, (32, 32))
-            patch = patch.astype(np.float32) / 255.0
+#             # Normalize and resize to standard size
+#             patch = cv2.resize(patch, (32, 32))
+#             patch = patch.astype(np.float32) / 255.0
             
-            # Convert to tensor format
-            patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dim
-            char_patches.append(patch_tensor)
+#             # Convert to tensor format
+#             patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)  # Add channel dim
+#             char_patches.append(patch_tensor)
         
-        # If no patches found, use whole image
-        if not char_patches:
-            if len(img_np.shape) == 3 and img_np.shape[2] == 3:
-                img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-            else:
-                img_gray = img_np
+#         # If no patches found, use whole image
+#         if not char_patches:
+#             if len(img_np.shape) == 3 and img_np.shape[2] == 3:
+#                 img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+#             else:
+#                 img_gray = img_np
             
-            patch = cv2.resize(img_gray, (32, 32))
-            patch = patch.astype(np.float32) / 255.0
-            patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)
-            char_patches = [patch_tensor]
+#             patch = cv2.resize(img_gray, (32, 32))
+#             patch = patch.astype(np.float32) / 255.0
+#             patch_tensor = torch.from_numpy(patch).float().unsqueeze(0)
+#             char_patches = [patch_tensor]
         
-        # Stack patches and store with font label
-        patches_tensor = torch.stack(char_patches)
-        processed_data.append({
-            'patches': patches_tensor,
-            'label': target,
-            'num_patches': len(char_patches)
-        })
+#         # Stack patches and store with font label
+#         patches_tensor = torch.stack(char_patches)
+#         processed_data.append({
+#             'patches': patches_tensor,
+#             'label': target,
+#             'num_patches': len(char_patches)
+#         })
     
-    # Create dataloader with custom collate function
-    return DataLoader(
-        processed_data,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        collate_fn=char_collate_fn  # Reuse your existing collate function
-    )
+#     # Create dataloader with custom collate function
+#     return DataLoader(
+#         processed_data,
+#         batch_size=batch_size,
+#         shuffle=True,
+#         num_workers=num_workers,
+#         collate_fn=char_collate_fn  # Reuse your existing collate function
+#     )
 
 class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
@@ -487,9 +487,6 @@ class CharacterFontDataset(Dataset):
         """Extract character patches from image using precomputed bounding boxes."""
         patches = []
 
-        # Debug information
-        print(f"Input image shape: {image.shape}, dtype: {image.dtype}")
-
         # Fix dimension ordering if needed - handle (height, channels, width) format
         if len(image.shape) == 3 and image.shape[1] == 3 and image.shape[0] > 10 and image.shape[2] > 10:
             print(f"Fixing swapped dimensions from {image.shape}")
@@ -504,7 +501,7 @@ class CharacterFontDataset(Dataset):
 
         # Ensure image has proper dimensions
         height, width = image.shape[:2]
-        print(f"Image dimensions: height={height}, width={width}")
+        #print(f"Image dimensions: height={height}, width={width}")
 
         # Handle grayscale or other formats
         if len(image.shape) == 2:
@@ -516,8 +513,10 @@ class CharacterFontDataset(Dataset):
             image = np.concatenate([image, image, image], axis=2)
             print(f"Expanded 1-channel to 3-channel image: {image.shape}")
 
+        
         # Process each box
         for box in boxes:
+            print(f"Processing box: {box}")
             try:
                 # Handle different box formats
                 if len(box) == 4:
@@ -784,3 +783,145 @@ def get_char_dataloaders(
     return train_loader, test_loader, train_dataset.num_classes
 
 
+if __name__ == "__main__":
+    import argparse
+    import matplotlib.pyplot as plt
+    from PIL import Image, ImageDraw
+    import os
+    
+    parser = argparse.ArgumentParser(description="Debug CharacterFontDataset with precomputed CRAFT patches")
+    parser.add_argument("--data_dir", type=str, required=True, help="Path to the font dataset directory")
+    parser.add_argument("--num_samples", type=int, default=5, help="Number of samples to visualize")
+    parser.add_argument("--train", action="store_true", help="Use training set instead of test set")
+    parser.add_argument("--output_dir", type=str, default="debug_output", help="Directory to save visualizations")
+    args = parser.parse_args()
+    
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    print(f"Creating dataset with precomputed CRAFT patches...")
+    dataset = CharacterFontDataset(
+        args.data_dir, 
+        train=args.train, 
+        use_precomputed_craft=True
+    )
+    
+    if dataset.precomputed_boxes is None:
+        print("ERROR: Failed to load precomputed CRAFT boxes")
+        exit(1)
+        
+    print(f"Dataset size: {len(dataset)}")
+    print(f"Precomputed boxes size: {len(dataset.precomputed_boxes)}")
+    
+    # Function to visualize patches
+    def visualize_sample(idx):
+        # Get sample from dataset
+        sample = dataset[idx]
+        
+        if not isinstance(sample, dict) or 'patches' not in sample:
+            print(f"Unexpected sample format: {type(sample)}")
+            return
+            
+        # Get data from sample
+        patches = sample['patches']
+        attention_mask = sample['attention_mask']
+        target = sample['labels'].item()
+        font_name = dataset.idx_to_font.get(target, f"unknown_{target}")
+        
+        # Get original image and boxes
+        image = dataset.data[idx].copy()
+        boxes = dataset.precomputed_boxes[idx]
+        
+        viz_img = image.copy() # HWC [0, 255] image for drawing boxes
+            
+        # Create PIL image and draw boxes
+        pil_img = Image.fromarray(viz_img)
+        draw = ImageDraw.Draw(pil_img)
+        
+        # Draw each box
+        valid_boxes = 0
+        for i, box in enumerate(boxes):
+            try:
+                if len(box) != 4:
+                    continue
+                    
+                x1, y1, x2, y2 = map(int, box)
+                draw.rectangle([x1, y1, x2, y2], outline=(255, 0, 0), width=2)
+                draw.text((x1, y1-10), str(i), fill=(255, 0, 0))
+                valid_boxes += 1
+            except Exception as e:
+                print(f"Error drawing box {i}: {e}")
+                
+        # Create figure for visualization
+        plt.figure(figsize=(16, 10))
+        
+        # Plot original image with boxes
+        plt.subplot(1, 2, 1)
+        plt.imshow(np.array(pil_img))
+        plt.title(f"Original with {valid_boxes} boxes\nFont: {font_name}")
+        plt.axis('off')
+        
+        # Plot extracted patches
+        num_valid = int(attention_mask.sum().item())
+        plt.subplot(1, 2, 2)
+        
+        if num_valid > 0:
+            # Create a grid of patches
+            rows = cols = int(np.ceil(np.sqrt(min(num_valid, 25))))
+            fig_patches = plt.figure(figsize=(10, 10))
+            
+            for i in range(min(num_valid, 25)):
+                ax = fig_patches.add_subplot(rows, cols, i+1)
+                patch = patches[i, 0].numpy()  # First channel
+                ax.imshow(patch, cmap='gray')
+                ax.set_title(f"Patch {i}")
+                ax.axis('off')
+                
+            plt.tight_layout()
+            patch_path = os.path.join(args.output_dir, f"sample_{idx}_patches.png")
+            fig_patches.savefig(patch_path)
+            plt.close(fig_patches)
+            
+            plt.text(0.5, 0.5, f"{num_valid} patches extracted\nSaved detailed view to {os.path.basename(patch_path)}", 
+                    ha='center', va='center', fontsize=12)
+        else:
+            plt.text(0.5, 0.5, "No valid patches extracted!", 
+                    ha='center', va='center', fontsize=16, color='red')
+            
+        plt.axis('off')
+        
+        # Add overall title
+        plt.suptitle(f"Sample {idx}: Font '{font_name}' - {valid_boxes} boxes, {num_valid} valid patches", fontsize=16)
+        plt.tight_layout()
+        
+        # Save visualization
+        output_path = os.path.join(args.output_dir, f"sample_{idx}_overview.png")
+        plt.savefig(output_path)
+        plt.close()
+        
+        print(f"Visualization saved to {output_path}")
+        return num_valid, valid_boxes
+    
+    # Visualize samples
+    num_samples = min(args.num_samples, len(dataset))
+    if num_samples >= 5:
+        # Sample randomly 
+        indices = np.random.choice(len(dataset), num_samples, replace=False)
+    else:
+        # Just use first few samples
+        indices = list(range(num_samples))
+    
+    results = []
+    for i, idx in enumerate(indices):
+        print(f"\nProcessing sample {i+1}/{num_samples} (index {idx})...")
+        num_patches, num_boxes = visualize_sample(idx)
+        results.append((idx, num_patches, num_boxes))
+    
+    # Print summary
+    print("\nSummary:")
+    print("Index | Valid Patches | Valid Boxes")
+    print("-" * 35)
+    for idx, patches, boxes in results:
+        print(f"{idx:5d} | {patches:13d} | {boxes:10d}")
+    
+    print(f"\nVisualizations saved to {args.output_dir}")

@@ -17,11 +17,14 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32):
         
         # Initialize CRAFT model
         craft_model = CRAFTModel(
-            cache_dir='weights/',
-            device=device,
-            use_refiner=True,
-            fp16=True
-        )
+                cache_dir='weights/',
+                device=device,
+                use_refiner=True,
+                fp16=True, 
+                link_threshold=1.9,
+                text_threshold=.5,
+                low_text=.5,
+            )
         
         # Load dataset
         h5_file = os.path.join(data_dir, f'{mode}.h5')
@@ -82,58 +85,12 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32):
         if using_h5 and h5_file_handle is not None:
             h5_file_handle.close()
 
-    # Initialize dataset and model
-    # craft_model = CRAFTModel(
-    #     cache_dir='weights/',
-    #     device=device,
-    #     use_refiner=False,
-    #     fp16=True
-    # )
-    
-    # for mode in ['train', 'test']:
-    #     ds = CharacterFontDataset(data_dir, train=(mode == 'train'), use_annotations=False)
-    #     loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=False)
-        
-    #     all_boxes = []
-    #     paths = []
-        
-    #     # Create output directory
-    #     output_dir = os.path.join(data_dir, f'craft_{mode}')
-    #     os.makedirs(output_dir, exist_ok=True)
-        
-    #     for batch in tqdm(loader, desc=f'Processing {mode}'):
-    #         # Process batch on GPU
-    #         with torch.no_grad():
-    #             # Get original image sizes before resizing
-    #             breakpoint()
-    #             orig_sizes = [(img.shape[1], img.shape[2]) for img in batch['images']]
-                
-    #             # Get CRAFT polygons in original coordinates
-    #             batch_polys = craft_model.craft.get_batch_polygons(
-    #                 batch['images'].to(device),
-    #                 batch['ratio_w'].to(device),
-    #                 batch['ratio_h'].to(device)
-    #             )
-            
-    #         # Convert to original image coordinates
-    #         for idx, (polys, (orig_h, orig_w)) in enumerate(zip(batch_polys, orig_sizes)):
-    #             # Scale boxes back to original image dimensions
-    #             scaled_polys = []
-    #             for poly in polys:
-    #                 scaled = poly.cpu().numpy() * np.array([orig_w, orig_h])
-    #                 scaled_polys.append(scaled.astype(np.int32))
-                
-    #             # Save to disk immediately to minimize memory usage
-    #             sample_id = len(all_boxes) + idx
-    #             np.savez_compressed(
-    #                 os.path.join(output_dir, f'{sample_id}.npz'),
-    #                 boxes=scaled_polys
-    #             )
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Preprocess CRAFT results for font dataset")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the dataset directory")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for processing images")
     args = parser.parse_args()
 
-    preprocess_craft(args.data_dir, device="cuda")
+    preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size)
