@@ -151,9 +151,11 @@ class TextAugmentation:
         letter_spacing = self.sample_letter_spacing()
         line_height = self.sample_line_height()
         
+        sample_id = kwargs.get('sample_id', 0)
+    
         # Create unique identifier for this configuration
-        config_id = f"{font_name.lower().replace(' ', '_')}_s{font_size}_w{font_weight}_ls{letter_spacing.replace('.', 'p').replace('-', 'n')}_lh{str(line_height).replace('.', 'p')}"
-        
+        config_id = f"{font_name.lower().replace(' ', '_')}_sample{sample_id}"
+
         return FontConfig(
             name=font_name,
             output_path=Path(output_dir) / config_id,
@@ -166,7 +168,8 @@ class TextAugmentation:
             font_style=kwargs.get('font_style', 'normal'),
             text_color=kwargs.get('text_color', '#000000'),
             bg_color=kwargs.get('bg_color', '#FFFFFF'),
-            samples_per_font=kwargs.get('samples_per_font', 10)
+            # samples_per_font=kwargs.get('samples_per_font', 10),
+            samples_per_font=1
         )
 
 
@@ -180,7 +183,7 @@ def process_font_config(font_config, **kwargs):
             'font': font_config.name,
             'port': kwargs['port'],
             'output_dir': kwargs['output_dir'],
-            'num_samples': font_config.samples_per_font,
+            'num_samples': 1, 
             'detection_mode': kwargs['detection_mode'],
             'image_size': kwargs['image_size'],
             'image_quality': kwargs['image_quality'],
@@ -323,13 +326,14 @@ class FontRenderer:
         all_font_configs = []
         for font in self.fonts:
             # Generate a unique configuration for each sample
-            for _ in range(versions_per_font):
+            for sample_id in range(versions_per_font):
                 config = augmenter.generate_config(
                     font, 
                     str(self.output_dir),
                     image_width=self.image_size[0],
                     image_height=self.image_size[1],
-                    samples_per_font=1  
+                    samples_per_font=1,
+                    sample_id=sample_id,
                 )
                 all_font_configs.append(config)
         logger.info(f"Generated {len(all_font_configs)} total font configurations")
