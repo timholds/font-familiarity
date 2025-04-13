@@ -95,7 +95,8 @@ class FontConfig:
     font_style: str = "normal"  
     text_color: str = "#000000"  
     bg_color: str = "#FFFFFF"   
-    samples_per_font: int = 10
+    samples_per_font: int = 10,
+    sample_id: int = 0  # Add this field
 
 class TextAugmentation:
     """Generates continuous text augmentation parameters for dataset diversity."""
@@ -170,6 +171,7 @@ class TextAugmentation:
             text_color=kwargs.get('text_color', '#000000'),
             bg_color=kwargs.get('bg_color', '#FFFFFF'),
             samples_per_font=kwargs.get('samples_per_font', 10),
+            sample_id=sample_id,
             #samples_per_font=1
         )
 
@@ -198,7 +200,7 @@ def process_font_config(font_config, **kwargs):
             'output_subdir': font_config.name.lower().replace(' ', '_'), 
             'backgrounds_dir': kwargs.get('backgrounds_dir', None),
             'background_probability': kwargs.get('background_probability', 0.0),
-            'sample_id': kwargs.get('sample_id', 0),
+            'sample_id': font_config.sample_id,  # Use the sample_id from the config
             'config_id': kwargs.get('config_id'),  
         }
         
@@ -318,7 +320,6 @@ class FontRenderer:
 
 
     def generate_dataset(self):
-        self.start_flask()
         logger.info(f"Starting parallel processing with {len(self.fonts)} fonts")
         augmenter = TextAugmentation(
             font_size_range=(16, 36),
@@ -338,19 +339,34 @@ class FontRenderer:
                     str(self.output_dir),
                     image_width=self.image_size[0],
                     image_height=self.image_size[1],
-                    samples_per_font=self.num_samples_per_font,
+                    samples_per_font=1,
                     sample_id=sample_id,
                 )
                 all_font_configs.append(config)
         logger.info(f"Generated {len(all_font_configs)} total font configurations")
       
+        font_count = {}
         for config in all_font_configs:
-            config_id = f"{config.name.lower().replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
+            font_name = config.name.lower().replace(' ', '_')
+            
+            # Assign unique sample_id for each font configuration
+            if font_name not in font_count:
+                font_count[font_name] = 0
+            sample_id = font_count[font_name]
+            font_count[font_name] += 1
+            
+            config_id = f"{font_name}_{uuid.uuid4().hex[:8]}"
             self.config_registry[config_id] = config
 
+        self.start_flask()
         with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = []
             for config_id, config in self.config_registry.items():
+                font_name = config.name.lower().replace(' ', '_')    
+                # Match this configuration with its original position in the font_count
+                sample_id = font_count.get(font_name, 0) - 1
+                if sample_id < 0:
+                    sample_id = 0
                 futures.append(executor.submit(
                     process_font_config,
                     font_config=config,
@@ -360,7 +376,7 @@ class FontRenderer:
                     image_size=self.image_size,
                     image_quality=self.image_quality,
                     config_id=config_id,
-                    sample_id=getattr(config, 'sample_id', 0)  # Safely get sample_id if it exists
+                    sample_id=sample_id
                 ))
 
             for future in as_completed(futures):
@@ -433,13 +449,9 @@ class FontRendererWorker:
 
     def _capture_standard(self):
         font_dir = self.font_dir
-        annotations_dir = font_dir / "annotations"
-
         font_dir.mkdir(parents=True, exist_ok=True)
 
         self.driver.get(f"http://localhost:{self.port}/font/{self.font.replace(' ', '%20')}/{self.config_id}")
-
-        # Add a small delay to ensure the page is fully loaded
         time.sleep(1)
 
         container = WebDriverWait(self.driver, 10).until(
@@ -449,48 +461,31 @@ class FontRendererWorker:
             EC.presence_of_element_located((By.CLASS_NAME, 'text-block'))
         )
 
+        # Get the total height of the text content
         total_height = self.driver.execute_script(
             "return arguments[0].scrollHeight", text_block
         )
-
-        # Ensure we have enough content to scroll
         visible_height = self.image_size[1]
-        if total_height <= visible_height:
-            logger.warning(f"Text content for font {self.font} is too short for {self.num_samples} samples")
-            # Just take one screenshot if content is too short
-            filename = f"sample_{self.sample_id:04d}_0000.jpg"  # Fixed: use 0 when no scroll
-            self._save_screenshot(container, font_dir / filename)
-            return
-            
-        scroll_step = (total_height - visible_height) / max(1, self.num_samples - 1)
 
-        for i in range(self.num_samples):
-            scroll_pos = int(i * scroll_step)
+        # Calculate a unique scroll position based on sample_id
+        # This ensures each style configuration shows different text
+        if total_height > visible_height:
+            # Use the sample_id to determine a unique position in the text
+            # This distributes positions evenly through the text
+            max_scroll = total_height - visible_height
+            scroll_positions = max_scroll * self.sample_id / self.num_samples
+            scroll_pos = int(scroll_positions)
             
             # Apply scroll transform
             self.driver.execute_script(
                 f"arguments[0].style.transform = 'translateY(-{scroll_pos}px)';",
                 text_block
             )
-            
-            # Small delay
-            time.sleep(0.1)
-            
-            # Verify via JavaScript
-            scroll_complete = self.driver.execute_script(
-                """
-                var style = window.getComputedStyle(arguments[0]);
-                var transform = style.getPropertyValue('transform');
-                return transform !== 'none' && transform !== '';
-                """, 
-                text_block
-            )
-            
-            if not scroll_complete:
-                logger.warning(f"Scroll verification failed for font {self.font} at position {scroll_pos}")
-            
-            filename = f"sample_{i:04d}.jpg"
-            self._save_screenshot(container, font_dir / filename)
+            time.sleep(0.1)  # Small delay for rendering
+
+        # Take the screenshot with unique filename
+        filename = f"sample_{self.sample_id:04d}.jpg"
+        self._save_screenshot(container, font_dir / filename)
             
     def _capture_with_detection(self):
         font_dir = self.output_dir / self.font.lower().replace(' ', '_')
@@ -528,7 +523,7 @@ class FontRendererWorker:
             WebDriverWait(self.driver, 5).until(
                 javascript_returns_true("window.detectionData?.characters?.length > 0")
             )
-            filename = f"sample_{i:04d}.jpg"
+            filename = f"sample_{self.sample_id:04d}.jpg"
             self._save_screenshot(container, font_dir / filename)
             self._save_annotations(annotations_dir, i, self.sample_id)
 
