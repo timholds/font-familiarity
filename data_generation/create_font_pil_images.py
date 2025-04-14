@@ -10,7 +10,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
+from match_fonts import FontMatcher
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import requests
@@ -108,148 +108,87 @@ class TextAugmentation:
             sample_id=sample_id,
         )
 
+# In create_font_pil_images.py, replace the current FontManager class with this:
+
 class FontManager:
-    """Download and manage font files."""
+    """Manage font files for PIL text rendering."""
     
-    def __init__(self, cache_dir="./fonts", use_local_fallbacks=True):
+    def __init__(self, font_matcher=None, cache_dir="./fonts"):
+        self.font_matcher = font_matcher
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.font_cache = {}
-        self.use_local_fallbacks = use_local_fallbacks
+        self.font_cache = {}  # Cache for loaded fonts
         
-        # Create a directory for fallback fonts
-        self.fallback_dir = self.cache_dir / "fallbacks"
-        self.fallback_dir.mkdir(exist_ok=True)
-        
-        # Try to copy some system fonts as fallbacks
-        self._setup_fallback_fonts()
+        # Create a directory for fallback fonts if not using font_matcher
+        if not font_matcher:
+            raise ValueError("FontMatcher is required to initialize FontManager")
+   
     
-    def _setup_fallback_fonts(self):
-        """Copy some system fonts as fallbacks."""
-        if not self.use_local_fallbacks:
-            return
+    def load_font(self, font_name, font_size):
+        """
+        Load a font with the specified name and size.
+        
+        Args:
+            font_name: Font name as it appears in the font list file
+            font_size: Size of the font to load
             
-        # Common system font locations
-        system_font_locations = [
-            # Windows
-            "C:/Windows/Fonts",
-            # macOS
-            "/Library/Fonts",
-            "/System/Library/Fonts",
-            # Linux
-            "/usr/share/fonts",
-            "/usr/local/share/fonts",
-            "~/.fonts"
-        ]
-        
-        # Common fallback fonts to look for
-        fallback_fonts = [
-            "Arial.ttf", "arial.ttf",
-            "Verdana.ttf", "verdana.ttf",
-            "TimesNewRoman.ttf", "times.ttf",
-            "DejaVuSans.ttf", "DejaVuSans.ttf",
-            "Roboto-Regular.ttf", "Roboto.ttf",
-            "NotoSans-Regular.ttf", "NotoSans.ttf",
-            "OpenSans-Regular.ttf", "OpenSans.ttf"
-        ]
-        
-        # Look for fallback fonts
-        found_fallback = False
-        for font_dir in system_font_locations:
-            font_path = Path(os.path.expanduser(font_dir))
-            if not font_path.exists():
-                continue
+        Returns:
+            PIL ImageFont object
+            
+        Raises:
+            ValueError: If the font is not found or cannot be loaded
+        """
+        try:
+            return self.font_matcher.load_font(font_name, font_size)
+        except Exception as e:
+            logger.error(f"Failed to load font '{font_name}' at size {font_size}: {e}")
+            raise ValueError(f"Failed to load font '{font_name}': {e}")
+        # cache_key = f"{font_name}_{font_size}"
+
+        # if cache_key in self.font_cache:
+        #     return self.font_cache[cache_key]
+
+        # # Get the font file path
+        # try:
+        #     font_path = self.get_font_file(font_name)
+        # except ValueError as e:
+        #     logger.error(f"Font file not found for '{font_name}': {e}")
+        #     raise
+
+        # # Verify the font file exists
+        # if not os.path.exists(font_path):
+        #     error_msg = f"Font file '{font_path}' does not exist for font '{font_name}'"
+        #     logger.error(error_msg)
+        #     raise ValueError(error_msg)
+
+        # try:
+        #     # Load the font
+        #     font = ImageFont.truetype(font_path, font_size)
+            
+        #     # Verify the font loaded correctly by testing a method
+        #     test_text = "Test"
+        #     try:
+        #         # Handle different PIL versions
+        #         if hasattr(font, 'getbbox'):
+        #             _ = font.getbbox(test_text)
+        #         elif hasattr(font, 'getsize'):
+        #             _ = font.getsize(test_text)
+        #         else:
+        #             error_msg = f"Cannot determine text metrics for font '{font_name}'"
+        #             logger.error(error_msg)
+        #             raise ValueError(error_msg)
+        #     except Exception as e:
+        #         error_msg = f"Font '{font_name}' loaded but failed metrics test: {e}"
+        #         logger.error(error_msg)
+        #         raise ValueError(error_msg)
                 
-            for font_name in fallback_fonts:
-                system_font_path = font_path / font_name
-                if system_font_path.exists():
-                    try:
-                        fallback_font_path = self.fallback_dir / font_name
-                        if not fallback_font_path.exists():
-                            # Copy the font to our fallbacks directory
-                            shutil.copy(system_font_path, fallback_font_path)
-                            logger.info(f"Copied fallback font: {font_name}")
-                            found_fallback = True
-                    except Exception as e:
-                        logger.warning(f"Failed to copy fallback font {font_name}: {e}")
-        
-        if not found_fallback:
-            logger.warning("No fallback fonts found. Text rendering may fail.")
+        #     # If we got here, the font is valid
+        #     self.font_cache[cache_key] = font
+        #     return font
+        # except Exception as e:
+        #     error_msg = f"Failed to load font '{font_name}' from {font_path}: {e}"
+        #     logger.error(error_msg)
+        #     raise ValueError(error_msg)
     
-    def _download_font(self, font_name, weight, style, output_path):
-        """Instead of trying to download fonts, use fallbacks."""
-        # We'll skip downloading and rely on fallbacks instead
-        logger.warning(f"Font not found: {font_name}, weight: {weight}, style: {style}")
-        return None
-
-    def get_font_path(self, font_name, weight=400, style="normal"):
-        """Get a path to a font, using fallbacks if necessary."""
-        # First, check if we have this exact font cached
-        normalized_name = font_name.replace(" ", "")
-        weight_str = self._weight_to_string(weight)
-        style_str = style.capitalize() if style != "normal" else ""
-        
-        # Try different filename variations
-        possible_filenames = [
-            f"{normalized_name}-{weight_str}{style_str}.ttf",
-            f"{normalized_name}{weight_str}{style_str}.ttf",
-            f"{normalized_name}-{weight_str}.ttf",
-            f"{normalized_name}.ttf"
-        ]
-        
-        # Remove empty components
-        possible_filenames = [f for f in possible_filenames if "--" not in f]
-        possible_filenames = list(set(possible_filenames))  # Remove duplicates
-        
-        # Check for exact match in cache directory
-        for filename in possible_filenames:
-            font_path = self.cache_dir / filename
-            if font_path.exists():
-                return str(font_path)
-        
-        # If we don't have the exact font, try to find a fallback
-        return self._get_fallback_font(font_name, weight, style)
-    
-    def _weight_to_string(self, weight):
-        """Convert numeric weight to string representation."""
-        weight_map = {
-            100: "Thin",
-            200: "ExtraLight",
-            300: "Light",
-            400: "Regular",
-            500: "Medium",
-            600: "SemiBold",
-            700: "Bold",
-            800: "ExtraBold",
-            900: "Black"
-        }
-        return weight_map.get(weight, "Regular")
-    
-    def _get_fallback_font(self, font_name, weight, style):
-        """Find a suitable fallback font."""
-        # Check fallbacks directory first
-        fallback_fonts = list(self.fallback_dir.glob("*.ttf"))
-        if fallback_fonts:
-            return str(fallback_fonts[0])
-        
-        # If no fallbacks found, use PIL's default font
-        logger.warning(f"No fallback font found for {font_name}. Using default.")
-        return None
-    
-    def load_font(self, font_name, font_size, weight=400, style="normal"):
-        """Load a font with the specified name, size, weight, and style."""
-        cache_key = f"{font_name}_{font_size}_{weight}_{style}"
-
-        if cache_key in self.font_cache:
-            return self.font_cache[cache_key]
-
-        # Simply use PIL's default font and warn the user
-        logger.warning(f"Using default font for {font_name}")
-        font = ImageFont.load_default()
-
-        self.font_cache[cache_key] = font
-        return font
-
 
 class TextRenderer:
     """Render text as images with various augmentations."""
@@ -356,6 +295,7 @@ class TextRenderer:
         
         return boxes
     
+
     def render_text_image(self, text, config):
         """Render text as an image with the specified configuration."""
         # Create background
@@ -366,8 +306,6 @@ class TextRenderer:
         font = self.font_manager.load_font(
             config.name, 
             config.font_size, 
-            config.font_weight, 
-            config.font_style
         )
         
         # Get text metrics
@@ -479,12 +417,14 @@ class FontDatasetGenerator:
         self.image_size = image_size
         self.backgrounds_dir = backgrounds_dir
         self.background_probability = background_probability
+
         
         # Ensure output directory exists
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # Set up components
-        self.font_manager = FontManager()
+        font_matcher = FontMatcher(self.fonts_file, "fonts")
+        self.font_manager = FontManager(font_matcher=font_matcher)
         self.text_renderer = TextRenderer(
             self.font_manager,
             backgrounds_dir,
@@ -495,6 +435,7 @@ class FontDatasetGenerator:
         # Load fonts and text
         self.fonts = self._load_fonts()
         self.text = self._load_text()
+        
     
     def _load_fonts(self):
         """Load font names from the fonts file."""
@@ -537,7 +478,7 @@ class FontDatasetGenerator:
         """Process a single font to generate a sample image."""
         try:
             # Create a new font manager for this process to avoid multiprocessing issues
-            process_font_manager = FontManager()
+            process_font_manager = FontManager(font_matcher=self.font_manager.font_matcher)
             process_text_renderer = TextRenderer(
                 process_font_manager,
                 self.backgrounds_dir,

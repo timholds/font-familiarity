@@ -77,7 +77,10 @@ def download_font(font_name, output_dir):
                     file_ext = url_ext
                 
                 filename = f"{font_name.replace(' ', '_')}_{weight}{file_ext}"
-                file_path = font_dir / filename
+                #file_path = os.path.join(str(font_dir.absolute()), filename)
+                file_path = Path(str(font_dir)) / filename
+                print(f"Writing to: {file_path}")
+
                 
                 # Skip if file already exists
                 if file_path.exists():
@@ -94,7 +97,7 @@ def download_font(font_name, output_dir):
                     downloaded += 1
             
             if downloaded > 0:
-                # Save the Google Fonts name format that worked
+                # Save the Google Fonts name format that worked (to output_dir as requested)
                 with open(output_dir / 'google_name.txt', 'a') as f:
                     f.write(formatted_name)
                 
@@ -104,10 +107,9 @@ def download_font(font_name, output_dir):
             continue
     
     # If CSS2 API failed, try older CSS API as fallback
-    for formatted_name in try_font_formats:
-        # If CSS2 API failed, try older CSS API as fallback
+    for formatted_name in try_font_formats(font_name):  # Fixed: Call the function to get formats
         try:
-            fallback_url = f"https://fonts.googleapis.com/css?family={font_name.replace(' ', '+')}"
+            fallback_url = f"https://fonts.googleapis.com/css?family={formatted_name}"
             response = requests.get(fallback_url, headers=headers)
             
             if response.status_code == 200:
@@ -123,7 +125,10 @@ def download_font(font_name, output_dir):
                             file_ext = url_ext
                         
                         filename = f"{font_name.replace(' ', '_')}_400{file_ext}"
-                        file_path = font_dir / filename
+                        # file_path = os.path.join(str(font_dir.absolute()), filename)
+                        file_path = Path(str(font_dir)) / filename
+                        print(f"Writing to: {file_path}")
+
                         
                         if not file_path.exists():
                             font_response = requests.get(url)
@@ -131,14 +136,15 @@ def download_font(font_name, output_dir):
                                 with open(file_path, 'wb') as f:
                                     f.write(font_response.content)
                                 
-                                with open(font_dir / 'google_name.txt', 'w') as f:
-                                    f.write(font_name.replace(' ', '+'))
+                                # Keep writing google_name.txt to output_dir as requested
+                                with open(output_dir / 'google_name.txt', 'a') as f:
+                                    f.write(formatted_name)
                                 
                                 return True, "Downloaded with fallback method"
         except Exception:
             pass
-
-        return False, "Failed to download font"
+    
+    return False, "Failed to download font"
 
 def download_all_fonts(fonts_file, output_dir, max_workers=10):
     """Download all fonts listed in the fonts.txt file"""
