@@ -44,7 +44,7 @@ class TextAugmentation:
     """Generates continuous text augmentation parameters for dataset diversity."""
     
     def __init__(self, 
-                 font_size_range=(40, 80),
+                 font_size_range=(16, 60),
                  weight_primary_modes=[400, 700],
                  weight_primary_prob=0.7,
                  letter_spacing_range=(-0.1, 0.4),
