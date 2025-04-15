@@ -1,4 +1,3 @@
-# craft_preprocess.py
 import os
 import numpy as np
 from tqdm import tqdm
@@ -6,64 +5,22 @@ from CRAFT import CRAFTModel
 from dataset import load_npz_mmap, load_h5_dataset
 import argparse
 from PIL import Image
-from concurrent.futures import ProcessPoolExecutor
-
-# At the top level of your script
-from CRAFT import CRAFTModel
-from concurrent.futures import ProcessPoolExecutor
-import os
-import numpy as np
-from PIL import Image
-
-# Create a function that initializes a model once per process
-# and then processes multiple images with that same model
-def process_images_batch(images_batch, device="cuda", use_refiner=True, fp16=True):
-    # Initialize model once per process
-    model = CRAFTModel(
-        cache_dir ='weights/',
-        device=device,
-        use_refiner=use_refiner,
-        fp16=fp16,
-        link_threshold=1.9, 
-        text_threshold=.5,
-        low_text=.5,
-    )
-    
-    results = []
-    for img in images_batch:
-        try:
-            polygons = model.get_polygons(img)
-            # Convert polygons to bounding boxes
-            boxes = []
-            for poly in polygons:
-                x_coords = [p[0] for p in poly]
-                y_coords = [p[1] for p in poly]
-                x1, y1 = min(x_coords), min(y_coords)
-                x2, y2 = max(x_coords), max(y_coords)
-                boxes.append([int(x1), int(y1), int(x2), int(y2)])
-            results.append(boxes)
-        except Exception as e:
-            print(f"Error processing image: {e}")
-            results.append([])
-    
-    return results
-
 
 def preprocess_craft(data_dir, device="cuda", batch_size=32):
     """Preprocess CRAFT results for entire dataset"""
     for mode in ['train', 'test']:
         print(f"Processing {mode} set...")
         
-        # Initialize CRAFT model
-        # craft_model = CRAFTModel(
-        #         cache_dir ='weights/',
-        #         device=device,
-        #         use_refiner=True,
-        #         fp16=True, 
-        #         link_threshold=1.9,
-        #         text_threshold=.5,
-        #         low_text=.5,
-        #     )
+        # Initialize CRAFT model - only once, outside the loop
+        craft_model = CRAFTModel(
+                cache_dir='weights/',
+                device=device,
+                use_refiner=True,
+                fp16=(device == "cuda"),  # Use fp16 only on CUDA
+                link_threshold=1.9,
+                text_threshold=.5,
+                low_text=.5,
+            )
         
         # Load dataset
         h5_file = os.path.join(data_dir, f'{mode}.h5')
@@ -84,7 +41,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32):
         # Create output file
         output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
         
-        # Process images in batches
+        # Process images in batches - sequential approach
         num_images = len(images)
         all_boxes = []
         
@@ -92,44 +49,56 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32):
             batch_indices = range(i, min(i + batch_size, num_images))
             batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
             
-            num_workers = min(os.cpu_count(), 8)  # Limit to reasonable number
-            sub_batch_size = max(1, len(batch_images) // num_workers)
-            sub_batches = [batch_images[i:i+sub_batch_size] for i in range(0, len(batch_images), sub_batch_size)]
-
-            # Process batch with CRAFT
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                # Each worker gets a sub-batch of images
-                use_fp16 = (device == "cuda")
-                # batch_results = list(executor.map(
-                #     lambda sub_batch: process_images_batch(sub_batch, device=device, use_refiner=True, fp16=use_fp16),
-                #     sub_batches
-                # ))
-                use_fp16 = (device == "cuda")
-                batch_args = [(sub, device, True, use_fp16) for sub in sub_batches]
-                batch_results = list(executor.map(process_sub_batch, batch_args))
-
+            # Process batch with CRAFT - sequential approach
             batch_boxes = []
-            for sub_batch_result in batch_results:
-                batch_boxes.extend(sub_batch_result)    
-            # batch_boxes = []
-            # for img in batch_images:
-            #     try:
-            #         polygons = craft_model.get_polygons(img)
-            #         # Convert polygons to bounding boxes
-            #         boxes = []
-            #         for poly in polygons:
-            #             x_coords = [p[0] for p in poly]
-            #             y_coords = [p[1] for p in poly]
-            #             x1, y1 = min(x_coords), min(y_coords)
-            #             x2, y2 = max(x_coords), max(y_coords)
-            #             boxes.append([int(x1), int(y1), int(x2), int(y2)])
-            #         batch_boxes.append(boxes)
-            #     except Exception as e:
-            #         print(f"Error processing image: {e}")
-            #         batch_boxes.append([])
-            # all_boxes.extend(batch_boxes)
+            for img in batch_images:
+                try:
+                    # Use a try/except that could mimic the "CUDA error" scenario
+                    # by falling back to CPU if there's a CUDA error
+                    try:
+                        polygons = craft_model.get_polygons(img)
+                    except RuntimeError as e:
+                        if "CUDA" in str(e) and device == "cuda":
+                            print("CUDA error detected, falling back to CPU for this image")
+                            # Create a temporary CPU model for fallback
+                            cpu_model = CRAFTModel(
+                                cache_dir='weights/',
+                                device="cpu",
+                                use_refiner=True,
+                                fp16=False,  # Must be False for CPU
+                                link_threshold=1.9,
+                                text_threshold=.5,
+                                low_text=.5,
+                            )
+                            polygons = cpu_model.get_polygons(img)
+                        else:
+                            # Re-raise if it's not a CUDA error
+                            raise
+                    
+                    # Convert polygons to bounding boxes
+                    boxes = []
+                    for poly in polygons:
+                        x_coords = [p[0] for p in poly]
+                        y_coords = [p[1] for p in poly]
+                        x1, y1 = min(x_coords), min(y_coords)
+                        x2, y2 = max(x_coords), max(y_coords)
+                        boxes.append([int(x1), int(y1), int(x2), int(y2)])
+                    batch_boxes.append(boxes)
+                except Exception as e:
+                    print(f"Error processing image: {e}")
+                    batch_boxes.append([])
+            
+            all_boxes.extend(batch_boxes)
         
-        # Save boxes to file
+        # Save incrementally to avoid losing progress
+        if i % (batch_size * 10) == 0:
+            np.savez_compressed(
+                output_file + ".partial",
+                boxes=np.array(all_boxes, dtype=object)
+            )
+            print(f"Saved partial progress ({len(all_boxes)} boxes) to {output_file}.partial")
+        
+        # Save final boxes to file
         np.savez_compressed(
             output_file,
             boxes=np.array(all_boxes, dtype=object)
@@ -140,11 +109,6 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32):
         # Close H5 file if opened
         if using_h5 and h5_file_handle is not None:
             h5_file_handle.close()
-
-def process_sub_batch(args):
-    sub_batch, device, use_refiner, fp16 = args
-    return process_images_batch(sub_batch, device=device, use_refiner=use_refiner, fp16=fp16)
-
 
 if __name__ == "__main__":
     import argparse
