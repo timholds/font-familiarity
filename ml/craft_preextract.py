@@ -3,8 +3,6 @@ import os
 import numpy as np
 from tqdm import tqdm
 from CRAFT import CRAFTModel
-from dataset import CharacterFontDataset
-import torch
 from dataset import load_npz_mmap, load_h5_dataset
 import argparse
 from PIL import Image
