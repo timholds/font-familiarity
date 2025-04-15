@@ -2,17 +2,53 @@ import os
 import numpy as np
 from tqdm import tqdm
 from CRAFT import CRAFTModel
+from CRAFT.craft import init_CRAFT_model
+from CRAFT.refinenet import init_refiner_model
+
 from dataset import load_npz_mmap, load_h5_dataset
 import argparse
 from PIL import Image
 import argparse
 import multiprocessing
 import torch
+from huggingface_hub import hf_hub_url, hf_hub_download
+
+
+
+HF_MODELS = {
+    'craft': dict(
+        repo_id='boomb0om/CRAFT-text-detector',
+        filename='craft_mlt_25k.pth',
+    ),
+    'refiner': dict(
+        repo_id='boomb0om/CRAFT-text-detector',
+        filename='craft_refiner_CTW1500.pth',
+    )
+}
+
+def convert_polygons_to_boxes(polygons):
+    """Convert polygons to bounding boxes"""
+    boxes = []
+    try:
+        for poly in polygons:
+            x_coords = [p[0] for p in poly]
+            y_coords = [p[1] for p in poly]
+            x1, y1 = min(x_coords), min(y_coords)
+            x2, y2 = max(x_coords), max(y_coords)
+            boxes.append([int(x1), int(y1), int(x2), int(y2)])
+    except Exception as e:
+        print(f"Error converting polygons to boxes: {e}")
+    return boxes
 
 def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
     """Preprocess CRAFT results for entire dataset"""
     for mode in ['train', 'test']:
         print(f"Processing {mode} set...")
+
+        paths = {"craft": os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_mlt_25k.pth")}
+        paths["refiner"] = os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_refiner_CTW1500.pth")
+        craft_net = init_CRAFT_model(paths['craft'], "cuda", fp16=True)
+        refiner_net = init_refiner_model(paths['refiner'], "cuda")
         
         # Initialize CRAFT model - only once, outside the loop
         craft_model = CRAFTModel(
@@ -70,14 +106,11 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
             
             # Process batch with CRAFT - sequential approach
             batch_boxes = []
+            breakpoint()
             for img in batch_images:
                 try:
-                    # Use a try/except that could mimic the "CUDA error" scenario
-                    # by falling back to CPU if there's a CUDA error
                     try:
                         polygons = craft_model.get_polygons(img)
-                        if device == "cuda":
-                            torch.cuda.synchronize()
                     except RuntimeError as e:
                         if "CUDA" in str(e) and device == "cuda":
                             print("CUDA error detected, falling back to CPU for this image")
@@ -138,15 +171,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preprocess CRAFT results for font dataset")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the dataset directory")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for processing images")
+    parser.add_argument("--no_resume", action="store_true", help="Don't resume from partial files")
+
     args = parser.parse_args()
 
-    torch.backends.cudnn.benchmark = True
-    if torch.cuda.is_available():
-        # Limit GPU memory to 70% of available
-        total_mem = torch.cuda.get_device_properties(0).total_memory
-        torch.cuda.set_per_process_memory_fraction(0.7)
-        print(f"Limited CUDA memory to 70% of {total_mem/(1024**3):.2f} GB")
+    # torch.backends.cudnn.benchmark = True
+    # if torch.cuda.is_available():
+    #     # Limit GPU memory to 70% of available
+    #     total_mem = torch.cuda.get_device_properties(0).total_memory
+    #     torch.cuda.set_per_process_memory_fraction(0.7)
+    #     print(f"Limited CUDA memory to 70% of {total_mem/(1024**3):.2f} GB")
 
 
     multiprocessing.set_start_method('spawn', force=True)
-    preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size)
+    preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size, resume=not args.no_resume)
