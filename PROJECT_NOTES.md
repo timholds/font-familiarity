@@ -454,3 +454,7 @@ That said, we aren't doing the ideal thing, but rather finding a nice tradeoff i
 
 # Note to user: 
 The closer to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
+
+
+# Similar Tools
+Identifont.com
