@@ -28,3 +28,4 @@ test-data/
 *.h5
 fonts/
 backgrounds/
+debug_output/

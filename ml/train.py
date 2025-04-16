@@ -4,7 +4,7 @@ import torch.optim as optim
 from tqdm import tqdm
 import time
 from dataset import get_dataloaders, get_char_dataloaders
-from model import SimpleCNN
+from font_model import SimpleCNN
 from char_model import CRAFTFontClassifier
 
 import argparse

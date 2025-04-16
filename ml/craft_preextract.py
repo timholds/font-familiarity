@@ -72,9 +72,77 @@ def preprocess_image_np(image: np.ndarray, canvas_size: int, mag_ratio: bool):
     x = np.transpose(x, (2, 0, 1))               # [h, w, c] to [c, h, w]
     return x, ratio_w, ratio_h
 
+def batch_preprocess_image_np(batch_images, canvas_size, mag_ratio):
+    """Process a batch of images with vectorized operations where possible"""
+    batch_size = len(batch_images)
+    resized_images = []
+    ratios_w = []
+    ratios_h = []
+    
+    # Process each image for resizing (can't be easily vectorized due to aspect ratio preservation)
+    for i in range(batch_size):
+        img_resized, target_ratio, _ = resize_aspect_ratio(
+            batch_images[i], canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
+        )
+        ratio_h = ratio_w = 1 / target_ratio
+        
+        resized_images.append(img_resized)
+        ratios_w.append(ratio_w)
+        ratios_h.append(ratio_h)
+    
+    # Stack resized images for batch normalization
+    batch_resized = np.stack(resized_images, axis=0)
+    
+    # Vectorized normalization (much faster than processing one by one)
+    batch_mean = np.array([0.485, 0.456, 0.406]).reshape(1, 1, 1, 3)
+    batch_std = np.array([0.229, 0.224, 0.225]).reshape(1, 1, 1, 3)
+    
+    batch_normalized = (batch_resized / 255.0 - batch_mean) / batch_std
+    
+    # Transpose from [B, H, W, C] to [B, C, H, W]
+    batch_transposed = np.transpose(batch_normalized, (0, 3, 1, 2))
+    
+    return batch_transposed, ratios_w, ratios_h
 
-def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
+def convert_polygons_to_boxes_parallel(batch_polys, num_workers=None):
+    """Convert polygons to bounding boxes in parallel"""
+    if num_workers is None:
+        num_workers = min(multiprocessing.cpu_count(), len(batch_polys))
+    
+    with multiprocessing.Pool(num_workers) as pool:
+        batch_boxes = pool.map(convert_polygons_to_boxes, batch_polys)
+    
+    return batch_boxes
+
+
+def parallel_post_process(text_scores, link_scores, ratios_w, ratios_h, params):
+    """Run post-processing in parallel for multiple images"""
+    text_threshold, link_threshold, low_text = params
+    
+    with multiprocessing.Pool(processes=min(multiprocessing.cpu_count(), len(text_scores))) as pool:
+        results = pool.starmap(
+            process_single_image,
+            [(text_scores[i], link_scores[i], ratios_w[i], ratios_h[i], 
+              text_threshold, link_threshold, low_text) for i in range(len(text_scores))]
+        )
+    return results
+
+def process_single_image(text_score, link_score, ratio_w, ratio_h, text_threshold, link_threshold, low_text):
+    """Process a single image's score maps"""
+    boxes, polys = getDetBoxes(
+        text_score, link_score,
+        text_threshold, link_threshold,
+        low_text, False
+    )
+    boxes = adjustResultCoordinates(boxes, ratio_w, ratio_h)
+    return convert_polygons_to_boxes(boxes)
+
+
+def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_workers=None):
     """Preprocess CRAFT results for entire dataset"""
+    if num_workers is None:
+        num_workers = min(multiprocessing.cpu_count(), batch_size)
+    
     for mode in ['train', 'test']:
         print(f"Processing {mode} set...")
 
@@ -134,25 +202,34 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
         
         for i in tqdm(range(0, num_images, batch_size)):
             # batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
-            batch_images = images[i:i+batch_size][:]
+            end_idx = min(i + batch_size, num_images)
+            batch_images = images[i:end_idx][:]
+
+            # batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
+            #     batch_images, args.canvas_size, args.mag_ratio
+            # )
+            # batch_img_tensors = torch.from_numpy(batch_tensors)
             
             # Preprocess images
             # TODO parallelize this later and just stack tensors for now()
-            preprocessed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
             # need to just get the image from first item in image, ratio-h, ratio_w
             # list of tups length batch size (image array, ratio_w, ratio_h)
             # Unpack preprocessed_results into separate arrays
+            preprocessed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
             image_arrays = [result[0] for result in preprocessed_results]  # Extract the image arrays
             ratios_w = [result[1] for result in preprocessed_results]      # Extract the ratio_w values
             ratios_h = [result[2] for result in preprocessed_results]      # Extract the ratio_h values
             batch_img_tensors_np = np.stack([image for image in image_arrays], axis=0)  # Stack the images into a batch tensor
-            batch_img_tensors = torch.from_numpy(batch_img_tensors_np)
+            batch_img_tensors = torch.from_numpy(batch_img_tensors_np) # BCHWC input
 
-            # if device == "cuda":
-            #     batch_img_tensors = batch_img_tensors.cuda()
-
-            
+    
             batch_polys = craft_model.get_batch_polygons(batch_img_tensors, ratios_w[0], ratios_h[0])
+            
+            
+            # Convert to torch tensor
+            batch_boxes = [convert_polygons_to_boxes(polygons) for polygons in batch_polys]
+            #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)            
+            all_boxes.extend(batch_boxes)
             # breakpoint()
             # Process each image in the batch
 
