@@ -14,11 +14,13 @@ import multiprocessing
 import torch
 from torch.autograd import Variable
 from CRAFT.craft_utils import adjustResultCoordinates, getDetBoxes
+import cProfile
+import pstats
 
 # from CRAFT import imgproc
-link_threshold = 1.9
-text_threshold = .5
-low_text = .5
+# link_threshold = 1.9
+# text_threshold = .5
+# low_text = .5
 
 
 HF_MODELS = {
@@ -319,6 +321,12 @@ if __name__ == "__main__":
     #     torch.cuda.set_per_process_memory_fraction(0.7)
     #     print(f"Limited CUDA memory to 70% of {total_mem/(1024**3):.2f} GB")
 
+    profiler = cProfile.Profile()
+    profiler.enable()
 
-    multiprocessing.set_start_method('spawn', force=True)
+    # multiprocessing.set_start_method('spawn', force=True)
     preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size, resume=not args.no_resume)
+    profiler.disable()
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative').print_stats(20)  # Show top 20 functions by cumulative time
+    
