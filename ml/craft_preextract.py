@@ -180,8 +180,9 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         
         # Create output file
         output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
-        partial_file = output_file + ".partial"
+        partial_file = output_file + ".partial.npz"
         
+        all_boxes = []
         # Check for partial file and resume if requested        
         if resume and os.path.exists(partial_file):
             try:
@@ -193,14 +194,14 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                 print(f"Error loading partial file: {e}")
                 print("Starting from the beginning")
                 start_idx = 0
-                all_boxes = []
-        
-        num_images = len(images)
-        all_boxes = []
+        else:
+            start_idx = 0
 
+        num_images = len(images)
+        
         # run the batch of images through craft and do the post processing in parallel
         
-        for i in tqdm(range(0, num_images, batch_size)):
+        for i in tqdm(range(start_idx, num_images, batch_size)):
             # batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
             end_idx = min(i + batch_size, num_images)
             batch_images = images[i:end_idx][:]
