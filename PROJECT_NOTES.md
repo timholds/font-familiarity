@@ -484,7 +484,9 @@ We can probably get some perf gains from parallelizing some parts of the model a
 - CPU: adjust the coordinates of the boxes to the original image size 
   `boxes = craft_utils.adjustResultCoordinates(boxes, ratio_w, ratio_h)`
  
-  
+
+Related; i wonder if i could skip the image magnification and resizing they do
+- remove it and see what the patches look like on your training data and figure out why this is even there in the first place. i put that on chesterton and his fence frfr
   
 
 # Note to user: 
@@ -492,4 +494,4 @@ The closer to 512x512 images, square images with black text and white background
 
 
 # Similar Tools
-Identifont.com
+Identifont.com  

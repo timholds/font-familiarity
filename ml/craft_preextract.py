@@ -13,6 +13,7 @@ import argparse
 import multiprocessing
 import torch
 from torch.autograd import Variable
+# from CRAFT import imgproc
 
 HF_MODELS = {
     'craft': dict(
@@ -39,7 +40,7 @@ def convert_polygons_to_boxes(polygons):
         print(f"Error converting polygons to boxes: {e}")
     return boxes
 
-# TODO either get preprocess running in parallel or implement this in the model
+
 def preprocess_image(image: np.ndarray, canvas_size: int, mag_ratio: bool):
     # resize
     img_resized, target_ratio, size_heatmap = resize_aspect_ratio(
@@ -51,6 +52,24 @@ def preprocess_image(image: np.ndarray, canvas_size: int, mag_ratio: bool):
     x = normalizeMeanVariance(img_resized)
     x = torch.from_numpy(x).permute(2, 0, 1)    # [h, w, c] to [c, h, w]
     x = Variable(x.unsqueeze(0))                # [c, h, w] to [b, c, h, w]
+    return x, ratio_w, ratio_h
+
+# TODO either get preprocess running in parallel or implement this in the model
+def preprocess_image_np(image: np.ndarray, canvas_size: int, mag_ratio: bool):
+    # resize
+    img_resized, target_ratio, size_heatmap = resize_aspect_ratio(
+        image, canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
+    )
+    ratio_h = ratio_w = 1 / target_ratio
+
+    # preprocessing
+    x = normalizeMeanVariance(img_resized)
+    # permute with numpy to chw
+    x = np.transpose(x, (2, 0, 1))               # [h, w, c] to [c, h, w]
+
+    # x = torch.from_numpy(x).permute(2, 0, 1)    # [h, w, c] to [c, h, w]
+    # going to stack them in the batch in other function 
+    # x = Variable(x.unsqueeze(0))                # [c, h, w] to [b, c, h, w]
     return x, ratio_w, ratio_h
 
 
@@ -112,21 +131,34 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
                 all_boxes = []
         
         num_images = len(images)
-        breakpoint()
-        # TODO convert images to craft format (including preprocessing)
-        # maybe multiprocess calling preprocess_image()?
-        # need the thing going into the model to be BCHW tensor normalized
-
-        with torch.no_grad():
-            y, features = craft_net.forward(images)
-
         # run the batch of images through craft and do the post processing in parallel
-
         
-        # for i in tqdm(range(0, num_images, batch_size)):
-        #     batch_indices = range(i, min(i + batch_size, num_images))
-        #     batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
+        for i in tqdm(range(0, num_images, batch_size)):
+            batch_indices = range(i, min(i + batch_size, num_images))
+            # batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
+            batch_images = images[i:i+batch_size][:]
+
+            # TODO convert images to craft format (including preprocessing)
+            # maybe multiprocess calling preprocess_image()?
+            # need the thing going into the model to be BCHW tensor normalized
             
+            # Preprocess images
+            # TODO parallelize this later and just stack tensors for now()
+            breakpoint()
+            preprocssed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
+            # need to just get the image from first item in image, ratio-h, ratio_w
+            batch_img_tensors_np = np.stack([results[0] for results in preprocssed_results])
+            batch_img_tensors = torch.from_numpy(batch_img_tensors_np).float()
+
+            if device == "cuda":
+                batch_img_tensors = batch_img_tensors.cuda()
+
+            with torch.no_grad():
+                breakpoint()
+                y, features = craft_net.forward(batch_img_tensors)
+
+
+
         #     # Process batch with CRAFT - sequential approach
         #     batch_boxes = []
         #     breakpoint()
@@ -187,7 +219,8 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the dataset directory")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for processing images")
     parser.add_argument("--no_resume", action="store_true", help="Don't resume from partial files")
-
+    parser.add_argument("--canvas_size", type=int, default=1280, help="Canvas size for CRAFT model")
+    parser.add_argument("--mag_ratio", type=float, default=1.5, help="Magnification ratio for CRAFT model")
     args = parser.parse_args()
 
     # torch.backends.cudnn.benchmark = True
