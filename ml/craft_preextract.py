@@ -151,50 +151,10 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
             # if device == "cuda":
             #     batch_img_tensors = batch_img_tensors.cuda()
 
-            breakpoint()
+            
             batch_polys = craft_model.get_batch_polygons(batch_img_tensors, ratios_w[0], ratios_h[0])
-            # TODO figure out what post processing i need to do 
-
-            # with torch.no_grad():
-            #     # BCHW normalized tensor in, BHW2 and BBHW out
-            #     y, features = craft_net.forward(batch_img_tensors)
-
             # breakpoint()
-            # score_text = y[:, :, :, 0].cpu().data.numpy()
-            # score_link = y[:, :, :, 1].cpu().data.numpy()
-
-            # # refine link
-            # if refiner_net:
-            #     with torch.no_grad():
-            #         y_refiner = refiner_net(y, features)
-            #     score_link = y_refiner[:,:,:,0].cpu().data.numpy()
-
-            # # TODO parallelize
-            # batch_boxes = []
-            # for j in range(len(batch_img_tensors)):
-            #     # Extract scores for this image
-            #     score_text = score_text[j]
-            #     score_link = score_link[j]
-
-            #     boxes, polys = getDetBoxes(
-            #         score_text, score_link, 
-            #         text_threshold, link_threshold, 
-            #         low_text, True
-            #     )
-            #     # breakpoint()
-            #     boxes = adjustResultCoordinates(boxes, ratios_w[0], ratios_h[0])
-            #     for k in range(len(polys)):
-            #         if polys[k] is None: 
-            #             polys[k] = boxes[k]
-            #         else:
-            #             polys[k] = adjustResultCoordinates(polys[k], ratios_w, ratios_h)
-
-            #     res = []
-            #     for poly in polys:
-            #         res.append(poly.astype(np.int32).tolist())
-            #     batch_boxes.append(res)
-            # all_boxes.extend(batch_boxes)
-
+            # Process each image in the batch
 
             # Save incrementally to avoid losing progress
             if i % (batch_size * 10) == 0:
