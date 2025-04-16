@@ -94,8 +94,8 @@ def batch_preprocess_image_np(batch_images, canvas_size, mag_ratio):
     batch_resized = np.stack(resized_images, axis=0)
     
     # Vectorized normalization (much faster than processing one by one)
-    batch_mean = np.array([0.485, 0.456, 0.406]).reshape(1, 1, 1, 3)
-    batch_std = np.array([0.229, 0.224, 0.225]).reshape(1, 1, 1, 3)
+    batch_mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 1, 3)
+    batch_std = np.array([0.229, 0.224, 0.225] , dtype=np.float32).reshape(1, 1, 1, 3)
     
     batch_normalized = (batch_resized / 255.0 - batch_mean) / batch_std
     
@@ -205,30 +205,33 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             end_idx = min(i + batch_size, num_images)
             batch_images = images[i:end_idx][:]
 
-            # batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
-            #     batch_images, args.canvas_size, args.mag_ratio
-            # )
-            # batch_img_tensors = torch.from_numpy(batch_tensors)
+            batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
+                batch_images, args.canvas_size, args.mag_ratio
+            )
+            batch_img_tensors = torch.from_numpy(batch_tensors)
             
             # Preprocess images
             # TODO parallelize this later and just stack tensors for now()
             # need to just get the image from first item in image, ratio-h, ratio_w
             # list of tups length batch size (image array, ratio_w, ratio_h)
             # Unpack preprocessed_results into separate arrays
-            preprocessed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
-            image_arrays = [result[0] for result in preprocessed_results]  # Extract the image arrays
-            ratios_w = [result[1] for result in preprocessed_results]      # Extract the ratio_w values
-            ratios_h = [result[2] for result in preprocessed_results]      # Extract the ratio_h values
-            batch_img_tensors_np = np.stack([image for image in image_arrays], axis=0)  # Stack the images into a batch tensor
-            batch_img_tensors = torch.from_numpy(batch_img_tensors_np) # BCHWC input
+            # preprocessed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
+            # image_arrays = [result[0] for result in preprocessed_results]  # Extract the image arrays
+            # ratios_w = [result[1] for result in preprocessed_results]      # Extract the ratio_w values
+            # ratios_h = [result[2] for result in preprocessed_results]      # Extract the ratio_h values
+            # batch_img_tensors_np = np.stack([image for image in image_arrays], axis=0)  # Stack the images into a batch tensor
+            # batch_img_tensors = torch.from_numpy(batch_img_tensors_np) # BCHWC input
 
-    
-            batch_polys = craft_model.get_batch_polygons(batch_img_tensors, ratios_w[0], ratios_h[0])
-            
+            # breakpoint()
+            batch_polys = craft_model.get_batch_polygons(batch_img_tensors, 
+                torch.tensor(ratios_w, device=device),  # Send ratios to GPU
+                torch.tensor(ratios_h, device=device)
+            )
             
             # Convert to torch tensor
+            # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
             batch_boxes = [convert_polygons_to_boxes(polygons) for polygons in batch_polys]
-            #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)            
+            # batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             all_boxes.extend(batch_boxes)
             # breakpoint()
             # Process each image in the batch
