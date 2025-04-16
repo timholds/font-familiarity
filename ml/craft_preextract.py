@@ -13,7 +13,13 @@ import argparse
 import multiprocessing
 import torch
 from torch.autograd import Variable
+from CRAFT.craft_utils import adjustResultCoordinates, getDetBoxes
+
 # from CRAFT import imgproc
+link_threshold = 1.9
+text_threshold = .5
+low_text = .5
+
 
 HF_MODELS = {
     'craft': dict(
@@ -62,14 +68,8 @@ def preprocess_image_np(image: np.ndarray, canvas_size: int, mag_ratio: bool):
     )
     ratio_h = ratio_w = 1 / target_ratio
 
-    # preprocessing
     x = normalizeMeanVariance(img_resized)
-    # permute with numpy to chw
     x = np.transpose(x, (2, 0, 1))               # [h, w, c] to [c, h, w]
-
-    # x = torch.from_numpy(x).permute(2, 0, 1)    # [h, w, c] to [c, h, w]
-    # going to stack them in the batch in other function 
-    # x = Variable(x.unsqueeze(0))                # [c, h, w] to [b, c, h, w]
     return x, ratio_w, ratio_h
 
 
@@ -78,21 +78,21 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
     for mode in ['train', 'test']:
         print(f"Processing {mode} set...")
 
-        paths = {"craft": os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_mlt_25k.pth")}
-        paths["refiner"] = os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_refiner_CTW1500.pth")
-        craft_net = init_CRAFT_model(paths['craft'], "cuda", fp16=True)
-        refiner_net = init_refiner_model(paths['refiner'], "cuda")
+        # paths = {"craft": os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_mlt_25k.pth")}
+        # paths["refiner"] = os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_refiner_CTW1500.pth")
+        # craft_net = init_CRAFT_model(paths['craft'], "cuda", fp16=True)
+        # refiner_net = init_refiner_model(paths['refiner'], "cuda")
         
         # Initialize CRAFT model - only once, outside the loop
-        # craft_model = CRAFTModel(
-        #         cache_dir='weights/',
-        #         device=device,
-        #         use_refiner=True,
-        #         fp16=(device == "cuda"),  # Use fp16 only on CUDA
-        #         link_threshold=1.9,
-        #         text_threshold=.5,
-        #         low_text=.5,
-        #     )
+        craft_model = CRAFTModel(
+                cache_dir='weights/',
+                device=device,
+                use_refiner=True,
+                fp16=(device == "cuda"),  # Use fp16 only on CUDA
+                link_threshold=1.9,
+                text_threshold=.5,
+                low_text=.5,
+            )
         
         # Load dataset
         h5_file = os.path.join(data_dir, f'{mode}.h5')
@@ -114,10 +114,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
         output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
         partial_file = output_file + ".partial"
         
-        # Check for partial file and resume if requested
-        start_idx = 0
-        all_boxes = []
-        
+        # Check for partial file and resume if requested        
         if resume and os.path.exists(partial_file):
             try:
                 partial_data = np.load(partial_file, allow_pickle=True)
@@ -131,32 +128,83 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True):
                 all_boxes = []
         
         num_images = len(images)
+        all_boxes = []
+
         # run the batch of images through craft and do the post processing in parallel
         
         for i in tqdm(range(0, num_images, batch_size)):
-            batch_indices = range(i, min(i + batch_size, num_images))
             # batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
             batch_images = images[i:i+batch_size][:]
-
-            # TODO convert images to craft format (including preprocessing)
-            # maybe multiprocess calling preprocess_image()?
-            # need the thing going into the model to be BCHW tensor normalized
             
             # Preprocess images
             # TODO parallelize this later and just stack tensors for now()
-            breakpoint()
-            preprocssed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
+            preprocessed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
             # need to just get the image from first item in image, ratio-h, ratio_w
-            batch_img_tensors_np = np.stack([results[0] for results in preprocssed_results])
-            batch_img_tensors = torch.from_numpy(batch_img_tensors_np).float()
+            # list of tups length batch size (image array, ratio_w, ratio_h)
+            # Unpack preprocessed_results into separate arrays
+            image_arrays = [result[0] for result in preprocessed_results]  # Extract the image arrays
+            ratios_w = [result[1] for result in preprocessed_results]      # Extract the ratio_w values
+            ratios_h = [result[2] for result in preprocessed_results]      # Extract the ratio_h values
+            batch_img_tensors_np = np.stack([image for image in image_arrays], axis=0)  # Stack the images into a batch tensor
+            batch_img_tensors = torch.from_numpy(batch_img_tensors_np)
 
-            if device == "cuda":
-                batch_img_tensors = batch_img_tensors.cuda()
+            # if device == "cuda":
+            #     batch_img_tensors = batch_img_tensors.cuda()
 
-            with torch.no_grad():
-                breakpoint()
-                y, features = craft_net.forward(batch_img_tensors)
+            breakpoint()
+            batch_polys = craft_model.get_batch_polygons(batch_img_tensors, ratios_w[0], ratios_h[0])
+            # TODO figure out what post processing i need to do 
 
+            # with torch.no_grad():
+            #     # BCHW normalized tensor in, BHW2 and BBHW out
+            #     y, features = craft_net.forward(batch_img_tensors)
+
+            # breakpoint()
+            # score_text = y[:, :, :, 0].cpu().data.numpy()
+            # score_link = y[:, :, :, 1].cpu().data.numpy()
+
+            # # refine link
+            # if refiner_net:
+            #     with torch.no_grad():
+            #         y_refiner = refiner_net(y, features)
+            #     score_link = y_refiner[:,:,:,0].cpu().data.numpy()
+
+            # # TODO parallelize
+            # batch_boxes = []
+            # for j in range(len(batch_img_tensors)):
+            #     # Extract scores for this image
+            #     score_text = score_text[j]
+            #     score_link = score_link[j]
+
+            #     boxes, polys = getDetBoxes(
+            #         score_text, score_link, 
+            #         text_threshold, link_threshold, 
+            #         low_text, True
+            #     )
+            #     # breakpoint()
+            #     boxes = adjustResultCoordinates(boxes, ratios_w[0], ratios_h[0])
+            #     for k in range(len(polys)):
+            #         if polys[k] is None: 
+            #             polys[k] = boxes[k]
+            #         else:
+            #             polys[k] = adjustResultCoordinates(polys[k], ratios_w, ratios_h)
+
+            #     res = []
+            #     for poly in polys:
+            #         res.append(poly.astype(np.int32).tolist())
+            #     batch_boxes.append(res)
+            # all_boxes.extend(batch_boxes)
+
+
+            # Save incrementally to avoid losing progress
+            if i % (batch_size * 10) == 0:
+                np.savez_compressed(
+                    output_file + ".partial",
+                    boxes=np.array(all_boxes, dtype=object)
+                )
+                
+                print(f"Saved partial progress ({len(all_boxes)} image boxes) to {output_file}.partial")
+            
 
 
         #     # Process batch with CRAFT - sequential approach
