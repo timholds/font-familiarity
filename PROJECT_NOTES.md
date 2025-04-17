@@ -450,7 +450,48 @@ Path dependency altert: choosing to preextract the craft patches means any data 
 
 That said, we aren't doing the ideal thing, but rather finding a nice tradeoff in between data augmentation manifold coverage and training speed. since training with craft patch extraction in the loop is god awful slow and i cant be bothered to make all the post processing run on the gpu quite yet, we will just do a bunch of data augmentations on the base dataset and save this as a big dtataset. It makes sense because it means trading a few dozen GB of diskspace for a 50x speedup in training time. No brainer.  
 
+# Preextracting craft patches efficiently
+It takes almost 12 hours to process a dataset with 700k images we using craft naively. 
+
+Note: this is how they test their network in the official implementation https://github.com/clovaai/CRAFT-pytorch/blob/master/test.py#L69-L118
+- 
+
+We can probably get some perf gains from parallelizing some parts of the model and calling craft on a batch of images instead of just on a single images. Here are the different steps
+- CPU: preprocess_image, which uses opencv to resize image in numpy format, normalize, and permute the channels and returns a pytorch tensor
+  ```
+  img_resized, target_ratio, size_heatmap = imgproc.resize_aspect_ratio(image, args.canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=args.mag_ratio)
+  ratio_h = ratio_w = 1 / target_ratio
+
+  # preprocessing
+  x = imgproc.normalizeMeanVariance(img_resized)
+  x = torch.from_numpy(x).permute(2, 0, 1)    # [h, w, c] to [c, h, w]
+  x = Variable(x.unsqueeze(0))                # [c, h, w] to [b, c, h, w]
+  if cuda:
+      x = x.cuda()
+  ```  
+  - IDEA: would be a big win if we could absorb this into the model and do the resizing, normalization, and permutation inside pytorch instead of opencv. we would need to permute the channels before inputting to the model or have the first step of the model be toTensor() and then do the permutation before the resize and normalization  
+
+- GPU: forward pass `with torch.no_grad(): y, feature = net(x)`  
+- CPU: get score link and map  
+  `score_text = y[0,:,:,0].cpu().data.numpy()` 
+  `score_link = y[0,:,:,1].cpu().data.numpy()`  
+- GPU: refiner network 
+  `with torch.no_grad(): y_refiner = refiner_net(x, y)`
+- CPU: update score link 
+  `score_link = y_refiner[0,:,:,0].cpu().data.numpy()`
+- CPU: get boxes from scores   
+  `boxes, polys = craft_utils.getDetBoxes(score_text, score_link, text_threshold, link_threshold, low_text, poly)`  
+- CPU: adjust the coordinates of the boxes to the original image size 
+  `boxes = craft_utils.adjustResultCoordinates(boxes, ratio_w, ratio_h)`
+ 
+
+Related; i wonder if i could skip the image magnification and resizing they do
+- remove it and see what the patches look like on your training data and figure out why this is even there in the first place. i put that on chesterton and his fence frfr
   
 
 # Note to user: 
 The closer to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
+
+
+# Similar Tools
+Identifont.com  

@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 import io
 import torchvision.transforms as transforms
-from ml.model import SimpleCNN
+from ml.font_model import SimpleCNN
 from ml.char_model import CRAFTFontClassifier
 import torch.nn.functional as F
 import traceback

@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from ml.model import SimpleCNN
+from ml.font_model import SimpleCNN
 from ml.dataset import get_dataloaders, get_char_dataloaders
 import argparse
 from tqdm import tqdm
