@@ -74,6 +74,15 @@ def preprocess_image_np(image: np.ndarray, canvas_size: int, mag_ratio: bool):
     x = np.transpose(x, (2, 0, 1))               # [h, w, c] to [c, h, w]
     return x, ratio_w, ratio_h
 
+def resize_single_image(image, canvas_size, mag_ratio):
+    """Resize a single image to the specified canvas size"""
+    img_resized, target_ratio, _ = resize_aspect_ratio(
+        image, canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
+    )
+    ratio_h = ratio_w = 1 / target_ratio
+    return img_resized, ratio_w, ratio_h
+
+
 def batch_preprocess_image_np(batch_images, canvas_size, mag_ratio):
     """Process a batch of images with vectorized operations where possible"""
     batch_size = len(batch_images)
@@ -82,18 +91,24 @@ def batch_preprocess_image_np(batch_images, canvas_size, mag_ratio):
     ratios_h = []
     
     # TODO use multiprocessing here 
-    # Process each image for resizing (can't be easily vectorized due to aspect ratio preservation)
-    for i in range(batch_size):
-        img_resized, target_ratio, _ = resize_aspect_ratio(
-            batch_images[i], canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
-        )
-        ratio_h = ratio_w = 1 / target_ratio
+    # for i in range(batch_size):
+    #     img_resized, target_ratio, _ = resize_aspect_ratio(
+    #         batch_images[i], canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
+    #     )
+    #     ratio_h = ratio_w = 1 / target_ratio
         
-        resized_images.append(img_resized)
-        ratios_w.append(ratio_w)
-        ratios_h.append(ratio_h)
-    
-    # Stack resized images for batch normalization
+    #     resized_images.append(img_resized)
+    #     ratios_w.append(ratio_w)
+    #     ratios_h.append(ratio_h)
+
+    with multiprocessing.Pool(processes=os.cpu_count()) as pool:
+        results = pool.starmap(
+            resize_single_image,
+            [(batch_images[i], canvas_size, mag_ratio) for i in range(batch_size)]
+        )
+
+    # resized_images, ratios_w, ratios_h = zip(*results)
+    # Convert resized images into a single NumPy array
     batch_resized = np.stack(resized_images, axis=0)
     
     # Vectorized normalization (much faster than processing one by one)
@@ -158,7 +173,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         craft_model = CRAFTModel(
                 cache_dir='weights/',
                 device=device,
-                use_refiner=True,
+                use_refiner=False,
                 fp16=(device == "cuda"),  # Use fp16 only on CUDA
                 link_threshold=1.9,
                 text_threshold=.5,
@@ -212,18 +227,18 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
                 batch_images, args.canvas_size, args.mag_ratio
             )
-            torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
+            #torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
 
             batch_img_tensors = torch.from_numpy(batch_tensors)
-            
+            ratios_w_tensor = torch.tensor(ratios_w, device=device)
+            ratios_h_tensor = torch.tensor(ratios_h, device=device)
             # breakpoint()
-            torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
+            #torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
 
             batch_polys = craft_model.get_batch_polygons(batch_img_tensors, 
-                torch.tensor(ratios_w, device=device),  # Send ratios to GPU
-                torch.tensor(ratios_h, device=device)
+                ratios_w_tensor, ratios_h_tensor
             )
-            torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
+            # torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
 
             
             # Convert to torch tensor
