@@ -212,13 +212,19 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
                 batch_images, args.canvas_size, args.mag_ratio
             )
+            torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
+
             batch_img_tensors = torch.from_numpy(batch_tensors)
             
             # breakpoint()
+            torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
+
             batch_polys = craft_model.get_batch_polygons(batch_img_tensors, 
                 torch.tensor(ratios_w, device=device),  # Send ratios to GPU
                 torch.tensor(ratios_h, device=device)
             )
+            torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
+
             
             # Convert to torch tensor
             # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
@@ -238,29 +244,6 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                 
                 print(f"Saved partial progress ({len(all_boxes)} image boxes) to {output_file}.partial")
             
-
-
-        #     # Process batch with CRAFT - sequential approach
-        #     batch_boxes = []
-        #     breakpoint()
-        #     for img in batch_images:
-        #         try:
-        #             try:
-        #                 polygons = craft_model.get_polygons(img)
-        #             except RuntimeError as e:
-        #                 if "CUDA" in str(e) and device == "cuda":
-        #                     raise RuntimeError ("CUDA error detected, falling back to CPU for this image")
-        #                     polygons = cpu_model.get_polygons(img)
-        #                 else:
-        #                     # Re-raise if it's not a CUDA error
-        #                     raise
-                    
-        #             batch_boxes = convert_polygons_to_boxes(polygons)
-        #         except Exception as e:
-        #             print(f"Error processing image: {e}")
-        #             batch_boxes.append([])     
-        #     all_boxes.extend(batch_boxes)
-    
         # Save final boxes to file
         np.savez_compressed(
             output_file,
