@@ -81,6 +81,7 @@ def batch_preprocess_image_np(batch_images, canvas_size, mag_ratio):
     ratios_w = []
     ratios_h = []
     
+    # TODO use multiprocessing here 
     # Process each image for resizing (can't be easily vectorized due to aspect ratio preservation)
     for i in range(batch_size):
         img_resized, target_ratio, _ = resize_aspect_ratio(
@@ -213,18 +214,6 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             )
             batch_img_tensors = torch.from_numpy(batch_tensors)
             
-            # Preprocess images
-            # TODO parallelize this later and just stack tensors for now()
-            # need to just get the image from first item in image, ratio-h, ratio_w
-            # list of tups length batch size (image array, ratio_w, ratio_h)
-            # Unpack preprocessed_results into separate arrays
-            # preprocessed_results = [preprocess_image_np(image, args.canvas_size, args.mag_ratio) for image in batch_images]
-            # image_arrays = [result[0] for result in preprocessed_results]  # Extract the image arrays
-            # ratios_w = [result[1] for result in preprocessed_results]      # Extract the ratio_w values
-            # ratios_h = [result[2] for result in preprocessed_results]      # Extract the ratio_h values
-            # batch_img_tensors_np = np.stack([image for image in image_arrays], axis=0)  # Stack the images into a batch tensor
-            # batch_img_tensors = torch.from_numpy(batch_img_tensors_np) # BCHWC input
-
             # breakpoint()
             batch_polys = craft_model.get_batch_polygons(batch_img_tensors, 
                 torch.tensor(ratios_w, device=device),  # Send ratios to GPU
@@ -234,7 +223,8 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             # Convert to torch tensor
             # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
             batch_boxes = [convert_polygons_to_boxes(polygons) for polygons in batch_polys]
-            # batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
+            # TODO parallelize this
+            #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             all_boxes.extend(batch_boxes)
             # breakpoint()
             # Process each image in the batch
@@ -259,17 +249,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         #                 polygons = craft_model.get_polygons(img)
         #             except RuntimeError as e:
         #                 if "CUDA" in str(e) and device == "cuda":
-        #                     print("CUDA error detected, falling back to CPU for this image")
-        #                     # Create a temporary CPU model for fallback
-        #                     cpu_model = CRAFTModel(
-        #                         cache_dir='weights/',
-        #                         device="cpu",
-        #                         use_refiner=True,
-        #                         fp16=False,  # Must be False for CPU
-        #                         link_threshold=1.9,
-        #                         text_threshold=.5,
-        #                         low_text=.5,
-        #                     )
+        #                     raise RuntimeError ("CUDA error detected, falling back to CPU for this image")
         #                     polygons = cpu_model.get_polygons(img)
         #                 else:
         #                     # Re-raise if it's not a CUDA error
@@ -278,19 +258,9 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         #             batch_boxes = convert_polygons_to_boxes(polygons)
         #         except Exception as e:
         #             print(f"Error processing image: {e}")
-        #             batch_boxes.append([])
-            
+        #             batch_boxes.append([])     
         #     all_boxes.extend(batch_boxes)
-        
-        #     # Save incrementally to avoid losing progress
-        #     if i % (batch_size * 10) == 0:
-        #         np.savez_compressed(
-        #             output_file + ".partial",
-        #             boxes=np.array(all_boxes, dtype=object)
-        #         )
-                
-        #         print(f"Saved partial progress ({len(all_boxes)} image boxes) to {output_file}.partial")
-            
+    
         # Save final boxes to file
         np.savez_compressed(
             output_file,
