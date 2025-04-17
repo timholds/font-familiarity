@@ -17,23 +17,6 @@ from CRAFT.craft_utils import adjustResultCoordinates, getDetBoxes
 import cProfile
 import pstats
 
-# from CRAFT import imgproc
-# link_threshold = 1.9
-# text_threshold = .5
-# low_text = .5
-
-
-HF_MODELS = {
-    'craft': dict(
-        repo_id='boomb0om/CRAFT-text-detector',
-        filename='craft_mlt_25k.pth',
-    ),
-    'refiner': dict(
-        repo_id='boomb0om/CRAFT-text-detector',
-        filename='craft_refiner_CTW1500.pth',
-    )
-}
-
 def convert_polygons_to_boxes(polygons):
     """Convert polygons to bounding boxes"""
     boxes = []
@@ -163,12 +146,6 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
     
     for mode in ['train', 'test']:
         print(f"Processing {mode} set...")
-
-        # paths = {"craft": os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_mlt_25k.pth")}
-        # paths["refiner"] = os.path.join(os.getcwd(), "weights/models--boomb0om--CRAFT-text-detector/snapshots/3b6fb468e75c3cf833875e2b073e7ea3c477975a/craft_refiner_CTW1500.pth")
-        # craft_net = init_CRAFT_model(paths['craft'], "cuda", fp16=True)
-        # refiner_net = init_refiner_model(paths['refiner'], "cuda")
-        
         # Initialize CRAFT model - only once, outside the loop
         craft_model = CRAFTModel(
                 cache_dir='weights/',
@@ -216,30 +193,21 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             start_idx = 0
 
         num_images = len(images)
-        
-        # run the batch of images through craft and do the post processing in parallel
-        
         for i in tqdm(range(start_idx, num_images, batch_size)):
-            # batch_images = [Image.fromarray(images[j].astype(np.uint8)) for j in batch_indices]
             end_idx = min(i + batch_size, num_images)
             batch_images = images[i:end_idx][:]
 
             batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
                 batch_images, args.canvas_size, args.mag_ratio
             )
-            #torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
 
             batch_img_tensors = torch.from_numpy(batch_tensors)
             ratios_w_tensor = torch.tensor(ratios_w, device=device)
             ratios_h_tensor = torch.tensor(ratios_h, device=device)
-            # breakpoint()
-            #torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
-
+        
             batch_polys = craft_model.get_batch_polygons(batch_img_tensors, 
                 ratios_w_tensor, ratios_h_tensor
             )
-            # torch.cuda.synchronize()  # Ensure all previous GPU tasks are complete
-
             
             # Convert to torch tensor
             # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
@@ -247,9 +215,6 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             # TODO parallelize this
             #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             all_boxes.extend(batch_boxes)
-            # breakpoint()
-            # Process each image in the batch
-
             # Save incrementally to avoid losing progress
             if i % (batch_size * 10) == 0:
                 np.savez_compressed(
@@ -282,19 +247,11 @@ if __name__ == "__main__":
     parser.add_argument("--mag_ratio", type=float, default=1.5, help="Magnification ratio for CRAFT model")
     args = parser.parse_args()
 
-    # torch.backends.cudnn.benchmark = True
-    # if torch.cuda.is_available():
-    #     # Limit GPU memory to 70% of available
-    #     total_mem = torch.cuda.get_device_properties(0).total_memory
-    #     torch.cuda.set_per_process_memory_fraction(0.7)
-    #     print(f"Limited CUDA memory to 70% of {total_mem/(1024**3):.2f} GB")
+    # profiler = cProfile.Profile()
+    # profiler.enable()
 
-    profiler = cProfile.Profile()
-    profiler.enable()
-
-    # multiprocessing.set_start_method('spawn', force=True)
     preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size, resume=not args.no_resume)
-    profiler.disable()
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative').print_stats(20)  # Show top 20 functions by cumulative time
+    # profiler.disable()
+    # stats = pstats.Stats(profiler)
+    # stats.sort_stats('cumulative').print_stats(40)  # Show top 20 functions by cumulative time
     
