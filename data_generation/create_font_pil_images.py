@@ -44,11 +44,11 @@ class TextAugmentation:
     """Generates continuous text augmentation parameters for dataset diversity."""
     
     def __init__(self, 
-                 font_size_range=(16, 60),
+                 font_size_range=(16, 80),
                  weight_primary_modes=[400, 700],
-                 weight_primary_prob=0.7,
+                 weight_primary_prob=0.3,
                  letter_spacing_range=(-0.1, 0.4),
-                 line_height_range=(1.1, 1.9)):
+                 line_height_range=(.7, 1.7)):
         
         self.font_size_range = font_size_range
         self.weight_primary_modes = weight_primary_modes
@@ -457,7 +457,7 @@ class FontDatasetGenerator:
             logger.error(f"Text file not found: {self.text_file}")
             raise
     
-    def _get_text_sample(self, length=50):
+    def _get_text_sample(self, length=100):
         """Get a sample of text with the specified length."""
         if len(self.text) <= length:
             return self.text
