@@ -91,23 +91,23 @@ def batch_preprocess_image_np(batch_images, canvas_size, mag_ratio):
     ratios_h = []
     
     # TODO use multiprocessing here 
-    # for i in range(batch_size):
-    #     img_resized, target_ratio, _ = resize_aspect_ratio(
-    #         batch_images[i], canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
-    #     )
-    #     ratio_h = ratio_w = 1 / target_ratio
-        
-    #     resized_images.append(img_resized)
-    #     ratios_w.append(ratio_w)
-    #     ratios_h.append(ratio_h)
-
-    with multiprocessing.Pool(processes=os.cpu_count()) as pool:
-        results = pool.starmap(
-            resize_single_image,
-            [(batch_images[i], canvas_size, mag_ratio) for i in range(batch_size)]
+    for i in range(batch_size):
+        img_resized, target_ratio, _ = resize_aspect_ratio(
+            batch_images[i], canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=mag_ratio
         )
+        ratio_h = ratio_w = 1 / target_ratio
+        
+        resized_images.append(img_resized)
+        ratios_w.append(ratio_w)
+        ratios_h.append(ratio_h)
 
+    # with multiprocessing.Pool(processes=os.cpu_count()) as pool:
+    #     results = pool.starmap(
+    #         resize_single_image,
+    #         [(batch_images[i], canvas_size, mag_ratio) for i in range(batch_size)]
+    #     )
     # resized_images, ratios_w, ratios_h = zip(*results)
+    
     # Convert resized images into a single NumPy array
     batch_resized = np.stack(resized_images, axis=0)
     
