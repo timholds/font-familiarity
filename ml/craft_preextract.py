@@ -175,21 +175,23 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         
         # Create output file
         output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
-        partial_file = output_file + ".partial.npz"
-        
-        all_boxes = []
+
         # Check for partial file and resume if requested        
-        if resume and os.path.exists(partial_file):
-            try:
-                partial_data = np.load(partial_file, allow_pickle=True)
-                all_boxes = list(partial_data['boxes'])
-                start_idx = len(all_boxes)
-                print(f"Resuming from checkpoint: {start_idx} images already processed")
-            except Exception as e:
-                print(f"Error loading partial file: {e}")
-                print("Starting from the beginning")
+        if resume:
+            existing_batches = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
+            if existing_batches:
+                # Extract batch numbers and find the maximum
+                batch_numbers = [int(f.split('_')[1].split('.')[0]) for f in existing_batches]
+                max_batch = max(batch_numbers)
+                start_idx = (max_batch + 1) * batch_size
+                print(f"Resuming from batch {max_batch + 1}: {start_idx} images already processed")
+            else:
                 start_idx = 0
         else:
+            # Remove any existing batch files to start fresh
+            existing_batches = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
+            for batch_file in existing_batches:
+                os.remove(os.path.join(data_dir, batch_file))
             start_idx = 0
 
         num_images = len(images)
@@ -212,29 +214,68 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             # Convert to torch tensor
             # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
             batch_boxes = [convert_polygons_to_boxes(polygons) for polygons in batch_polys]
-            # TODO parallelize this
             #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
-            all_boxes.extend(batch_boxes)
-            # Save incrementally to avoid losing progress
-            if i % (batch_size * 10) == 0:
-                np.savez_compressed(
-                    output_file + ".partial",
-                    boxes=np.array(all_boxes, dtype=object)
-                )
-                
-                print(f"Saved partial progress ({len(all_boxes)} image boxes) to {output_file}.partial")
             
-        # Save final boxes to file
-        np.savez_compressed(
-            output_file,
-            boxes=np.array(all_boxes, dtype=object)
-        )
+            batch_file = os.path.join(data_dir, f'batch_{i // batch_size}.npz')
+            np.savez_compressed(batch_file, boxes=np.array(batch_boxes, dtype=object))
+            print(f"Saved batch {i // batch_size} to {batch_file}")
         
-        print(f"Saved {len(all_boxes)} box sets to {output_file}")
+        # print(f"Saved {len(all_boxes)} box sets to {output_file}")
+        combine_batch_files(data_dir, mode, cleanup=True)  # Set cleanup=True if you want to delete batch files
+
         
         # Close H5 file if opened
         if using_h5 and h5_file_handle is not None:
             h5_file_handle.close()
+
+def load_boxes_from_batches(list_file):
+    """
+    Generator function to load boxes from batch files one by one,
+    without loading all into memory at once.
+    
+    Parameters:
+    - list_file: Path to file containing list of batch files
+    
+    Yields:
+    - boxes from each batch file
+    """
+    with open(list_file, 'r') as f:
+        batch_files = [line.strip() for line in f]
+    
+    for batch_file in batch_files:
+        if os.path.exists(batch_file):
+            batch_data = np.load(batch_file, allow_pickle=True)
+            yield batch_data['boxes']
+
+def combine_batch_files(data_dir, mode, cleanup=True):
+    """
+    Combine individual batch files into a single output file without loading all into memory.
+    
+    Parameters:
+    - data_dir: Directory containing the batch files
+    - mode: 'train' or 'test'
+    - cleanup: Whether to delete batch files after combining
+    """
+    output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
+    print(f"Combining batch files into {output_file}...")
+    
+    # Get list of batch files
+    batch_files = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
+    batch_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))  # Sort by batch number
+    
+    # Create a list file that contains paths to all batch files
+    list_file = os.path.join(data_dir, f'{mode}_batch_list.txt')
+    with open(list_file, 'w') as f:
+        for batch_file in batch_files:
+            f.write(os.path.join(data_dir, batch_file) + '\n')
+    
+    print(f"Created list of {len(batch_files)} batch files in {list_file}")
+    print(f"To load these boxes, use load_boxes_from_batches('{list_file}')")
+    
+    if cleanup:
+        print("Cleaning up batch files...")
+        for batch_file in batch_files:
+            os.remove(os.path.join(data_dir, batch_file))
 
 if __name__ == "__main__":
 
@@ -253,5 +294,5 @@ if __name__ == "__main__":
     preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size, resume=not args.no_resume)
     # profiler.disable()
     # stats = pstats.Stats(profiler)
-    # stats.sort_stats('cumulative').print_stats(40)  # Show top 20 functions by cumulative time
+    # stats.sort_stats('cumulative').print_stats(40)  # Show top 40 functions by cumulative time
     
