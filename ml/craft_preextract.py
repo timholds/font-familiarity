@@ -16,6 +16,8 @@ from torch.autograd import Variable
 from CRAFT.craft_utils import adjustResultCoordinates, getDetBoxes
 import cProfile
 import pstats
+import h5py
+
 
 def convert_polygons_to_boxes(polygons):
     """Convert polygons to bounding boxes"""
@@ -247,36 +249,48 @@ def load_boxes_from_batches(list_file):
             batch_data = np.load(batch_file, allow_pickle=True)
             yield batch_data['boxes']
 
+# TODO this needs to output an npz file
 def combine_batch_files(data_dir, mode, cleanup=True):
     """
-    Combine individual batch files into a single output file without loading all into memory.
-    
-    Parameters:
-    - data_dir: Directory containing the batch files
-    - mode: 'train' or 'test'
-    - cleanup: Whether to delete batch files after combining
+    Combine individual batch files into a single HDF5 file without loading all into memory.
     """
-    output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
+    output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
     print(f"Combining batch files into {output_file}...")
     
     # Get list of batch files
     batch_files = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
     batch_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))  # Sort by batch number
     
-    # Create a list file that contains paths to all batch files
-    list_file = os.path.join(data_dir, f'{mode}_batch_list.txt')
-    with open(list_file, 'w') as f:
-        for batch_file in batch_files:
-            f.write(os.path.join(data_dir, batch_file) + '\n')
+    # Create HDF5 file
+    with h5py.File(output_file, 'w') as h5f:
+        # Create a group for boxes
+        boxes_group = h5f.create_group('boxes')
+        
+        # Process each batch file
+        current_idx = 0
+        for batch_file in tqdm(batch_files, desc="Combining batches"):
+            batch_path = os.path.join(data_dir, batch_file)
+            with np.load(batch_path, allow_pickle=True) as data:
+                batch_boxes = data['boxes']
+                for i, img_boxes in enumerate(batch_boxes):
+                    # Convert boxes to a fixed-size numpy array
+                    # Each box is [x1, y1, x2, y2]
+                    num_boxes = len(img_boxes)
+                    if num_boxes > 0:
+                        # Store as a 2D array with shape (num_boxes, 4)
+                        boxes_array = np.array(img_boxes, dtype=np.int32)
+                        boxes_group.create_dataset(f'{current_idx}', data=boxes_array)
+                    else:
+                        # Create an empty dataset
+                        boxes_group.create_dataset(f'{current_idx}', data=np.zeros((0, 4), dtype=np.int32))
+                    current_idx += 1
     
-    print(f"Created list of {len(batch_files)} batch files in {list_file}")
-    print(f"To load these boxes, use load_boxes_from_batches('{list_file}')")
+    print(f"Combined boxes for {current_idx} images into {output_file}")
     
     if cleanup:
         print("Cleaning up batch files...")
         for batch_file in batch_files:
             os.remove(os.path.join(data_dir, batch_file))
-
 if __name__ == "__main__":
 
     

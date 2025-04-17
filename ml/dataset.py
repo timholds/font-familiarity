@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from typing import Tuple
 import cv2
 import tqdm
+import h5py
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -52,11 +53,13 @@ class FontDataset(Dataset):
         self.num_classes = len(self.label_mapping)
         print(f"Number of classes: {self.num_classes}")
         print(f"Label mapping loaded from {label_map_path}")
-      
+
     def __del__(self):
         # Close H5 file if it's open
         if hasattr(self, 'h5_file') and self.h5_file is not None:
             self.h5_file.close()
+        if hasattr(self, 'craft_h5_file') and self.craft_h5_file is not None:
+            self.craft_h5_file.close()
 
     def _validate_targets(self):
         """Validate that all targets are within the correct range."""
@@ -338,18 +341,33 @@ class CharacterFontDataset(Dataset):
             print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
         
         self.precomputed_boxes = None
+        self.craft_h5_file = None
+
         if self.use_precomputed_craft:
-            craft_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.npz')
-            if os.path.exists(craft_file):
+            craft_h5_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.h5')
+            craft_npz_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.npz')
+            if os.path.exists(craft_h5_file):
                 try:
-                    loaded_data = np.load(craft_file, allow_pickle=True)
+                    self.craft_h5_file = h5py.File(craft_h5_file, 'r')
+                    self.precomputed_boxes = True  # Flag indicating boxes are available via HDF5
+                    print(f"Opened precomputed CRAFT boxes from HDF5 file: {craft_h5_file}")
+                except Exception as e:
+                    print(f"Error opening precomputed CRAFT HDF5 file: {e}")
+                    self.precomputed_boxes = None
+                    if self.craft_h5_file is not None:
+                        self.craft_h5_file.close()
+                        self.craft_h5_file = None
+            elif os.path.exists(craft_npz_file):
+                # Fallback to legacy NPZ format
+                try:
+                    loaded_data = np.load(craft_npz_file, allow_pickle=True)
                     self.precomputed_boxes = loaded_data['boxes']
                     print(f"Loaded precomputed CRAFT boxes for {len(self.precomputed_boxes)} images")
                 except Exception as e:
-                    print(f"Error loading precomputed CRAFT boxes: {e}")
+                    print(f"Error loading precomputed CRAFT NPZ file: {e}")
                     self.precomputed_boxes = None
             else:
-                print(f"Warning: Precomputed CRAFT file not found at {craft_file}")
+                print(f"Warning: Precomputed CRAFT file not found at {craft_h5_file} or {craft_npz_file}")
     
 
     def _load_char_mapping(self, mapping_file: str) -> dict:
@@ -510,11 +528,17 @@ class CharacterFontDataset(Dataset):
         # Check if we should use precomputed CRAFT boxes
         if self.use_precomputed_craft and self.precomputed_boxes is not None:
             # Extract boxes for this image
-            boxes = self.precomputed_boxes[idx]
+            if isinstance(self.precomputed_boxes, bool) and self.craft_h5_file is not None:
+                # Boxes are in an HDF5 file
+                if str(idx) in self.craft_h5_file['boxes']:
+                    boxes = self.craft_h5_file['boxes'][str(idx)][()]
+                else:
+                    # No boxes for this image
+                    boxes = []
+            else:
+                # Boxes are already loaded in memory (legacy NPZ format)
+                boxes = self.precomputed_boxes[idx]
             
-            # Extract patches using precomputed boxes
-            # todo if no patches found in image, lets save it to the debug folder
-
             patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx) # HWC
     
             # Return patches directly
