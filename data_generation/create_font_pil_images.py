@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from match_fonts import FontMatcher
-
+import cv2
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import requests
 
@@ -21,6 +21,61 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# Add this function outside of any class:
+def get_rotation_matrix(width, height, thetaX=0, thetaY=0, thetaZ=0):
+    """Provide a rotation matrix about the center of a rectangle with
+    a given width and height.
+    
+    Args:
+        width: The width of the rectangle
+        height: The height of the rectangle
+        thetaX: Rotation about the X axis (in radians)
+        thetaY: Rotation about the Y axis (in radians)
+        thetaZ: Rotation about the Z axis (in radians)
+        
+    Returns:
+        A 3x3 transformation matrix
+    """
+    # Translation to center
+    translate1 = np.array([
+        [1, 0, width / 2],
+        [0, 1, height / 2],
+        [0, 0, 1]
+    ])
+    
+    # Rotation around X axis
+    rotX = np.array([
+        [1, 0, 0],
+        [0, np.cos(thetaX), -np.sin(thetaX)],
+        [0, np.sin(thetaX), np.cos(thetaX)]
+    ])
+    
+    # Rotation around Y axis
+    rotY = np.array([
+        [np.cos(thetaY), 0, np.sin(thetaY)],
+        [0, 1, 0],
+        [-np.sin(thetaY), 0, np.cos(thetaY)]
+    ])
+    
+    # Rotation around Z axis
+    rotZ = np.array([
+        [np.cos(thetaZ), -np.sin(thetaZ), 0],
+        [np.sin(thetaZ), np.cos(thetaZ), 0],
+        [0, 0, 1]
+    ])
+    
+    # Translation back
+    translate2 = np.array([
+        [1, 0, -width / 2],
+        [0, 1, -height / 2],
+        [0, 0, 1]
+    ])
+    
+    # Combine transformations
+    M = np.dot(translate1, np.dot(rotX, np.dot(rotY, np.dot(rotZ, translate2))))
+    return M[:2, :]  # Return 2x3 matrix for OpenCV warpAffine
 
 @dataclass
 class FontConfig:
@@ -59,6 +114,38 @@ class TextAugmentation:
         # Valid font weights (100-900 in increments of 100)
         self.valid_weights = list(range(100, 1000, 100))
         
+    def sample_color(self):
+        """Sample a random color in hex format."""
+        r = random.randint(0, 255)
+        g = random.randint(0, 255)
+        b = random.randint(0, 255)
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+    def sample_colors_with_contrast(self, min_contrast=125):
+        """Sample text and background colors with sufficient contrast."""
+        # Generate first color
+        color1 = self.sample_color()
+        r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
+
+        # Keep generating second color until we have sufficient contrast
+        while True:
+            color2 = self.sample_color()
+            r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
+            
+            # Calculate contrast based on luminance difference
+            lum1 = 0.299 * r1 + 0.587 * g1 + 0.114 * b1
+            lum2 = 0.299 * r2 + 0.587 * g2 + 0.114 * b2
+            contrast = abs(lum1 - lum2)
+            
+            if contrast > min_contrast:
+                break
+
+        # Decide if we want dark text on light background or vice versa
+        if random.random() < 0.5:  # 50% chance to swap
+            return color1, color2
+        else:
+            return color2, color1
+
     def sample_font_size(self):
         """Sample a font size from the specified range."""
         return round(random.uniform(*self.font_size_range))
@@ -86,6 +173,12 @@ class TextAugmentation:
         font_weight = self.sample_font_weight()
         letter_spacing = self.sample_letter_spacing()
         line_height = self.sample_line_height()
+        text_color = '#000000'
+        bg_color = '#FFFFFF'
+
+        # 50% chance to use custom colors with good contrast
+        if random.random() < 0.5:
+            text_color, bg_color = self.sample_colors_with_contrast()
         
         sample_id = kwargs.get('sample_id', 0)
     
@@ -102,8 +195,8 @@ class TextAugmentation:
             letter_spacing=letter_spacing,
             line_height=line_height,
             font_style=kwargs.get('font_style', 'normal'),
-            text_color=kwargs.get('text_color', '#000000'),
-            bg_color=kwargs.get('bg_color', '#FFFFFF'),
+            text_color=text_color,
+            bg_color=bg_color,
             samples_per_font=kwargs.get('samples_per_font', 10),
             sample_id=sample_id,
         )
@@ -235,7 +328,24 @@ class TextRenderer:
         # if random.random() < 0.3:  # 30% chance of applying blur
         #     blur_radius = random.uniform(0, 1.5)
         #     image = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        
+        if random.random() < 0.3:
+            width, height = image.size
+            
+            # Sample rotation angles
+            thetaX = random.uniform(-0.05, 0.05)  # Small X rotation
+            thetaY = random.uniform(-0.05, 0.05)  # Small Y rotation
+            thetaZ = random.uniform(-0.1, 0.1)    # Z rotation
+            
+            # Get transformation matrix
+            M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
+            
+            # Convert PIL to OpenCV format for warpAffine
+            img_array = np.array(image)
+            img_array = cv2.warpAffine(img_array, M, (width, height), borderMode=cv2.BORDER_REPLICATE)
+            
+            # Convert back to PIL
+            image = Image.fromarray(img_array)
+
         # Slight rotation
         if random.random() < 0.3:  # 30% chance of rotation
             rotation_angle = random.uniform(-5, 5)
