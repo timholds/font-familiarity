@@ -337,9 +337,9 @@ class TextRenderer:
             width, height = image.size
             
             # Sample rotation angles
-            thetaX = random.uniform(-0.01, 0.01)  # Small X rotation
-            thetaY = random.uniform(-0.01, 0.01)  # Small Y rotation
-            thetaZ = random.uniform(-0.03, 0.03)    # Z rotation
+            thetaX = random.uniform(-0.005, 0.005)  # Reduced from ±0.01 to ±0.005
+            thetaY = random.uniform(-0.005, 0.005)  # Reduced from ±0.01 to ±0.005
+            thetaZ = random.uniform(-0.01, 0.01) 
             
             # Get transformation matrix
             M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
@@ -674,7 +674,7 @@ class FontDatasetGenerator:
             f.write(f"Image size: {self.image_size[0]}x{self.image_size[1]}\n")
             f.write(f"Text source: {self.text_file}\n")
             f.write(f"Color variation probability: {self.color_probability}\n")
-            f.write(f"Perspective transformation probability: {self.perspective_probability}\n")
+            f.write(f"Perspective transformation probability: {self.transform_probability}\n")
             if self.backgrounds_dir:
                 f.write(f"Background images: {self.backgrounds_dir}\n")
                 f.write(f"Background probability: {self.background_probability}\n")
