@@ -103,13 +103,15 @@ class TextAugmentation:
                  weight_primary_modes=[400, 700],
                  weight_primary_prob=0.3,
                  letter_spacing_range=(-0.1, 0.4),
-                 line_height_range=(.7, 1.7)):
+                 line_height_range=(.7, 1.7),
+                 color_probability=0.5):
         
         self.font_size_range = font_size_range
         self.weight_primary_modes = weight_primary_modes
         self.weight_primary_prob = weight_primary_prob
         self.letter_spacing_range = letter_spacing_range
         self.line_height_range = line_height_range
+        self.color_probability = color_probability
         
         # Valid font weights (100-900 in increments of 100)
         self.valid_weights = list(range(100, 1000, 100))
@@ -177,7 +179,7 @@ class TextAugmentation:
         bg_color = '#FFFFFF'
 
         # 50% chance to use custom colors with good contrast
-        if random.random() < 0.5:
+        if random.random() < self.color_probability:
             text_color, bg_color = self.sample_colors_with_contrast()
         
         sample_id = kwargs.get('sample_id', 0)
@@ -286,10 +288,13 @@ class FontManager:
 class TextRenderer:
     """Render text as images with various augmentations."""
     
-    def __init__(self, font_manager, backgrounds_dir=None, background_probability=0.5):
+    def __init__(self, font_manager, backgrounds_dir=None, 
+                 background_probability=0.25,
+                 transform_probability=0.25):
         self.font_manager = font_manager
         self.backgrounds_dir = backgrounds_dir
         self.background_probability = background_probability
+        self.transform_probability = transform_probability
         
         # Load background images if directory is provided
         self.background_images = []
@@ -328,13 +333,13 @@ class TextRenderer:
         # if random.random() < 0.3:  # 30% chance of applying blur
         #     blur_radius = random.uniform(0, 1.5)
         #     image = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        if random.random() < 0.3:
+        if random.random() < self.transform_probability:
             width, height = image.size
             
             # Sample rotation angles
-            thetaX = random.uniform(-0.05, 0.05)  # Small X rotation
-            thetaY = random.uniform(-0.05, 0.05)  # Small Y rotation
-            thetaZ = random.uniform(-0.1, 0.1)    # Z rotation
+            thetaX = random.uniform(-0.01, 0.01)  # Small X rotation
+            thetaY = random.uniform(-0.01, 0.01)  # Small Y rotation
+            thetaZ = random.uniform(-0.03, 0.03)    # Z rotation
             
             # Get transformation matrix
             M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
@@ -520,7 +525,9 @@ class FontDatasetGenerator:
                  num_samples_per_font=10,
                  image_size=(512, 512),
                  backgrounds_dir=None,
-                 background_probability=0.5):
+                 background_probability=0.5,
+                 color_probability=0.25,
+                 transform_probability=0.25):
         
         self.fonts_file = fonts_file
         self.text_file = text_file
@@ -529,6 +536,8 @@ class FontDatasetGenerator:
         self.image_size = image_size
         self.backgrounds_dir = backgrounds_dir
         self.background_probability = background_probability
+        self.color_probability = color_probability
+        self.transform_probability = transform_probability
 
         
         # Ensure output directory exists
@@ -542,7 +551,7 @@ class FontDatasetGenerator:
             backgrounds_dir,
             background_probability
         )
-        self.augmenter = TextAugmentation()
+        self.augmenter = TextAugmentation(color_probability=color_probability)
         
         # Load fonts and text
         self.fonts = self._load_fonts()
@@ -664,10 +673,11 @@ class FontDatasetGenerator:
             f.write(f"Samples per font: {self.num_samples_per_font}\n")
             f.write(f"Image size: {self.image_size[0]}x{self.image_size[1]}\n")
             f.write(f"Text source: {self.text_file}\n")
+            f.write(f"Color variation probability: {self.color_probability}\n")
+            f.write(f"Perspective transformation probability: {self.perspective_probability}\n")
             if self.backgrounds_dir:
                 f.write(f"Background images: {self.backgrounds_dir}\n")
                 f.write(f"Background probability: {self.background_probability}\n")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a dataset of font images")
@@ -679,7 +689,10 @@ def main():
     parser.add_argument('--backgrounds_dir', default=None, help='Directory containing background images')
     parser.add_argument('--background_probability', type=float, default=0.5, 
                       help='Probability of using a background (0-1)')
-    
+    parser.add_argument('--color_probability', type=float, default=0.25,
+                      help='Probability of using custom text and background colors (0-1)')
+    parser.add_argument('--transform_probability', type=float, default=0.5,
+                      help='Probability of using custom text and background colors (0-1)')
     args = parser.parse_args()
     
     generator = FontDatasetGenerator(
@@ -689,7 +702,9 @@ def main():
         num_samples_per_font=args.samples_per_class,
         image_size=(args.image_resolution, args.image_resolution),
         backgrounds_dir=args.backgrounds_dir,
-        background_probability=args.background_probability
+        background_probability=args.background_probability,
+        color_probability=args.color_probability,
+        transform_probability=args.transform_probability
     )
     
     try:
