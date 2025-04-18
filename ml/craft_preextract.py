@@ -175,9 +175,12 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         else:
             raise FileNotFoundError(f"No dataset file found at {h5_file} or {npz_file}")
         
-        # Create output file
-        output_file = os.path.join(data_dir, f'{mode}_craft_boxes.npz')
+        output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
+        with h5py.File(output_file, 'w') as h5f:  # Truncate existing file
+            h5f.create_group('boxes')
+            h5f['boxes'].attrs['preprocessing_batch_size'] = batch_size
 
+        
         # Check for partial file and resume if requested        
         if resume:
             existing_batches = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
@@ -205,7 +208,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                 batch_images, args.canvas_size, args.mag_ratio
             )
 
-            batch_img_tensors = torch.from_numpy(batch_tensors)
+            batch_img_tensors = torch.from_numpy(batch_tensors).pin_memory()
             ratios_w_tensor = torch.tensor(ratios_w, device=device)
             ratios_h_tensor = torch.tensor(ratios_h, device=device)
         
@@ -218,12 +221,27 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             batch_boxes = [convert_polygons_to_boxes(polygons) for polygons in batch_polys]
             #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             
-            batch_file = os.path.join(data_dir, f'batch_{i // batch_size}.npz')
-            np.savez_compressed(batch_file, boxes=np.array(batch_boxes, dtype=object))
-            print(f"Saved batch {i // batch_size} to {batch_file}")
+            output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
+            with h5py.File(output_file, 'a') as h5f:  
+                group = h5f.require_group('boxes')
+                # Store each image's boxes individually
+                for j, boxes in enumerate(batch_boxes):
+                    img_idx = i + j
+                    if img_idx < num_images:  # Make sure we don't go beyond the dataset size
+                        try:
+                            dset = group.create_dataset(
+                                name=str(img_idx),
+                                data=np.array(boxes, dtype=np.int32),
+                                compression="gzip"
+                            )
+                        except Exception as e:
+                            print(f"Error storing boxes for image {img_idx}: {e}")
+            # batch_file = os.path.join(data_dir, f'batch_{i // batch_size}.npz')
+            # np.savez_compressed(batch_file, boxes=np.array(batch_boxes, dtype=object))
+            # print(f"Saved batch {i // batch_size} to {batch_file}")
         
         # print(f"Saved {len(all_boxes)} box sets to {output_file}")
-        combine_batch_files(data_dir, mode, cleanup=True)  # Set cleanup=True if you want to delete batch files
+        #combine_batch_files(data_dir, mode, cleanup=True)  # Set cleanup=True if you want to delete batch files
 
         
         # Close H5 file if opened
@@ -249,48 +267,6 @@ def load_boxes_from_batches(list_file):
             batch_data = np.load(batch_file, allow_pickle=True)
             yield batch_data['boxes']
 
-# TODO this needs to output an npz file
-def combine_batch_files(data_dir, mode, cleanup=True):
-    """
-    Combine individual batch files into a single HDF5 file without loading all into memory.
-    """
-    output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
-    print(f"Combining batch files into {output_file}...")
-    
-    # Get list of batch files
-    batch_files = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
-    batch_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))  # Sort by batch number
-    
-    # Create HDF5 file
-    with h5py.File(output_file, 'w') as h5f:
-        # Create a group for boxes
-        boxes_group = h5f.create_group('boxes')
-        
-        # Process each batch file
-        current_idx = 0
-        for batch_file in tqdm(batch_files, desc="Combining batches"):
-            batch_path = os.path.join(data_dir, batch_file)
-            with np.load(batch_path, allow_pickle=True) as data:
-                batch_boxes = data['boxes']
-                for i, img_boxes in enumerate(batch_boxes):
-                    # Convert boxes to a fixed-size numpy array
-                    # Each box is [x1, y1, x2, y2]
-                    num_boxes = len(img_boxes)
-                    if num_boxes > 0:
-                        # Store as a 2D array with shape (num_boxes, 4)
-                        boxes_array = np.array(img_boxes, dtype=np.int32)
-                        boxes_group.create_dataset(f'{current_idx}', data=boxes_array)
-                    else:
-                        # Create an empty dataset
-                        boxes_group.create_dataset(f'{current_idx}', data=np.zeros((0, 4), dtype=np.int32))
-                    current_idx += 1
-    
-    print(f"Combined boxes for {current_idx} images into {output_file}")
-    
-    if cleanup:
-        print("Cleaning up batch files...")
-        for batch_file in batch_files:
-            os.remove(os.path.join(data_dir, batch_file))
 if __name__ == "__main__":
 
     
