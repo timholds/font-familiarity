@@ -417,9 +417,15 @@ class CharacterFontDataset(Dataset):
                 # Boxes are in an HDF5 file
                 if str(idx) in self.boxes_group:
                     boxes = self.boxes_group[str(idx)][()]
+                    if boxes.ndim == 1:
+                        if boxes.size == 0:
+                            boxes = np.empty((0, 4), dtype=np.int32)
+                        else:
+                            # If we have a 1D array with values, reshape it
+                            boxes = boxes.reshape(-1, 4)
                 else:
-                    # No boxes for this image
-                    boxes = []
+                    # No boxes for this image, create empty array with correct shape
+                    boxes = np.empty((0, 4), dtype=np.int32)
             else:
                 # Boxes are already loaded in memory (legacy NPZ format)
                 boxes = self.precomputed_boxes[idx]

@@ -227,11 +227,19 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                 # Store each image's boxes individually
                 for j, boxes in enumerate(batch_boxes):
                     img_idx = i + j
+                   
                     if img_idx < num_images:  # Make sure we don't go beyond the dataset size
                         try:
+                            # Ensure boxes has shape (n, 4)
+                            boxes_array = np.array(boxes, dtype=np.int32)
+                            if len(boxes) == 0:
+                                boxes_array = np.empty((0, 4), dtype=np.int32)
+                            elif boxes_array.ndim == 1:
+                                # If somehow we got a 1D array, reshape it
+                                boxes_array = boxes_array.reshape(-1, 4)
                             dset = group.create_dataset(
                                 name=str(img_idx),
-                                data=np.array(boxes, dtype=np.int32),
+                                data=boxes_array,
                                 compression="gzip"
                             )
                         except Exception as e:
