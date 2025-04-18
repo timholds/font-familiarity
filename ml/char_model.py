@@ -243,7 +243,7 @@ class CharacterBasedFontClassifier(nn.Module):
 class CRAFTFontClassifier(nn.Module):
     """
     Combined model that uses CRAFT for text detection and CharacterBasedFontClassifier for font identification.
-    During training, uses provided annotations for character extraction.
+    During training, uses preextracted character extraction.
     During inference, uses CRAFT to extract character patches.
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
@@ -638,7 +638,7 @@ class CRAFTFontClassifier(nn.Module):
             # Always return grayscale
             return np.zeros((self.patch_size, self.patch_size), dtype=np.float32)
     
-    def forward(self, inputs, targets=None, annotations=None):
+    def forward(self, inputs, targets=None):
         """
         Forward pass that handles both training and inference modes
 
@@ -646,7 +646,6 @@ class CRAFTFontClassifier(nn.Module):
             inputs: Either a tensor of shape [batch_size, channels, height, width]
                     or a dictionary containing batch data
             targets: Optional font class targets (for training)
-            annotations: Optional character annotations (for training)
             
         Returns:
             Dictionary with model outputs
@@ -673,7 +672,6 @@ class CRAFTFontClassifier(nn.Module):
             elif 'images' in batch_data:
                 images = batch_data['images']
                 targets = batch_data.get('labels', targets)
-                annotations = batch_data.get('annotations', annotations)
             else:
                 raise ValueError("Batch data must contain either 'patches' or 'images'")
         else:

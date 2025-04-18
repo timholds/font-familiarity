@@ -507,87 +507,18 @@ class FontDatasetGenerator:
             font_dir = self.output_dir / font_name.lower().replace(' ', '_')
             font_dir.mkdir(exist_ok=True)
             
-            annotations_dir = font_dir / "annotations"
-            annotations_dir.mkdir(exist_ok=True)
-            
             # Save the image
             image_filename = f"sample_{sample_id:04d}.jpg"
             image_path = font_dir / image_filename
             image.save(image_path, quality=90)
-            
-            # Save annotations
-            self._save_annotations(annotations_dir, sample_id, text_sample, char_boxes, self.image_size)
-            
+     
             logger.info(f"Generated sample {sample_id} for font {font_name}")
             return True
         except Exception as e:
             logger.error(f"Error generating sample for font {font_name}: {e}")
             return False
     
-    def _save_annotations(self, annotations_dir, sample_id, text, char_boxes, image_size):
-        """Save annotations for the image."""
-        # Save YOLO format annotations
-        yolo_path = annotations_dir / f"sample_{sample_id:04d}.txt"
-        json_path = annotations_dir / f"sample_{sample_id:04d}.json"
-        
-        width, height = image_size
-        
-        # Generate YOLO annotations
-        yolo_lines = []
-        char_mapping = {}
-        
-        for char, box in char_boxes:
-            x1, y1, x2, y2 = box
-            
-            # Skip if character is whitespace
-            if char.isspace():
-                continue
-            
-            # Convert to YOLO format (class_id, x_center, y_center, width, height)
-            char_code = ord(char)
-            char_class = char_code % 256  # Simple mapping
-            
-            # Add to mapping
-            char_mapping[char_class] = char
-            
-            # Calculate normalized coordinates
-            x_center = (x1 + x2) / 2 / width
-            y_center = (y1 + y2) / 2 / height
-            box_width = (x2 - x1) / width
-            box_height = (y2 - y1) / height
-            
-            # Ensure values are within bounds
-            x_center = max(0, min(1, x_center))
-            y_center = max(0, min(1, y_center))
-            box_width = max(0, min(1, box_width))
-            box_height = max(0, min(1, box_height))
-            
-            yolo_line = f"{char_class} {x_center:.6f} {y_center:.6f} {box_width:.6f} {box_height:.6f}"
-            yolo_lines.append(yolo_line)
-        
-        # Save YOLO annotations
-        with open(yolo_path, 'w') as f:
-            f.write('\n'.join(yolo_lines))
-        
-        # Save JSON annotations for reference
-        json_data = {
-            'image': f"sample_{sample_id:04d}.jpg",
-            'font': text,
-            'char_boxes': [
-                {'char': char, 'box': box}
-                for char, box in char_boxes if not char.isspace()
-            ]
-        }
-        
-        with open(json_path, 'w') as f:
-            json.dump(json_data, f, indent=2)
-        
-        # Save character mapping
-        mapping_path = annotations_dir / "classes.txt"
-        with open(mapping_path, 'w') as f:
-            for class_id, char in sorted(char_mapping.items()):
-                f.write(f"{class_id} {char}\n")
-    
+   
     def generate_dataset(self):
         """Generate the dataset."""
         logger.info(f"Starting dataset generation with {len(self.fonts)} fonts")
