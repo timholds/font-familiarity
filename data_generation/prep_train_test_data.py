@@ -138,7 +138,7 @@ def save_dataset_in_batches(image_paths, labels, filename, batch_size=1000):
     return filename
 
 
-def process_dataset(input_image_dir, output_dir, test_size=0.2, include_annotations=False):
+def process_dataset(input_image_dir, output_dir, test_size=0.2):
     """Create and save train/test datasets"""
     
     os.makedirs(output_dir, exist_ok=True)
@@ -172,36 +172,6 @@ def process_dataset(input_image_dir, output_dir, test_size=0.2, include_annotati
             if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
                 image_paths.append(os.path.join(font_dir, img_name))
                 labels.append(label)
-    
-    if include_annotations:
-        print("\nCopying annotation files...")
-        for font_name in tqdm(font_dirs):
-            font_dir = os.path.join(input_image_dir, font_name)
-            if not os.path.isdir(font_dir):
-                continue
-
-            # Check for and copy annotations directory
-            ann_dir = os.path.join(font_dir, "annotations")
-            if os.path.isdir(ann_dir):
-                dst_dir = os.path.join(output_dir, font_name, "annotations")
-                os.makedirs(dst_dir, exist_ok=True)
-                
-                for ann_file in os.listdir(ann_dir):
-                    src_file = os.path.join(ann_dir, ann_file)
-                    dst_file = os.path.join(dst_dir, ann_file)
-                    shutil.copy2(src_file, dst_file)
-            
-            # Check for and copy classes.txt
-            classes_file = os.path.join(font_dir, "classes.txt")
-            if os.path.exists(classes_file):
-                dst_file = os.path.join(output_dir, font_name, "classes.txt")
-                os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-                shutil.copy2(classes_file, dst_file)
-                
-            # Also copy a general classes.txt to the root if it exists
-            if os.path.exists(classes_file) and not os.path.exists(os.path.join(output_dir, "classes.txt")):
-                shutil.copy2(classes_file, os.path.join(output_dir, "classes.txt"))
-
 
     # Create train/test split
     print("\nCreating train/test split...")
@@ -232,10 +202,9 @@ def main():
     parser.add_argument("--input_image_dir", default="data/font-images", help="Root directory of font images")
     parser.add_argument("--output_dir", default="font_dataset_npz", help="Output directory for processed datasets")
     parser.add_argument("--test_size", type=float, default=0.1, help="Proportion of data to use for testing")
-    parser.add_argument("--detection_labels", action="store_true", help="Include character annotations in the output dataset")
     args = parser.parse_args()
 
-    process_dataset(args.input_image_dir, args.output_dir, args.test_size, args.detection_labels)
+    process_dataset(args.input_image_dir, args.output_dir, args.test_size)
 
 if __name__ == "__main__":
     main()

@@ -47,7 +47,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         
         if char_model:
             # For character-based model (with CRAFT)
-            # Batch data is a dictionary with images, labels, and annotations
+            # Batch data is a dictionary with images, labels, and patches
             # First, get the labels which should always be present
             targets = batch_data['labels'].to(device)
             batch_size = targets.size(0)
@@ -64,11 +64,10 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             else:
                 # Traditional path with images
                 images = batch_data['images'].to(device)
-                annotations = batch_data['annotations'] if 'annotations' in batch_data else None
                 
                 # Forward pass with separate arguments
                 optimizer.zero_grad()
-                outputs = model(images, targets, annotations)
+                outputs = model(images, targets)
 
             # Handle different output formats from model
             if isinstance(outputs, tuple):
@@ -94,9 +93,6 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             elif 'images' in batch_data:
                 # We have images - move them to the device
                 batch_data['images'] = batch_data['images'].to(device)
-                if 'annotations' in batch_data:
-                    # We're using annotations too (leave them as is, they're usually a Python list)
-                    pass
             else:
                 raise ValueError("Batch data missing both 'images' and 'patches' keys")
 
@@ -403,7 +399,6 @@ def main():
         train_loader, test_loader, num_classes = get_char_dataloaders(
             data_dir=args.data_dir,
             batch_size=args.batch_size,
-            use_annotations=False,
             use_precomputed_craft=args.use_precomputed_craft,
         )
     else:

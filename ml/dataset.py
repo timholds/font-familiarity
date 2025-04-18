@@ -185,12 +185,10 @@ class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
     def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
-                  max_chars: int = 100, use_annotations=False, 
-                  use_precomputed_craft=False):
+                  max_chars: int = 100, use_precomputed_craft=False):
         self.root_dir = root_dir
         self.char_size = char_size
         self.max_chars = max_chars
-        self.use_annotations = use_annotations
         self.use_precomputed_craft = use_precomputed_craft
         
         mode = 'train' if train else 'test'
@@ -220,10 +218,7 @@ class CharacterFontDataset(Dataset):
             self.char_mapping = self._load_char_mapping(classes_path)
 
         print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
-        if self.use_annotations:
-            print(f"Using character annotations. Found {len(self.char_mapping)} character mappings.")
-            print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
-        
+
         self.precomputed_boxes = None
         self.craft_h5_file = None
 
@@ -449,47 +444,19 @@ class CharacterFontDataset(Dataset):
             if img_tensor.dim() == 2:  # If grayscale without channel
                 img_tensor = img_tensor.unsqueeze(0)
             
-            # Skip annotation processing if not using annotations
-            if not self.use_annotations:
-                return img_tensor, target, []
-
-            # Get font name for annotation lookup
-            font_idx = target
-            font_name = self.idx_to_font.get(font_idx, f"unknown_font_{font_idx}")
-            sample_id = f"sample_{idx:04d}"
-            yolo_path = os.path.join(self.root_dir, font_name, "annotations", f"{sample_id}.txt")
-            
-            # Process YOLO format annotations if available
-            annotations = []
-            if os.path.exists(yolo_path):
-                try:
-                    with open(yolo_path, 'r') as f:
-                        for line in f:
-                            parts = line.strip().split()
-                            if len(parts) >= 5:
-                                # Format: class_id, x_center, y_center, w, h
-                                class_id = int(parts[0])
-                                x_center = float(parts[1])
-                                y_center = float(parts[2])
-                                w = float(parts[3])
-                                h = float(parts[4])
-                                annotations.append([class_id, x_center, y_center, w, h])
-                except Exception as e:
-                    print(f"Error processing YOLO annotations for {yolo_path}: {e}")
-
-            return img_tensor, target, annotations
+           
+            return img_tensor, target
 
 def char_collate_fn(batch):
     """
-    Custom collate function for batches with images and annotations.
+    Custom collate function for batches with images and patches.
     
     Args:
-        batch: List of (image, target, annotations) tuples from dataset
+        batch: List of (image, target, patches) tuples from dataset
         
     Returns:
         Dictionary with batched data
     """
-    # Separate images, labels, and annotations
     if 'patches' in batch[0]:
         # Extract items from each batch element
         patches = [item['patches'] for item in batch]
@@ -535,24 +502,13 @@ def char_collate_fn(batch):
             'labels': targets_batch
         }
     else:
-        images, targets, annotations_list = zip(*batch)
-
-        # Stack images and convert targets to tensor
-        images_batch = torch.stack(images)
-        targets_batch = torch.tensor(targets)
-
-        return {
-            'images': images_batch,          # [batch_size, channels, H, W]
-            'labels': targets_batch,         # [batch_size]
-            'annotations': annotations_list  # List of annotation lists
-        }
+        raise ValueError("Data loader: Batch does not contain 'patches' key. Check dataset output format.")
 
 
 def get_char_dataloaders(
     data_dir: str,
     batch_size: int = 32,
     num_workers: int = 4, 
-    use_annotations: bool = False,
     use_precomputed_craft: bool = False,
 ) -> Tuple[DataLoader, DataLoader]:
     """
@@ -560,13 +516,11 @@ def get_char_dataloaders(
     """
     train_dataset = CharacterFontDataset(
         data_dir, train=True, 
-        use_annotations=use_annotations,
         use_precomputed_craft=use_precomputed_craft,
     )
     
     test_dataset = CharacterFontDataset(
         data_dir, train=False, 
-        use_annotations=use_annotations,
         use_precomputed_craft=use_precomputed_craft,
     )
 
