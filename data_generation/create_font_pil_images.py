@@ -691,7 +691,7 @@ def main():
                       help='Probability of using a background (0-1)')
     parser.add_argument('--color_probability', type=float, default=0.25,
                       help='Probability of using custom text and background colors (0-1)')
-    parser.add_argument('--transform_probability', type=float, default=0.5,
+    parser.add_argument('--transform_probability', type=float, default=0.15,
                       help='Probability of using custom text and background colors (0-1)')
     args = parser.parse_args()
     
