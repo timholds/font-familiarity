@@ -22,8 +22,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-# Add this function outside of any class:
 def get_rotation_matrix(width, height, thetaX=0, thetaY=0, thetaZ=0):
     """Provide a rotation matrix about the center of a rectangle with
     a given width and height.
@@ -331,26 +329,72 @@ class TextRenderer:
         """Apply various augmentations to the image."""
         # Gaussian blur
         # if random.random() < 0.3:  # 30% chance of applying blur
-        #     blur_radius = random.uniform(0, 1.5)
+        #     _blur_radius = random.uniform(0, 1.5)
         #     image = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        if random.random() < self.transform_probability:
-            width, height = image.size
-            
-            # Sample rotation angles
-            thetaX = random.uniform(-0.005, 0.005)  # Reduced from ±0.01 to ±0.005
-            thetaY = random.uniform(-0.005, 0.005)  # Reduced from ±0.01 to ±0.005
-            thetaZ = random.uniform(-0.01, 0.01) 
-            
-            # Get transformation matrix
-            M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
-            
-            # Convert PIL to OpenCV format for warpAffine
-            img_array = np.array(image)
-            img_array = cv2.warpAffine(img_array, M, (width, height), borderMode=cv2.BORDER_REPLICATE)
-            
-            # Convert back to PIL
-            image = Image.fromarray(img_array)
+        width, height = image.size
+        img_array = np.array(image)
 
+        # Choose transformation strategy
+        transform_type = random.choices(
+            ["affine_only", "perspective_only", "3d_rotation_only", "combined"],
+            weights=[0.4, 0.2, 0.1, 0.3]  # 30% chance of combined transforms
+        )[0]
+
+        if "affine" in transform_type or transform_type == "combined":
+            # Apply affine transformation (with gentler values for combined case)
+            scale_factor = 0.5 if transform_type == "combined" else 1.0
+            rotation = random.uniform(-3, 3) * scale_factor
+            scale_x = random.uniform(0.97, 1.03)
+            scale_y = random.uniform(0.97, 1.03)
+            shear_x = random.uniform(-0.03, 0.03) * scale_factor
+            shear_y = random.uniform(-0.02, 0.02) * scale_factor
+            
+            # Create affine matrix
+            M = np.float32([
+                [scale_x * np.cos(np.radians(rotation)), 
+                    scale_x * (np.sin(np.radians(rotation)) + shear_x), 0],
+                [scale_y * (-np.sin(np.radians(rotation)) + shear_y), 
+                    scale_y * np.cos(np.radians(rotation)), 0]
+            ])
+            
+            img_array = cv2.warpAffine(img_array, M, (width, height), 
+                                        borderMode=cv2.BORDER_REPLICATE)
+
+        if "perspective" in transform_type or transform_type == "combined":
+            # Apply perspective transformation (gentler for combined case)
+            scale_factor = 0.6 if transform_type == "combined" else 1.0
+            src_points = np.array([
+                [0, 0], [width, 0], [width, height], [0, height]
+            ], dtype=np.float32)
+            
+            max_shift = min(width, height) * 0.03 * scale_factor
+            dst_points = np.array([
+                [0 + random.uniform(-max_shift, max_shift), 
+                    0 + random.uniform(-max_shift, max_shift)],
+                [width + random.uniform(-max_shift, max_shift), 
+                    0 + random.uniform(-max_shift, max_shift)],
+                [width + random.uniform(-max_shift, max_shift), 
+                    height + random.uniform(-max_shift, max_shift)],
+                [0 + random.uniform(-max_shift, max_shift), 
+                    height + random.uniform(-max_shift, max_shift)]
+            ], dtype=np.float32)
+            
+            M = cv2.getPerspectiveTransform(src_points, dst_points)
+            img_array = cv2.warpPerspective(img_array, M, (width, height), 
+                                            borderMode=cv2.BORDER_REPLICATE)
+
+        if "3d_rotation" in transform_type:
+            # Apply 3D rotation projection
+            thetaX = random.uniform(-0.002, 0.002)
+            thetaY = random.uniform(-0.002, 0.002) 
+            thetaZ = random.uniform(-0.005, 0.005)
+            
+            M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
+            img_array = cv2.warpAffine(img_array, M, (width, height), 
+                                        borderMode=cv2.BORDER_REPLICATE)
+
+        # Convert back to PIL
+        image = Image.fromarray(img_array)
         # Slight rotation
         if random.random() < 0.3:  # 30% chance of rotation
             rotation_angle = random.uniform(-5, 5)
