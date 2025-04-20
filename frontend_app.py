@@ -277,20 +277,44 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             if research_mode and isinstance(model, CRAFTFontClassifier):
                 logger.info("Generating visualization for research mode")   
                 try:
-                    # TODO add option to return image
-                    visualized_image = model.visualize_craft_detections(
-                        images=image_tensor,  # Original images
-                        label_mapping=label_mapping,
-                        targets=None,
-                        save_path=None
-                    )
+                #     # TODO add option to return image
+                    # visualized_image = model.visualize_craft_detections(
+                    #     images=image_tensor,  # Original images
+                    #     label_mapping=label_mapping,
+                    #     targets=None,
+                    #     save_path=None
+                    # )
+                    from PIL import ImageDraw, ImageFont
+
+                    visual_image = original_image.copy()
+                    draw = ImageDraw.Draw(visual_image)
                     
+                    # Try to get polygons from CRAFT
+                    logger.info("Getting polygons from CRAFT")
+                    polygons = model.craft.get_polygons(original_image)
+                    logger.info(f"Found {len(polygons)} polygons")
                     
+                    # Draw polygons on the image
+                    for poly in polygons:
+                        # Convert to tuple format for PIL
+                        poly_tuple = [tuple(p) for p in poly]
+                        draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
+                    
+                    # Add text showing number of detections
+                    try:
+                        font = ImageFont.truetype("arial.ttf", 20)
+                    except:
+                        font = ImageFont.load_default()
+                    
+                    draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
+                            fill=(0, 0, 0), font=font)
+                        
+                        
                     # Convert visualization to base64
                     import io as bio
                     import base64
                     buffer = bio.BytesIO()
-                    visualized_image.save(buffer, format='PNG')
+                    visual_image.save(buffer, format='PNG')
                     encoded_img = base64.b64encode(buffer.getvalue()).decode('utf-8')
                     response_data['visualization'] = encoded_img
                     logger.info("Visualization generated successfully") 
