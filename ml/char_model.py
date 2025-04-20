@@ -370,9 +370,10 @@ class CRAFTFontClassifier(nn.Module):
                 plt.savefig(f"{save_path}_sample_{b}.png")
                 plt.close()
             else:
-                plt.show()
+                return plt.show()  # Display directly with matplotlib
+                #plt.show()
 
-    def visualize_craft_detections(self, images, targets, label_mapping, save_path=None):
+    def visualize_craft_detections(self, images, label_mapping, targets=None, save_path=None):
         """
         Visualize CRAFT character detections on original images
 
@@ -426,12 +427,13 @@ class CRAFTFontClassifier(nn.Module):
                         fill=(0, 0, 0), font=font)
 
             # Save with exact dimensions
-            if save_path:
+            if save_path and targets:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 image_label = targets[b].item()
                 pil_img.save(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
             else:
-                pil_img.show()  # Display directly with PIL
+                return pil_img
+                #pil_img.show()  # Display directly with PIL
 
     def add_padding_to_polygons(polygons, padding_x=5, padding_y=8):
         padded_polygons = []
