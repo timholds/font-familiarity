@@ -483,6 +483,8 @@ class CRAFTFontClassifier(nn.Module):
             if len(image_tensor.shape) == 3:  # [C, H, W]
                 # Standard CHW format
                 img_np = image_tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8) # HWC for craft
+                print(f"Image tensor shape permuted to: {img_np.shape}")
+
             else:
                 raise ValueError(f"Unexpected tensor shape: {image_tensor.shape}")
                            
@@ -492,14 +494,16 @@ class CRAFTFontClassifier(nn.Module):
                     
             # Create PIL image with appropriate mode
             try:
-                if len(img_np.shape) == 3 and img_np.shape[2] == 1:
+                print(f"Creating PIL image from numpy array with shape: {img_np.shape}, dtype: {img_np.dtype}")
+                if len(img_np.shape) == 3 and img_np.shape[2] == 3:
                     pil_img = Image.fromarray(img_np, mode='RGB')
             except Exception as e:
+                print(f"Error creating PIL image: {img_np}")
                 raise ValueError(f"Error creating PIL image: {e}, shape: {img_np.shape}, dtype: {img_np.dtype}")
-               
         
             # Get polygons from CRAFT
             try:
+                print(f"Running CRAFT on image {i+1}/{batch_size}")  
                 polygons = self.craft.get_polygons(pil_img)
             except Exception as e:
                 print(f"CRAFT error: {e}")

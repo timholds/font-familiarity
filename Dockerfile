@@ -63,4 +63,4 @@ ENV FLASK_APP=frontend_app.py
 
 # Command to run the application with Gunicorn
 # CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "30", "--log-level", "info", "frontend_app:create_app('/app/model/fontCNN_BS64-ED512-IC32.pt', '/app/model', '/app/model/class_embeddings_512.npy')"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "30", "--log-level", "info", "frontend_app:create_app('/app/model/fontCNN_BS64-ED1024-IC16.pt', '/app/model', '/app/model/class_embeddings_1024.npy', 'label_mapping_char.npy', 'True')"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "30", "--log-level", "info", "frontend_app:create_app('/app/model/fontCNN_BS64-ED1024-IC16.pt', '/app/model', '/app/model/class_embeddings_1024.npy', 'label_mapping.npy', 'True')"]
