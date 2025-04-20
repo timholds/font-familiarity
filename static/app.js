@@ -8,7 +8,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const embeddingResults = document.getElementById('embeddingResults');
     const classifierResults = document.getElementById('classifierResults');
     const resetBtn = document.getElementById('resetBtn');
-    
+    const researchModeToggle = document.getElementById('researchModeToggle');
+    const visualizationContainer = document.getElementById('visualizationContainer');
+
     // File size limit (5MB)
     const MAX_FILE_SIZE = 5 * 1024 * 1024;
     
@@ -226,6 +228,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('image', file);
             
+            // Add research mode flag if enabled
+            if (researchModeToggle && researchModeToggle.checked) {
+                formData.append('research_mode', 'true');
+            }
+            
             // Send the request
             const response = await fetch('/predict', {
                 method: 'POST',
@@ -240,6 +247,17 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.error) {
                 throw new Error(data.error);
+            }
+            
+            // Handle visualization if in research mode
+            if (data.visualization) {
+                // Display the visualization
+                const visualizationImage = document.getElementById('visualizationImage');
+                visualizationImage.innerHTML = `<img src="data:image/png;base64,${data.visualization}" alt="Character Detection">`;
+                visualizationContainer.classList.remove('hidden');
+            } else {
+                // Hide visualization if not available
+                visualizationContainer.classList.add('hidden');
             }
             
             // Preload all fonts before displaying results

@@ -23,6 +23,10 @@
                 <button id="resetBtn" class="reset-button">Clear</button>
             </div>
         </div>
+        <div class="research-mode-toggle">
+            <input type="checkbox" id="researchModeToggle" class="toggle-checkbox">
+            <label for="researchModeToggle" class="toggle-label">Research Mode</label>
+        </div>
 
         
         <div id="preview"></div>
@@ -44,6 +48,13 @@
             </div>
             
         </div>
+        
+        <!-- Container for character detection visualization -->
+        <div id="visualizationContainer" class="visualization-container hidden">
+            <h2>Character Detection Visualization</h2>
+            <div id="visualizationImage"></div>
+        </div>
+
     </div>
 
     <!-- External JavaScript file -->

@@ -75,6 +75,42 @@ def get_top_k_predictions(logits: torch.Tensor, k: int = 5) -> tuple[np.ndarray,
     
     return top_k_indices.cpu().numpy(), top_k_probs.cpu().numpy()
 
+def generate_visualization(original_image, model_instance):
+    """
+    Generate a visualization of character patches on the original image.
+    
+    Args:
+        original_image: PIL Image of the original upload
+        model_instance: The CRAFTFontClassifier instance
+        
+    Returns:
+        PIL Image with visualization
+    """
+    # Create a copy of the original image to draw on
+    visualization = original_image.copy()
+    
+    # Convert to drawable format
+    from PIL import ImageDraw
+    draw = ImageDraw.Draw(visualization)
+    
+    # Get polygons using the CRAFT model
+    polygons = model_instance.craft.get_polygons(visualization)
+    
+    # Draw the polygons on the image
+    for polygon in polygons:
+        # Convert polygon points to list of tuples
+        points = [(int(p[0]), int(p[1])) for p in polygon]
+        
+        # Draw polygon outline
+        draw.polygon(points, outline=(255, 0, 0), width=2)
+        
+        # Add a label
+        centroid_x = sum(p[0] for p in polygon) / len(polygon)
+        centroid_y = sum(p[1] for p in polygon) / len(polygon)
+        draw.text((centroid_x, centroid_y), "C", fill=(255, 0, 0))
+    
+    return visualization
+
 def load_char_model_and_embeddings(model_path: str, 
                                    embeddings_path: str, 
                                    label_mapping_path: str) -> None:
@@ -251,7 +287,7 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             
         if 'image' not in request.files:
             return jsonify({'error': 'No image provided'}), 400
-
+        research_mode = request.form.get('research_mode', 'false').lower() == 'true'
         try:
             # Get and preprocess image
             image_bytes = request.files['image'].read()
@@ -269,6 +305,28 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             ])
             image_tensor = transform(image).unsqueeze(0).to(device)
             # Pass a PIL image to model?
+
+            response_data = {}
+        
+            # Generate visualization if in research mode
+            if research_mode and isinstance(model, CRAFTFontClassifier):
+                logger.info("Generating visualization for research mode")   
+                try:
+                    # Generate visualization
+                    visualized_image = generate_visualization(original_image, model)
+                    
+                    # Convert visualization to base64
+                    import io as bio
+                    import base64
+                    buffer = bio.BytesIO()
+                    visualized_image.save(buffer, format='PNG')
+                    encoded_img = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    response_data['visualization'] = encoded_img
+                    logger.info("Visualization generated successfully") 
+                except Exception as vis_error:
+                    logger.error(f"Visualization error: {str(vis_error)}")
+                    response_data['visualization_error'] = str(vis_error)
+            
             
             with torch.no_grad():
                 if isinstance(model, CRAFTFontClassifier):
