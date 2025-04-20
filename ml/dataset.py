@@ -356,7 +356,7 @@ class CharacterFontDataset(Dataset):
 
         # If no valid patches, create a default patch from the whole image
         if not patches:
-            # print(f"WARNING: No valid patches for img {idx}, creating fallback from whole image")
+            print(f"WARNING: No valid patches for img {idx}, creating fallback from whole image")
             try:
                 # Try to create grayscale version of the whole image
                 if len(image.shape) == 3:

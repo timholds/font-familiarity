@@ -471,6 +471,9 @@ class CRAFTFontClassifier(nn.Module):
             images = images.unsqueeze(0)
             print(f"Added batch dimension, new shape: {images.shape}")
 
+        if images.max() <= 1.0:
+            images = images * 255.0
+
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
@@ -501,7 +504,12 @@ class CRAFTFontClassifier(nn.Module):
                 print(f"Error creating PIL image: {img_np}")
                 raise ValueError(f"Error creating PIL image: {e}, shape: {img_np.shape}, dtype: {img_np.dtype}")
         
+            # TODO figure out why we are not getting polygons from images 
             # Get polygons from CRAFT
+
+            # check the shape and type of the pil images
+            if len(pil_img.size) != 2:
+                raise ValueError(f"Unexpected PIL image size: {pil_img.size}")
             try:
                 print(f"Running CRAFT on image {i+1}/{batch_size}")  
                 polygons = self.craft.get_polygons(pil_img)
@@ -511,6 +519,7 @@ class CRAFTFontClassifier(nn.Module):
             
             # Extract character patches
             img_patches = []
+            print(f"Extracting patches from {len(polygons)} polygons")
             for polygon in polygons:
                 # polygon = self.add_padding_to_polygons(polygon)
 
@@ -546,7 +555,7 @@ class CRAFTFontClassifier(nn.Module):
                         
             # Step 6: If no valid patches, create a default patch from the whole image
             if not img_patches:
-                print(f"WARNING: No valid patches found for image {i}, using whole image as patch")
+                print(f"!!!WARNING: No valid patches found for image {i}, using whole image as patch")
                 img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY) if len(img_np.shape) == 3 else img_np
                 img_resized = cv2.resize(img_gray, (self.patch_size, self.patch_size))
                 normalized = img_resized.astype(np.float32) / 255.0
@@ -687,6 +696,7 @@ class CRAFTFontClassifier(nn.Module):
         if len(images.shape) == 4 and images.shape[3] in [1, 3]:  # HWC format
             # Permute dimensions: [B, H, W, C] -> [B, C, H, W]
             images = images.permute(0, 3, 1, 2)
+            print(f"Permuted images to shape: {images.shape}")
 
         # Check configuration
         if self.use_precomputed_craft:
@@ -698,6 +708,7 @@ class CRAFTFontClassifier(nn.Module):
             )
 
         # Extract patches with CRAFT (only done once now)
+        print(f"\n\nExtracting patches with CRAFT for {images.shape} images")
         batch_data = self.extract_patches_with_craft(images)
 
         # Add labels if available

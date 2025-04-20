@@ -244,36 +244,12 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                             )
                         except Exception as e:
                             print(f"Error storing boxes for image {img_idx}: {e}")
-            # batch_file = os.path.join(data_dir, f'batch_{i // batch_size}.npz')
-            # np.savez_compressed(batch_file, boxes=np.array(batch_boxes, dtype=object))
-            # print(f"Saved batch {i // batch_size} to {batch_file}")
-        
-        # print(f"Saved {len(all_boxes)} box sets to {output_file}")
-        #combine_batch_files(data_dir, mode, cleanup=True)  # Set cleanup=True if you want to delete batch files
-
-        
+            
         # Close H5 file if opened
         if using_h5 and h5_file_handle is not None:
             h5_file_handle.close()
 
-def load_boxes_from_batches(list_file):
-    """
-    Generator function to load boxes from batch files one by one,
-    without loading all into memory at once.
-    
-    Parameters:
-    - list_file: Path to file containing list of batch files
-    
-    Yields:
-    - boxes from each batch file
-    """
-    with open(list_file, 'r') as f:
-        batch_files = [line.strip() for line in f]
-    
-    for batch_file in batch_files:
-        if os.path.exists(batch_file):
-            batch_data = np.load(batch_file, allow_pickle=True)
-            yield batch_data['boxes']
+
 
 if __name__ == "__main__":
 

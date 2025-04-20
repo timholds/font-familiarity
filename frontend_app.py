@@ -134,7 +134,8 @@ def load_char_model_and_embeddings(model_path: str,
             device=device,
             patch_size=32,
             embedding_dim=embedding_dim,
-            craft_fp16=False  # Conservative setting for production
+            craft_fp16=False,  # Conservative setting for production
+            use_precomputed_craft=False
         )
         
         # Load the weights
@@ -256,12 +257,18 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             image_bytes = request.files['image'].read()
             
             # Convert uploaded image bytes to tensor 
-            image = Image.open(io.BytesIO(image_bytes))  # expectign color image
+            # Todo this needs to match the dataloader
+            original_image = Image.open(io.BytesIO(image_bytes))
+            logger.info(f"Original image mode: {original_image.mode}, size: {original_image.size}")
+            image = original_image.convert('RGB')
+            logger.info(f"Converted image mode: {image.mode}, size: {image.size}")
+            
             transform = transforms.Compose([
                 transforms.Resize((512, 512)), 
-                transforms.ToTensor(),
+                transforms.ToTensor()
             ])
             image_tensor = transform(image).unsqueeze(0).to(device)
+            # Pass a PIL image to model?
             
             with torch.no_grad():
                 if isinstance(model, CRAFTFontClassifier):
