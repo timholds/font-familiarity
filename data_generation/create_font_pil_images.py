@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from match_fonts import FontMatcher
-
+import cv2
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import requests
 
@@ -21,6 +21,61 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# Add this function outside of any class:
+def get_rotation_matrix(width, height, thetaX=0, thetaY=0, thetaZ=0):
+    """Provide a rotation matrix about the center of a rectangle with
+    a given width and height.
+    
+    Args:
+        width: The width of the rectangle
+        height: The height of the rectangle
+        thetaX: Rotation about the X axis (in radians)
+        thetaY: Rotation about the Y axis (in radians)
+        thetaZ: Rotation about the Z axis (in radians)
+        
+    Returns:
+        A 3x3 transformation matrix
+    """
+    # Translation to center
+    translate1 = np.array([
+        [1, 0, width / 2],
+        [0, 1, height / 2],
+        [0, 0, 1]
+    ])
+    
+    # Rotation around X axis
+    rotX = np.array([
+        [1, 0, 0],
+        [0, np.cos(thetaX), -np.sin(thetaX)],
+        [0, np.sin(thetaX), np.cos(thetaX)]
+    ])
+    
+    # Rotation around Y axis
+    rotY = np.array([
+        [np.cos(thetaY), 0, np.sin(thetaY)],
+        [0, 1, 0],
+        [-np.sin(thetaY), 0, np.cos(thetaY)]
+    ])
+    
+    # Rotation around Z axis
+    rotZ = np.array([
+        [np.cos(thetaZ), -np.sin(thetaZ), 0],
+        [np.sin(thetaZ), np.cos(thetaZ), 0],
+        [0, 0, 1]
+    ])
+    
+    # Translation back
+    translate2 = np.array([
+        [1, 0, -width / 2],
+        [0, 1, -height / 2],
+        [0, 0, 1]
+    ])
+    
+    # Combine transformations
+    M = np.dot(translate1, np.dot(rotX, np.dot(rotY, np.dot(rotZ, translate2))))
+    return M[:2, :]  # Return 2x3 matrix for OpenCV warpAffine
 
 @dataclass
 class FontConfig:
@@ -48,17 +103,51 @@ class TextAugmentation:
                  weight_primary_modes=[400, 700],
                  weight_primary_prob=0.3,
                  letter_spacing_range=(-0.1, 0.4),
-                 line_height_range=(.7, 1.7)):
+                 line_height_range=(.7, 1.7),
+                 color_probability=0.5):
         
         self.font_size_range = font_size_range
         self.weight_primary_modes = weight_primary_modes
         self.weight_primary_prob = weight_primary_prob
         self.letter_spacing_range = letter_spacing_range
         self.line_height_range = line_height_range
+        self.color_probability = color_probability
         
         # Valid font weights (100-900 in increments of 100)
         self.valid_weights = list(range(100, 1000, 100))
         
+    def sample_color(self):
+        """Sample a random color in hex format."""
+        r = random.randint(0, 255)
+        g = random.randint(0, 255)
+        b = random.randint(0, 255)
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+    def sample_colors_with_contrast(self, min_contrast=125):
+        """Sample text and background colors with sufficient contrast."""
+        # Generate first color
+        color1 = self.sample_color()
+        r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
+
+        # Keep generating second color until we have sufficient contrast
+        while True:
+            color2 = self.sample_color()
+            r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
+            
+            # Calculate contrast based on luminance difference
+            lum1 = 0.299 * r1 + 0.587 * g1 + 0.114 * b1
+            lum2 = 0.299 * r2 + 0.587 * g2 + 0.114 * b2
+            contrast = abs(lum1 - lum2)
+            
+            if contrast > min_contrast:
+                break
+
+        # Decide if we want dark text on light background or vice versa
+        if random.random() < 0.5:  # 50% chance to swap
+            return color1, color2
+        else:
+            return color2, color1
+
     def sample_font_size(self):
         """Sample a font size from the specified range."""
         return round(random.uniform(*self.font_size_range))
@@ -86,6 +175,12 @@ class TextAugmentation:
         font_weight = self.sample_font_weight()
         letter_spacing = self.sample_letter_spacing()
         line_height = self.sample_line_height()
+        text_color = '#000000'
+        bg_color = '#FFFFFF'
+
+        # 50% chance to use custom colors with good contrast
+        if random.random() < self.color_probability:
+            text_color, bg_color = self.sample_colors_with_contrast()
         
         sample_id = kwargs.get('sample_id', 0)
     
@@ -102,8 +197,8 @@ class TextAugmentation:
             letter_spacing=letter_spacing,
             line_height=line_height,
             font_style=kwargs.get('font_style', 'normal'),
-            text_color=kwargs.get('text_color', '#000000'),
-            bg_color=kwargs.get('bg_color', '#FFFFFF'),
+            text_color=text_color,
+            bg_color=bg_color,
             samples_per_font=kwargs.get('samples_per_font', 10),
             sample_id=sample_id,
         )
@@ -193,10 +288,13 @@ class FontManager:
 class TextRenderer:
     """Render text as images with various augmentations."""
     
-    def __init__(self, font_manager, backgrounds_dir=None, background_probability=0.5):
+    def __init__(self, font_manager, backgrounds_dir=None, 
+                 background_probability=0.25,
+                 transform_probability=0.25):
         self.font_manager = font_manager
         self.backgrounds_dir = backgrounds_dir
         self.background_probability = background_probability
+        self.transform_probability = transform_probability
         
         # Load background images if directory is provided
         self.background_images = []
@@ -235,7 +333,24 @@ class TextRenderer:
         # if random.random() < 0.3:  # 30% chance of applying blur
         #     blur_radius = random.uniform(0, 1.5)
         #     image = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-        
+        if random.random() < self.transform_probability:
+            width, height = image.size
+            
+            # Sample rotation angles
+            thetaX = random.uniform(-0.005, 0.005)  # Reduced from ±0.01 to ±0.005
+            thetaY = random.uniform(-0.005, 0.005)  # Reduced from ±0.01 to ±0.005
+            thetaZ = random.uniform(-0.01, 0.01) 
+            
+            # Get transformation matrix
+            M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
+            
+            # Convert PIL to OpenCV format for warpAffine
+            img_array = np.array(image)
+            img_array = cv2.warpAffine(img_array, M, (width, height), borderMode=cv2.BORDER_REPLICATE)
+            
+            # Convert back to PIL
+            image = Image.fromarray(img_array)
+
         # Slight rotation
         if random.random() < 0.3:  # 30% chance of rotation
             rotation_angle = random.uniform(-5, 5)
@@ -410,7 +525,9 @@ class FontDatasetGenerator:
                  num_samples_per_font=10,
                  image_size=(512, 512),
                  backgrounds_dir=None,
-                 background_probability=0.5):
+                 background_probability=0.5,
+                 color_probability=0.25,
+                 transform_probability=0.25):
         
         self.fonts_file = fonts_file
         self.text_file = text_file
@@ -419,6 +536,8 @@ class FontDatasetGenerator:
         self.image_size = image_size
         self.backgrounds_dir = backgrounds_dir
         self.background_probability = background_probability
+        self.color_probability = color_probability
+        self.transform_probability = transform_probability
 
         
         # Ensure output directory exists
@@ -432,7 +551,7 @@ class FontDatasetGenerator:
             backgrounds_dir,
             background_probability
         )
-        self.augmenter = TextAugmentation()
+        self.augmenter = TextAugmentation(color_probability=color_probability)
         
         # Load fonts and text
         self.fonts = self._load_fonts()
@@ -507,87 +626,18 @@ class FontDatasetGenerator:
             font_dir = self.output_dir / font_name.lower().replace(' ', '_')
             font_dir.mkdir(exist_ok=True)
             
-            annotations_dir = font_dir / "annotations"
-            annotations_dir.mkdir(exist_ok=True)
-            
             # Save the image
             image_filename = f"sample_{sample_id:04d}.jpg"
             image_path = font_dir / image_filename
             image.save(image_path, quality=90)
-            
-            # Save annotations
-            self._save_annotations(annotations_dir, sample_id, text_sample, char_boxes, self.image_size)
-            
+     
             logger.info(f"Generated sample {sample_id} for font {font_name}")
             return True
         except Exception as e:
             logger.error(f"Error generating sample for font {font_name}: {e}")
             return False
     
-    def _save_annotations(self, annotations_dir, sample_id, text, char_boxes, image_size):
-        """Save annotations for the image."""
-        # Save YOLO format annotations
-        yolo_path = annotations_dir / f"sample_{sample_id:04d}.txt"
-        json_path = annotations_dir / f"sample_{sample_id:04d}.json"
-        
-        width, height = image_size
-        
-        # Generate YOLO annotations
-        yolo_lines = []
-        char_mapping = {}
-        
-        for char, box in char_boxes:
-            x1, y1, x2, y2 = box
-            
-            # Skip if character is whitespace
-            if char.isspace():
-                continue
-            
-            # Convert to YOLO format (class_id, x_center, y_center, width, height)
-            char_code = ord(char)
-            char_class = char_code % 256  # Simple mapping
-            
-            # Add to mapping
-            char_mapping[char_class] = char
-            
-            # Calculate normalized coordinates
-            x_center = (x1 + x2) / 2 / width
-            y_center = (y1 + y2) / 2 / height
-            box_width = (x2 - x1) / width
-            box_height = (y2 - y1) / height
-            
-            # Ensure values are within bounds
-            x_center = max(0, min(1, x_center))
-            y_center = max(0, min(1, y_center))
-            box_width = max(0, min(1, box_width))
-            box_height = max(0, min(1, box_height))
-            
-            yolo_line = f"{char_class} {x_center:.6f} {y_center:.6f} {box_width:.6f} {box_height:.6f}"
-            yolo_lines.append(yolo_line)
-        
-        # Save YOLO annotations
-        with open(yolo_path, 'w') as f:
-            f.write('\n'.join(yolo_lines))
-        
-        # Save JSON annotations for reference
-        json_data = {
-            'image': f"sample_{sample_id:04d}.jpg",
-            'font': text,
-            'char_boxes': [
-                {'char': char, 'box': box}
-                for char, box in char_boxes if not char.isspace()
-            ]
-        }
-        
-        with open(json_path, 'w') as f:
-            json.dump(json_data, f, indent=2)
-        
-        # Save character mapping
-        mapping_path = annotations_dir / "classes.txt"
-        with open(mapping_path, 'w') as f:
-            for class_id, char in sorted(char_mapping.items()):
-                f.write(f"{class_id} {char}\n")
-    
+   
     def generate_dataset(self):
         """Generate the dataset."""
         logger.info(f"Starting dataset generation with {len(self.fonts)} fonts")
@@ -623,10 +673,11 @@ class FontDatasetGenerator:
             f.write(f"Samples per font: {self.num_samples_per_font}\n")
             f.write(f"Image size: {self.image_size[0]}x{self.image_size[1]}\n")
             f.write(f"Text source: {self.text_file}\n")
+            f.write(f"Color variation probability: {self.color_probability}\n")
+            f.write(f"Perspective transformation probability: {self.transform_probability}\n")
             if self.backgrounds_dir:
                 f.write(f"Background images: {self.backgrounds_dir}\n")
                 f.write(f"Background probability: {self.background_probability}\n")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a dataset of font images")
@@ -638,7 +689,10 @@ def main():
     parser.add_argument('--backgrounds_dir', default=None, help='Directory containing background images')
     parser.add_argument('--background_probability', type=float, default=0.5, 
                       help='Probability of using a background (0-1)')
-    
+    parser.add_argument('--color_probability', type=float, default=0.25,
+                      help='Probability of using custom text and background colors (0-1)')
+    parser.add_argument('--transform_probability', type=float, default=0.15,
+                      help='Probability of using custom text and background colors (0-1)')
     args = parser.parse_args()
     
     generator = FontDatasetGenerator(
@@ -648,7 +702,9 @@ def main():
         num_samples_per_font=args.samples_per_class,
         image_size=(args.image_resolution, args.image_resolution),
         backgrounds_dir=args.backgrounds_dir,
-        background_probability=args.background_probability
+        background_probability=args.background_probability,
+        color_probability=args.color_probability,
+        transform_probability=args.transform_probability
     )
     
     try:
