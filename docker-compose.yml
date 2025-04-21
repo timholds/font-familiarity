@@ -17,6 +17,8 @@ services:
       - ./logs:/app/logs
       - ./templates:/app/templates
       - ./static:/app/static
+      - ./uploads:/app/uploads 
+
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:

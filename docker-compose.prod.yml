@@ -12,6 +12,7 @@ services:
     volumes:
       - model-data:/app/model
       - ./logs:/app/logs
+      - ./uploads:/app/uploads 
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:

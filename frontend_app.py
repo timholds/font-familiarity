@@ -12,6 +12,10 @@ import traceback
 import logging
 import argparse
 import time
+import json
+
+import uuid 
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +54,61 @@ is_initialized = False
 #         logger.error(f"Error preprocessing image: {str(e)}")
 #         logger.error(traceback.format_exc())
 #         raise
+
+def save_uploaded_image(image_bytes, save_dir, ip_address=None, prediction_data=None):
+    """Save uploaded image with a unique filename for future analysis."""
+    # Create directory if it doesn't exist
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Generate unique filename with timestamp and UUID
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID
+    filename = f"{timestamp}_{unique_id}.png"
+
+    image_path = os.path.join(save_dir, filename)
+    metadata_path = os.path.join(save_dir, f"{timestamp}_{unique_id}_metadata.json")
+    
+    with open(image_path, 'wb') as f:
+        f.write(image_bytes)
+
+    # Save metadata including IP address
+    metadata = {
+        'timestamp': datetime.now().isoformat(),
+        'filename': filename,
+        'ip_address': ip_address
+    }
+    
+    # Add prediction data if provided
+    if prediction_data:
+        metadata['prediction_data'] = prediction_data
+    
+    # Save metadata to JSON file
+    metadata_path = os.path.join(save_dir, f"{timestamp}_{unique_id}_metadata.json")
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    logger.info(f"Saved uploaded image to: {image_path}")
+    return image_path
+
+
+def update_metadata(metadata_path, prediction_data):
+    """Update metadata file with prediction results."""
+    try:
+        # Read existing metadata
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        # Add prediction data
+        metadata['prediction_data'] = prediction_data
+        
+        # Save updated metadata
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        logger.info(f"Updated metadata at: {metadata_path} with prediction results")
+    except Exception as e:
+        logger.error(f"Error updating metadata: {str(e)}")
+
 
 def get_top_k_similar_fonts(query_embedding: torch.Tensor, k: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """Find k most similar fonts using embedding similarity."""
@@ -216,9 +275,16 @@ def load_model_and_embeddings(model_path: str,
         logger.error(traceback.format_exc())
         raise
 
-def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mapping_file=None, use_char_model=True):
+def create_app(model_path=None, data_dir=None, embeddings_path=None, 
+               label_mapping_file=None, use_char_model=True, uploads_dir="uploads"):
     """Factory function to create and configure Flask app instance."""
     app = Flask(__name__)
+    uploads_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), uploads_dir)
+    os.makedirs(uploads_path, exist_ok=True)
+    logger.info(f"Uploads directory: {uploads_path}")
+    
+    # Store path in app config for access in routes
+    app.config['UPLOADS_PATH'] = uploads_path
 
     label_mapping_path = os.path.join(data_dir, label_mapping_file)
 
@@ -261,6 +327,20 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
 
             # Get and preprocess image
             image_bytes = request.files['image'].read()
+            
+            # Get IP address - handle proxies 
+            if request.headers.getlist("X-Forwarded-For"):
+                # If behind a proxy, get the real IP
+                ip_address = request.headers.getlist("X-Forwarded-For")[0]
+            else:
+                ip_address = request.remote_addr
+            # TODO get uploads path and prediction data and pass
+            image_path, metadata_path = save_uploaded_image(
+                image_bytes, 
+                app.config['UPLOADS_PATH'], 
+                ip_address
+            )
+
             
             # Convert uploaded image bytes to tensor 
             # Todo this needs to match the dataloader
@@ -376,6 +456,13 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
                     }
                     for idx, prob in zip(top_k_cls_indices, top_k_probs)
                 ]
+
+                prediction_results = {
+                    'embedding_similarity': embedding_results,
+                    'classifier_predictions': classifier_results,
+                    'research_mode': research_mode
+                }
+                update_metadata(metadata_path, prediction_results)
                 
                 return jsonify({
                     'embedding_similarity': embedding_results,
@@ -400,10 +487,12 @@ def main():
     parser.add_argument("--data_dir", required=True, help="Directory containing embeddings and label mapping")
     parser.add_argument("--embeddings_path", required=True, help="Path to class_embeddings.npy")
     parser.add_argument("--label_mapping_file", default="label_mapping.npy", help="Label mapping file name")
+    parser.add_argument("--uploads_dir", default="uploads", help="Directory to save uploaded images")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     
-    app = create_app(args.model_path, args.data_dir, args.embeddings_path, args.label_mapping_file)
+    app = create_app(args.model_path, args.data_dir, args.embeddings_path, 
+                     args.label_mapping_file, uploads_dir=args.uploads_dir)
     app.run(host='0.0.0.0', port=args.port, debug=True)
 
 if __name__ == '__main__':
