@@ -1,4 +1,5 @@
 import os
+import gc
 import random
 import logging
 import argparse
@@ -693,17 +694,27 @@ class FontDatasetGenerator:
         
         logger.info(f"Generated {len(font_configs)} font configurations")
         
-        # Process font configurations in parallel
-        with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-            futures = []
-            for font_name, sample_id in font_configs:
-                futures.append(executor.submit(self._process_font, font_name, sample_id))
+        # num_workers = max(1, multiprocessing.cpu_count() // 2)
+        num_workers = max(1, multiprocessing.cpu_count())  #
+        batch_size = 100    
+
+        for i in range(0, len(font_configs), batch_size):
+            batch = font_configs[i:i+batch_size]
+            logger.info(f"Processing batch {i//batch_size + 1}/{(len(font_configs) + batch_size - 1)//batch_size} ({len(batch)} samples)")
             
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Font processing failed: {e}")
+            # Process font configurations in parallel
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                futures = []
+                for font_name, sample_id in font_configs:
+                    futures.append(executor.submit(self._process_font, font_name, sample_id))
+                
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Font processing failed: {e}")
+
+            gc.collect()
         
         self._create_dataset_description()
     
