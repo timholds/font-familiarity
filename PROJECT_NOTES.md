@@ -487,6 +487,19 @@ We can probably get some perf gains from parallelizing some parts of the model a
 
 Related; i wonder if i could skip the image magnification and resizing they do
 - remove it and see what the patches look like on your training data and figure out why this is even there in the first place. i put that on chesterton and his fence frfr
+
+# V0.3.0
+- 700k dataset of 384x384 images with .25 chance of having a background, 100 - word max per image as set in get_text_sample (bumped from 50 in v0.2.0)
+- various font sizes, boldness/width, spacing/kerning, and line height 
+```
+font_size_range=(16, 80),
+weight_primary_modes=[400, 700],
+weight_primary_prob=0.3,
+letter_spacing_range=(-0.1, 0.4),
+line_height_range=(.7, 1.7)
+```  
+
+
   
 
 # Note to user: 
