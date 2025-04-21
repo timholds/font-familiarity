@@ -88,7 +88,7 @@ def save_uploaded_image(image_bytes, save_dir, ip_address=None, prediction_data=
         json.dump(metadata, f, indent=2)
     
     logger.info(f"Saved uploaded image to: {image_path}")
-    return image_path
+    return image_path, metadata_path
 
 
 def update_metadata(metadata_path, prediction_data):
@@ -382,32 +382,6 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                     )
                     print(f"finsiedh vis craft detections, image type: {type(visual_image)}")
 
-                    # from PIL import ImageDraw, ImageFont
-
-                    # visual_image = original_image.copy()
-                    # draw = ImageDraw.Draw(visual_image)
-                    
-                    # # Try to get polygons from CRAFT
-                    # logger.info("Getting polygons from CRAFT")
-                    # polygons = model.craft.get_polygons(original_image)
-                    # logger.info(f"Found {len(polygons)} polygons")
-                    
-                    # # Draw polygons on the image
-                    # for poly in polygons:
-                    #     # Convert to tuple format for PIL
-                    #     poly_tuple = [tuple(p) for p in poly]
-                    #     draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
-                    
-                    # # Add text showing number of detections
-                    # try:
-                    #     font = ImageFont.truetype("arial.ttf", 20)
-                    # except:
-                    #     font = ImageFont.load_default()
-                    
-                    # draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
-                    #         fill=(0, 0, 0), font=font)
-                        
-                        
                     # Convert visualization to base64
                     import io as bio
                     import base64
