@@ -68,7 +68,8 @@ def parse_args():
     parser.add_argument("--samples_per_class", default=10, type=int, help="Samples per class")
     parser.add_argument("--test_size", default=0.1, type=float, help="Test size ratio")
     parser.add_argument("--batch_size", default=32, type=int, help="Batch size for CRAFT pre-extraction")
-    
+    parser.add_argument("--background_probability", default=.2)
+    parser.add_argument("--color_probability", default=.3)
     # Output parameters
     parser.add_argument("--font_images_dir", default="test-data/font-images-384-spc10", help="Output directory for font images")
     parser.add_argument("--dataset_dir", default="test-data/dataset-384-spc10", help="Output directory for dataset")
@@ -100,7 +101,11 @@ def main():
     
     # Command 1: Create font PIL images
     if not args.skip_font_images:
-        cmd1 = f"python data_generation/create_font_pil_images.py --text_file {args.text_file} --backgrounds_dir {args.backgrounds_dir} --background_probability .25 --font_file {args.font_file} --image_resolution {args.image_resolution} --output_dir {args.font_images_dir} --samples_per_class {args.samples_per_class}"
+        cmd1 = f"python data_generation/create_font_pil_images.py --text_file {args.text_file} \
+            --backgrounds_dir {args.backgrounds_dir} --background_probability {args.background_probability} \
+            --font_file {args.font_file} --image_resolution {args.image_resolution} \
+            --output_dir {args.font_images_dir} --samples_per_class {args.samples_per_class} \
+            --color_probability {args.color_probability}"
         run_command(cmd1, "Creating font PIL images")
     else:
         print("Skipping: Creating font PIL images")
