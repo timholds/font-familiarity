@@ -699,38 +699,45 @@ class FontDatasetGenerator:
     
    
     def generate_dataset(self):
-        """Generate the dataset."""
+        """Generate the dataset by processing one font at a time."""
         logger.info(f"Starting dataset generation with {len(self.fonts)} fonts")
         
-        # Generate configurations for all font samples
-        font_configs = []
-        for font in self.fonts:
-            for sample_id in range(self.num_samples_per_font):
-                font_configs.append((font, sample_id))
+        num_workers = max(1, multiprocessing.cpu_count() // 2)
+        batch_size = 100 
         
-        logger.info(f"Generated {len(font_configs)} font configurations")
-        
-        # num_workers = max(1, multiprocessing.cpu_count() // 2)
-        num_workers = max(1, multiprocessing.cpu_count())  #
-        batch_size = 100    
-
-        for i in range(0, len(font_configs), batch_size):
-            batch = font_configs[i:i+batch_size]
-            logger.info(f"Processing batch {i//batch_size + 1}/{(len(font_configs) + batch_size - 1)//batch_size} ({len(batch)} samples)")
+        # Process one font at a time
+        for font_idx, font in enumerate(self.fonts):
+            logger.info(f"Processing font {font_idx+1}/{len(self.fonts)}: {font}")
             
-            # Process font configurations in parallel
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                futures = []
-                for font_name, sample_id in font_configs:
-                    futures.append(executor.submit(self._process_font, font_name, sample_id))
+            # Create font directory (if needed)
+            font_dir = self.output_dir / font.lower().replace(' ', '_')
+            font_dir.mkdir(exist_ok=True)
+            
+            # Process this font in batches
+            for batch_start in range(0, self.num_samples_per_font, batch_size):
+                batch_end = min(batch_start + batch_size, self.num_samples_per_font)
+                sample_ids = range(batch_start, batch_end)
                 
-                for future in as_completed(futures):
-                    try:
-                        future.result()
-                    except Exception as e:
-                        logger.error(f"Font processing failed: {e}")
-
-            gc.collect()
+                logger.info(f"  Processing samples {batch_start+1}-{batch_end} for font {font}")
+                
+                # Use a fresh pool for each batch
+                with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                    futures = []
+                    for sample_id in sample_ids:
+                        futures.append(executor.submit(self._process_font, font, sample_id))
+                    
+                    # Process all futures in this batch
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Font processing failed: {e}")
+                
+                # Clean up between batches
+                gc.collect()
+                
+                # Optional: Log progress after each batch
+                logger.info(f"  Completed batch for font {font} ({batch_end}/{self.num_samples_per_font})")
         
         self._create_dataset_description()
     
