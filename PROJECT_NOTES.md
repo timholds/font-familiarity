@@ -489,8 +489,12 @@ Related; i wonder if i could skip the image magnification and resizing they do
 - remove it and see what the patches look like on your training data and figure out why this is even there in the first place. i put that on chesterton and his fence frfr
 
 # V0.3.0
-- 700k dataset of 384x384 images with .25 chance of having a background, 100 - word max per image as set in get_text_sample (bumped from 50 in v0.2.0)
+Remove CRAFT from the training loop and preprocess the character patches before training so we don't have to do it every epoch. Takes about 10 hours to preextract that bounding boxes for a 700k dataset and each epoch takes around 20 minutes. 
+
+### Dataset Details
+- 700k dataset of 384x384 images with .25 chance of having a background, 100 word max per image as set in get_text_sample (bumped from 50 in v0.2.0)  
 - various font sizes, boldness/width, spacing/kerning, and line height 
+- slight rotations  
 ```
 font_size_range=(16, 80),
 weight_primary_modes=[400, 700],
@@ -499,8 +503,10 @@ letter_spacing_range=(-0.1, 0.4),
 line_height_range=(.7, 1.7)
 ```  
 
-
-  
+Here's a couple images from the Abeezee font family that I generated with the new data generation script. The images are 384x384 and the text is black on a white background. The text is randomly placed in the image, and the font size, weight, and spacing are all randomized.
+![Sample v0.3.0 Font Dataset Image 1](assets/v3_abeezee_sample_0007.jpg)
+![Sample v0.3.0 Font Dataset Image 2](assets/v3_abeezee_sample_0008.jpg) 
+![Sample v0.3.0 Font Dataset Image 3](assets/v3_abeezee_sample_0009.jpg)
 
 # Note to user: 
 The closer to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
