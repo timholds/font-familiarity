@@ -60,7 +60,6 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                 
                 # Forward pass with the batch data directly
                 optimizer.zero_grad()
-                breakpoint() # TODO make sure batch data is BHWC 0, 255
 
                 outputs = model(batch_data)
             else:
