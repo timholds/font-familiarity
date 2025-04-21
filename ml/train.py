@@ -60,6 +60,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                 
                 # Forward pass with the batch data directly
                 optimizer.zero_grad()
+                breakpoint() # TODO make sure batch data is BHWC 0, 255
+
                 outputs = model(batch_data)
             else:
                 # Traditional path with images
@@ -67,6 +69,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                 
                 # Forward pass with separate arguments
                 optimizer.zero_grad()
+                
                 outputs = model(images, targets)
 
             # Handle different output formats from model
@@ -103,7 +106,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             
             # Forward pass
             optimizer.zero_grad()
-            logits = model(data)
+            logits =    (data)
         
         # Compute loss and backward
         loss = criterion(logits, targets)
@@ -143,17 +146,17 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                             targets=targets,
                             save_path=vis_path
                         )
-            # elif char_model and hasattr(model, 'extract_patches_with_craft') and not model.use_precomputed_craft:
-            #     # Only try to extract patches if not using precomputed and CRAFT is available
-            #     with torch.no_grad(): 
-            #         patch_data = model.extract_patches_with_craft(images) # images BHWC
-            #         model.visualize_char_preds(
-            #             patches=patch_data['patches'],
-            #             attention_mask=patch_data['attention_mask'],
-            #             predictions=pred,
-            #             targets=targets,
-            #             save_path=vis_path
-            #         )
+            elif char_model and hasattr(model, 'extract_patches_with_craft') and not model.use_precomputed_craft:
+                # Only try to extract patches if not using precomputed and CRAFT is available
+                with torch.no_grad(): 
+                    patch_data = model.extract_patches_with_craft(images) # images BHWC
+                    model.visualize_char_preds(
+                        patches=patch_data['patches'],
+                        attention_mask=patch_data['attention_mask'],
+                        predictions=pred,
+                        targets=targets,
+                        save_path=vis_path
+                    )
 
             # Add CRAFT detection visualization - only if not using precomputed
             # bc if we are using precompute, data loader is not returning original images, just patches

@@ -487,11 +487,14 @@ class CRAFTFontClassifier(nn.Module):
             #print(f"Processing image with shape: {image_tensor.shape}")
             
             # Handle tensor with explicit shape checking
-            if len(image_tensor.shape) == 3:  # [C, H, W]
+            if len(image_tensor.shape) == 3 and image_tensor.shape[0] == 3:  # [C, H, W]
                 # Standard CHW format
                 img_np = image_tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8) # HWC for craft
-                print(f"Image tensor shape permuted to: {img_np.shape}")
-
+                print(f"Image tensor shape permuted from {image_tensor.shape} to: {img_np.shape}")
+            elif len(image_tensor.shape) == 3 and image_tensor.shape[2] == 3:  # [H, W, C]
+                # HWC format
+                img_np = image_tensor.cpu().numpy().astype(np.uint8)
+                print(f"Image tensor shape: {image_tensor.shape} to: {img_np.shape}")
             else:
                 raise ValueError(f"Unexpected tensor shape: {image_tensor.shape}")
                            
@@ -649,7 +652,7 @@ class CRAFTFontClassifier(nn.Module):
             pad_w = (self.patch_size - new_w) // 2
             normalized[pad_h:pad_h+new_h, pad_w:pad_w+new_w] = resized
             
-            return normalized / 255.0  # Normalize to [0,1]
+            return normalized #/ 255.0  # Normalize to [0,1]
         except Exception as e:
             print(f"Error normalizing patch: {e}, patch shape: {patch.shape}")
             # Always return grayscale
@@ -721,6 +724,8 @@ class CRAFTFontClassifier(nn.Module):
         if targets is not None:
             batch_data['labels'] = targets.to(self.device)
 
+        print(f"CHAR_MODEL Extracted {batch_data['patches'].shape} patches for {images.shape[0]} images")
+        print(f"patches min and max valyes {batch_data['patches'].min()}, {batch_data['patches'].max()}")
         # Process patches with font classifier
         output = self.font_classifier(
             batch_data['patches'], 
