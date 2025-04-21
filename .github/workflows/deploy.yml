@@ -8,8 +8,7 @@ permissions:
 on:
   push:
     branches:
-      - main
-      - image_upload
+      - deploy
     paths:
       - 'frontend_app.py'
       - 'ml/**'
