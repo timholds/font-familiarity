@@ -250,6 +250,36 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             h5_file_handle.close()
 
 
+<<<<<<< Updated upstream
+=======
+def combine_batch_files(data_dir, mode, cleanup=True):
+    """
+    Combine individual batch files into a single output file without loading all into memory.
+    
+    Parameters:
+    - data_dir: Directory containing the batch files
+    - mode: 'train' or 'test'
+    - cleanup: Whether to delete batch files after combining
+    """
+   
+    # Get list of batch files
+    batch_files = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
+    batch_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))  # Sort by batch number
+    
+    # Create a list file that contains paths to all batch files
+    list_file = os.path.join(data_dir, f'{mode}_batch_list.txt')
+    with open(list_file, 'w') as f:
+        for batch_file in batch_files:
+            f.write(os.path.join(data_dir, batch_file) + '\n')
+    
+    print(f"Created list of {len(batch_files)} batch files in {list_file}")
+    print(f"To load these boxes, use load_boxes_from_batches('{list_file}')")
+    
+    if cleanup:
+        print("Cleaning up batch files...")
+        for batch_file in batch_files:
+            os.remove(os.path.join(data_dir, batch_file))
+>>>>>>> Stashed changes
 
 if __name__ == "__main__":
 
