@@ -153,6 +153,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Hide results
         resultsContainer.classList.add('hidden');
+
+        visualizationContainer.classList.add('hidden');
         
         // Hide reset button
         document.getElementById('resetButtonContainer').classList.add('hidden');

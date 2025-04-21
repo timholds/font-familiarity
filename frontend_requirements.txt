@@ -13,7 +13,7 @@ torchvision==0.15.1 --index-url https://download.pytorch.org/whl/cpu
 Flask
 gunicorn
 scikit-image
-
+matplotlib
 # Core dependencies
 numpy==1.26.4
 Pillow
