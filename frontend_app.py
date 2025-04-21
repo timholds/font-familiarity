@@ -130,10 +130,11 @@ def load_char_model_and_embeddings(model_path: str,
                 break
         
         # Initialize model
+        # TODO pull this from state_dict
         model = CRAFTFontClassifier(
             num_fonts=num_fonts,
             device=device,
-            patch_size=32,
+            patch_size=32, 
             embedding_dim=embedding_dim,
             craft_fp16=False,  # Conservative setting for production
             use_precomputed_craft=False
@@ -254,6 +255,10 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             return jsonify({'error': 'No image provided'}), 400
         research_mode = request.form.get('research_mode', 'false').lower() == 'true'
         try:
+
+            # TODO figure out exactly what format we need our images in 
+            # to visualize them with visualize_craft_detections
+
             # Get and preprocess image
             image_bytes = request.files['image'].read()
             
@@ -264,50 +269,63 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             image = original_image.convert('RGB')
             logger.info(f"Converted image mode: {image.mode}, size: {image.size}")
             
-            transform = transforms.Compose([
-                transforms.Resize((512, 512)), 
-                transforms.ToTensor()
-            ])
-            image_tensor = transform(image).unsqueeze(0).to(device)
-            # Pass a PIL image to model?
+            # do i need to creat a numpy tensor or can torch take in pil iamge 
 
+            # TODO get rid of totensor and pass hwc 0,255 since we 
+            # gotta extract patches with craft
+            # transform = transforms.Compose([
+            #     transforms.Resize((512, 512)),
+            #     #transforms.PILToTensor() 
+            #     #transforms.ToTensor()
+            # ])
+            # convert pil image to numpy
+            image_np = np.array(image)
+            image_tensor = torch.from_numpy(image_np).unsqueeze(0).to(device)
+            # image tensor BHWC 0, 255 still
             response_data = {}
         
+            # TODO use built in visualize_craft_detections 
             # Generate visualization if in research mode
             if research_mode and isinstance(model, CRAFTFontClassifier):
                 logger.info("Generating visualization for research mode")   
                 try:
-                #     # TODO add option to return image
-                    # visualized_image = model.visualize_craft_detections(
-                    #     images=image_tensor,  # Original images
-                    #     label_mapping=label_mapping,
-                    #     targets=None,
-                    #     save_path=None
-                    # )
-                    from PIL import ImageDraw, ImageFont
+                    # TODO add option to return image
+                    # breakpoint()
+                    # TODO want unnormalized BHWC tensor
+                    #print(f"original image shape: {original_image.size}, type {type(original_image)}")
+                    # want tensor 0, 255 bHWC
+                    visual_image = model.visualize_craft_detections(
+                        images=image_tensor,  # Original images
+                        label_mapping=label_mapping,
+                        targets=None,
+                        save_path=None
+                    )
+                    print(f"finsiedh vis craft detections, image type: {type(visual_image)}")
 
-                    visual_image = original_image.copy()
-                    draw = ImageDraw.Draw(visual_image)
+                    # from PIL import ImageDraw, ImageFont
+
+                    # visual_image = original_image.copy()
+                    # draw = ImageDraw.Draw(visual_image)
                     
-                    # Try to get polygons from CRAFT
-                    logger.info("Getting polygons from CRAFT")
-                    polygons = model.craft.get_polygons(original_image)
-                    logger.info(f"Found {len(polygons)} polygons")
+                    # # Try to get polygons from CRAFT
+                    # logger.info("Getting polygons from CRAFT")
+                    # polygons = model.craft.get_polygons(original_image)
+                    # logger.info(f"Found {len(polygons)} polygons")
                     
-                    # Draw polygons on the image
-                    for poly in polygons:
-                        # Convert to tuple format for PIL
-                        poly_tuple = [tuple(p) for p in poly]
-                        draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
+                    # # Draw polygons on the image
+                    # for poly in polygons:
+                    #     # Convert to tuple format for PIL
+                    #     poly_tuple = [tuple(p) for p in poly]
+                    #     draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
                     
-                    # Add text showing number of detections
-                    try:
-                        font = ImageFont.truetype("arial.ttf", 20)
-                    except:
-                        font = ImageFont.load_default()
+                    # # Add text showing number of detections
+                    # try:
+                    #     font = ImageFont.truetype("arial.ttf", 20)
+                    # except:
+                    #     font = ImageFont.load_default()
                     
-                    draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
-                            fill=(0, 0, 0), font=font)
+                    # draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
+                    #         fill=(0, 0, 0), font=font)
                         
                         
                     # Convert visualization to base64
@@ -326,6 +344,7 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None, label_mappi
             with torch.no_grad():
                 if isinstance(model, CRAFTFontClassifier):
                     # Character model - get embedding and logits
+                    # TODO make sure model is expecting HWC 0, 255 input
                     outputs = model(image_tensor)
                     embedding = outputs['font_embedding']
                     logits = outputs['logits']

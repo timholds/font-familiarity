@@ -437,6 +437,9 @@ class CharacterFontDataset(Dataset):
             }
         
         else:
+            # print(f"WARNING: No precomputed CRAFT boxes for image {idx}, using full image")
+            # print(f"WARNING: Using full image for index {idx}")
+            # print(f"WARNING: Image shape: {img.shape}")
             # Convert the full image to tensor
             img_tensor = torch.from_numpy(img).float()
 
@@ -444,8 +447,10 @@ class CharacterFontDataset(Dataset):
             if img_tensor.dim() == 2:  # If grayscale without channel
                 img_tensor = img_tensor.unsqueeze(0)
             
-           
-            return img_tensor, target
+            return {
+                'images': img_tensor,
+                'labels': target
+            }
 
 def char_collate_fn(batch):
     """
@@ -501,10 +506,17 @@ def char_collate_fn(batch):
             'attention_mask': attention_batch,
             'labels': targets_batch
         }
+    elif 'images' in batch[0]:
+        # Handle raw images
+        images = torch.stack([item['images'] for item in batch])
+        targets = torch.stack([item['labels'] for item in batch])
+        return {
+            'images': images,
+            'labels': targets
+        }
     else:
-        raise ValueError("Data loader: Batch does not contain 'patches' key. Check dataset output format.")
-
-
+        raise ValueError("Data loader: Batch does not contain 'patches' or 'images' key. Check dataset output format.")
+    
 def get_char_dataloaders(
     data_dir: str,
     batch_size: int = 32,

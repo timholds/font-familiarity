@@ -308,7 +308,6 @@ class TextRenderer:
     
     def _create_background(self, width, height, bg_color="#FFFFFF"):
         """Create a background image."""
-        # breakpoint()
         if self.backgrounds_dir and self.background_images and random.random() < self.background_probability:
             # Use a random background image
             

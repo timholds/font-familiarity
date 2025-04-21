@@ -378,13 +378,14 @@ class CRAFTFontClassifier(nn.Module):
         Visualize CRAFT character detections on original images
 
         Args:
-            images: Tensor of shape [batch_size, channels, height, width]
+            images: Tensor of shape [batch_size, height, width, channels] 0,255
             save_path: Path to save visualization
         """
         import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
         import os
-
+        print(f"VISUALIZE CRAFT DETECTION Input tensor type: {type(images)}")
+        print(f"VISUALIZE CRAFT DETECTION Input tensor shape: {images.shape}")
         batch_size = min(4, images.size(0))  # Visualize up to 4 samples
         label_mapping = {v: k for k, v in label_mapping.items()}
 
@@ -427,7 +428,7 @@ class CRAFTFontClassifier(nn.Module):
                         fill=(0, 0, 0), font=font)
 
             # Save with exact dimensions
-            if save_path and targets:
+            if save_path is not None and targets is not None:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 image_label = targets[b].item()
                 pil_img.save(f"{save_path}_{label_mapping[image_label]}_craft_sample_{b}.png")
@@ -479,6 +480,7 @@ class CRAFTFontClassifier(nn.Module):
         batch_size = images.size(0)
         all_patches = []
         attention_masks = []
+        print(f"Processing {images.shape} in extract_patches_with_craft")
 
         for i in range(batch_size):
             image_tensor = images[i]
@@ -711,6 +713,8 @@ class CRAFTFontClassifier(nn.Module):
 
         # Extract patches with CRAFT (only done once now)
         print(f"\n\nExtracting patches with CRAFT for {images.shape} images")
+        print(f"Image max value: {images.max()}, min value: {images.min()}")
+    
         batch_data = self.extract_patches_with_craft(images)
 
         # Add labels if available
