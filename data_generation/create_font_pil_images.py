@@ -691,7 +691,7 @@ class FontDatasetGenerator:
             image_path = font_dir / image_filename
             image.save(image_path, quality=90)
      
-            logger.info(f"Generated sample {sample_id} for font {font_name}")
+            #logger.info(f"Generated sample {sample_id} for font {font_name}")
             return True
         except Exception as e:
             logger.error(f"Error generating sample for font {font_name}: {e}")
@@ -703,7 +703,7 @@ class FontDatasetGenerator:
         logger.info(f"Starting dataset generation with {len(self.fonts)} fonts")
         
         num_workers = max(1, multiprocessing.cpu_count() // 2)
-        batch_size = 100 
+        batch_size = 256 
         
         # Process one font at a time
         for font_idx, font in enumerate(self.fonts):
