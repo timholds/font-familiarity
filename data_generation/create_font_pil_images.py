@@ -702,7 +702,7 @@ class FontDatasetGenerator:
         """Generate the dataset by processing one font at a time."""
         logger.info(f"Starting dataset generation with {len(self.fonts)} fonts")
         
-        num_workers = max(1, multiprocessing.cpu_count() // 2)
+        num_workers = max(1, multiprocessing.cpu_count())
         batch_size = 256 
         
         # Process one font at a time
