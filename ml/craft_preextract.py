@@ -19,15 +19,31 @@ import pstats
 import h5py
 
 
-def convert_polygons_to_boxes(polygons):
+def convert_polygons_to_boxes(polygons, pad=False, asym=False):
     """Convert polygons to bounding boxes"""
     boxes = []
+    pad_x = 3
+    pad_y = 10
     try:
         for poly in polygons:
             x_coords = [p[0] for p in poly]
             y_coords = [p[1] for p in poly]
             x1, y1 = min(x_coords), min(y_coords)
             x2, y2 = max(x_coords), max(y_coords)
+            if pad:
+                if not asym:
+                    x1 -= pad_x
+                    y1 -= pad_y
+                    x2 += pad_x
+                    y2 += pad_y
+                else:
+                    x1 -= pad_x
+                    y1 -= pad_y
+                    y2 += pad_y
+                    # x2 is unchaned - only adding padding on left
+               
+
+                
             boxes.append([int(x1), int(y1), int(x2), int(y2)])
     except Exception as e:
         print(f"Error converting polygons to boxes: {e}")
@@ -218,7 +234,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             
             # Convert to torch tensor
             # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
-            batch_boxes = [convert_polygons_to_boxes(polygons) for polygons in batch_polys]
+            batch_boxes = [convert_polygons_to_boxes(polygons, pad=True, asym=True) for polygons in batch_polys]
             #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             
             output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')

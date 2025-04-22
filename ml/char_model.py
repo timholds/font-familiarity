@@ -436,7 +436,8 @@ class CRAFTFontClassifier(nn.Module):
                 return pil_img
                 #pil_img.show()  # Display directly with PIL
 
-    def add_padding_to_polygons(polygons, padding_x=5, padding_y=8):
+    def add_padding_to_polygons(polygons, padding_x=5, padding_y=8, asym=False):
+        "The CRAFT patches tend to skew right, so we add padding to the left only with asym=True"
         padded_polygons = []
 
         for polygon in polygons:
@@ -449,17 +450,21 @@ class CRAFTFontClassifier(nn.Module):
             min_y = np.min(polygon[:, 1])
             max_y = np.max(polygon[:, 1])
 
-            # Calculate width and height
-            width = max_x - min_x
-            height = max_y - min_y
-
             # Create expanded rectangle
-            expanded_rect = np.array([
-                [min_x - padding_x, min_y - padding_y],
-                [max_x + padding_x, min_y - padding_y],
-                [max_x + padding_x, max_y + padding_y],
-                [min_x - padding_x, max_y + padding_y]
-            ])
+            if not asym:
+                expanded_rect = np.array([
+                    [min_x - padding_x, min_y - padding_y],
+                    [max_x + padding_x, min_y - padding_y],
+                    [max_x + padding_x, max_y + padding_y],
+                    [min_x - padding_x, max_y + padding_y]
+                ])
+            else:
+                expanded_rect = np.array([
+                    [min_x - padding_x, min_y - padding_y],
+                    [max_x, min_y - padding_y],
+                    [max_x, max_y + padding_y],
+                    [min_x - padding_x, max_y + padding_y]
+                ])
 
             padded_polygons.append(expanded_rect)
 
