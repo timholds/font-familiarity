@@ -17,7 +17,8 @@ from CRAFT.craft_utils import adjustResultCoordinates, getDetBoxes
 import cProfile
 import pstats
 import h5py
-
+from torch.utils.data import DataLoader
+from dataset import CharacterFontDataset
 
 def create_checkpoint_file(data_dir, mode, completed_idx):
     """Create a checkpoint file to track completed images"""
@@ -173,7 +174,221 @@ def process_single_image(text_score, link_score, ratio_w, ratio_h, text_threshol
     boxes = adjustResultCoordinates(boxes, ratio_w, ratio_h)
     return convert_polygons_to_boxes(boxes)
 
-
+def preprocess_craft_optimized(data_dir, device="cuda", batch_size=32, resume=True, num_workers=None, canvas_size=1280, mag_ratio=1.5):
+    """
+    Optimized version of preprocess_craft that leverages DataLoader prefetching
+    and handles robustness to interruptions by periodically closing/reopening the H5 file.
+    
+    Args:
+        data_dir: Directory containing the dataset files
+        device: Device to use for CRAFT model (cuda or cpu)
+        batch_size: Number of images to process at once
+        resume: Whether to resume from previous checkpoint
+        num_workers: Number of worker processes for DataLoader
+        canvas_size: Canvas size for CRAFT model
+        mag_ratio: Magnification ratio for CRAFT model
+    """
+    if num_workers is None:
+        num_workers = min(multiprocessing.cpu_count(), batch_size)
+    
+    # Process chunks of batches for robustness
+    CHUNK_SIZE = 10  # Open/close file every 10 batches
+    
+    for mode in ['train', 'test']:
+        print(f"Processing {mode} set...")
+        
+        # Initialize CRAFT model - only once per mode
+        craft_model = CRAFTModel(
+            cache_dir='weights/',
+            device=device,
+            use_refiner=False,
+            fp16=(device == "cuda"),
+            link_threshold=1.,
+            text_threshold=.8,
+            low_text=.4,
+        )
+        
+        # Create temporary dataset for leveraging DataLoader's prefetching
+        temp_dataset = None
+        output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
+        
+        # Handle resuming logic
+        start_idx = 0
+        if resume:
+            # Check checkpoint file first (most reliable)
+            checkpoint_idx = read_checkpoint_file(data_dir, mode)
+            if checkpoint_idx >= 0:
+                start_idx = checkpoint_idx + 1
+                print(f"Resuming from checkpoint at index {start_idx}")
+            # If no checkpoint, check H5 file
+            elif os.path.exists(output_file):
+                try:
+                    with h5py.File(output_file, 'r') as h5f:
+                        if 'boxes' in h5f:
+                            try:
+                                processed_indices = list(h5f['boxes'].keys())
+                                if processed_indices:
+                                    processed_indices = [int(idx) for idx in processed_indices]
+                                    start_idx = max(processed_indices) + 1
+                                    print(f"Resuming from H5 file at index {start_idx}")
+                            except Exception as e:
+                                print(f"Error reading H5 keys: {e}. Starting from scratch.")
+                                if os.path.exists(output_file):
+                                    backup_file = output_file + ".backup"
+                                    if os.path.exists(backup_file):
+                                        os.remove(backup_file)
+                                    os.rename(output_file, backup_file)
+                                    print(f"Created backup of potentially corrupted file: {backup_file}")
+                except Exception as e:
+                    print(f"Error opening H5 file: {e}. Starting from scratch.")
+                    if os.path.exists(output_file):
+                        backup_file = output_file + ".backup"
+                        if os.path.exists(backup_file):
+                            os.remove(backup_file)
+                        os.rename(output_file, backup_file)
+                        print(f"Created backup of potentially corrupted file: {backup_file}")
+        else:
+            # Not resuming, start fresh
+            if os.path.exists(output_file):
+                os.remove(output_file)
+                print(f"Removed existing file: {output_file}")
+            checkpoint_file = os.path.join(data_dir, f'{mode}_craft_checkpoint.txt')
+            if os.path.exists(checkpoint_file):
+                os.remove(checkpoint_file)
+                print(f"Removed existing checkpoint file: {checkpoint_file}")
+        
+        try:
+            # Create dataset without using precomputed CRAFT boxes
+            temp_dataset = CharacterFontDataset(
+                data_dir, 
+                train=(mode == 'train'),
+                use_precomputed_craft=False
+            )
+            
+            # Create DataLoader with prefetching
+            temp_loader = DataLoader(
+                temp_dataset,
+                batch_size=batch_size,
+                shuffle=False,  # Keep order for resuming
+                num_workers=num_workers,
+                pin_memory=True,
+                prefetch_factor=2  # Prefetch 2 batches
+            )
+            
+            num_images = len(temp_dataset)
+            start_batch = start_idx // batch_size
+            
+            # Initialize H5 file
+            h5f = None
+            current_chunk = -1
+            
+            # Process batches
+            for batch_idx, batch in enumerate(tqdm(temp_loader, desc=f"Processing {mode} data")):
+                # Skip already processed batches
+                if batch_idx < start_batch:
+                    continue
+                
+                # Calculate the real index for the first image in batch
+                batch_start_idx = batch_idx * batch_size
+                
+                # Handle file opening/closing by chunks for robustness
+                chunk_id = batch_idx // CHUNK_SIZE
+                if chunk_id != current_chunk or h5f is None:
+                    if h5f is not None:
+                        h5f.close()
+                        print(f"Closed H5 file after chunk {current_chunk}")
+                    
+                    h5f = h5py.File(output_file, 'a')
+                    group = h5f.require_group('boxes')
+                    group.attrs['preprocessing_batch_size'] = batch_size
+                    current_chunk = chunk_id
+                    print(f"Opened H5 file for chunk {current_chunk}")
+                
+                # Extract images from batch - handle different formats
+                if 'images' in batch:
+                    batch_images = batch['images'].cpu().numpy()
+                else:
+                    # Fallback for non-standard format
+                    print(f"Warning: Unexpected batch format. Keys: {batch.keys()}")
+                    continue
+                
+                # Preprocess images
+                batch_tensors, ratios_w, ratios_h = batch_preprocess_image_np(
+                    batch_images, canvas_size, mag_ratio
+                )
+                
+                # Prepare for CRAFT model
+                batch_img_tensors = torch.from_numpy(batch_tensors).to(device)
+                ratios_w_tensor = torch.tensor(ratios_w, device=device)
+                ratios_h_tensor = torch.tensor(ratios_h, device=device)
+                
+                # Get polygons from CRAFT model
+                batch_polys = craft_model.get_batch_polygons(
+                    batch_img_tensors, ratios_w_tensor, ratios_h_tensor
+                )
+                
+                # Convert polygons to boxes
+                batch_boxes = [convert_polygons_to_boxes(polygons, pad=True, asym=True) 
+                              for polygons in batch_polys]
+                
+                # Store results in H5 file
+                for j, boxes in enumerate(batch_boxes):
+                    img_idx = batch_start_idx + j
+                    
+                    if img_idx < num_images:
+                        try:
+                            # Ensure boxes has correct shape
+                            boxes_array = np.array(boxes, dtype=np.int32)
+                            if len(boxes) == 0:
+                                boxes_array = np.empty((0, 4), dtype=np.int32)
+                            elif boxes_array.ndim == 1:
+                                # If somehow we got a 1D array, reshape it
+                                boxes_array = boxes_array.reshape(-1, 4)
+                            
+                            # Store in H5 file
+                            if str(img_idx) in group:
+                                del group[str(img_idx)]  # Replace if exists
+                            
+                            dset = group.create_dataset(
+                                name=str(img_idx),
+                                data=boxes_array,
+                                compression="gzip"
+                            )
+                        except Exception as e:
+                            print(f"Error storing boxes for image {img_idx}: {e}")
+                
+                # Explicitly flush after each batch for safety
+                h5f.flush()
+                
+                # Update checkpoint after each batch
+                last_processed_idx = min(batch_start_idx + len(batch_boxes) - 1, num_images - 1)
+                create_checkpoint_file(data_dir, mode, last_processed_idx)
+                
+                # Free memory
+                del batch_img_tensors
+                del batch_polys
+                del batch_boxes
+                torch.cuda.empty_cache()
+            
+        except Exception as e:
+            print(f"Error during processing: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Clean up resources
+            if 'h5f' in locals() and h5f is not None:
+                h5f.close()
+                print("Closed H5 file.")
+            
+            if 'temp_dataset' in locals() and temp_dataset is not None and hasattr(temp_dataset, 'h5_file') and temp_dataset.h5_file is not None:
+                temp_dataset.h5_file.close()
+                print("Closed dataset H5 file.")
+            
+            # Clear CUDA cache
+            torch.cuda.empty_cache()
+    
+    print("CRAFT preprocessing completed successfully.")
+    
 def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_workers=None):
     """Preprocess CRAFT results for entire dataset"""
     if num_workers is None:
@@ -327,7 +542,10 @@ if __name__ == "__main__":
     # profiler = cProfile.Profile()
     # profiler.enable()
 
-    preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size, resume=not args.no_resume)
+    # preprocess_craft(args.data_dir, device="cuda", batch_size=args.batch_size, resume=not args.no_resume)
+    preprocess_craft_optimized(args.data_dir, device="cuda", batch_size=args.batch_size, 
+                               resume=not args.no_resume)
+
     # profiler.disable()
     # stats = pstats.Stats(profiler)
     # stats.sort_stats('cumulative').print_stats(40)  # Show top 40 functions by cumulative time
