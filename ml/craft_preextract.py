@@ -19,6 +19,23 @@ import pstats
 import h5py
 
 
+def create_checkpoint_file(data_dir, mode, completed_idx):
+    """Create a checkpoint file to track completed images"""
+    checkpoint_file = os.path.join(data_dir, f'{mode}_craft_checkpoint.txt')
+    with open(checkpoint_file, 'w') as f:
+        f.write(str(completed_idx))
+
+def read_checkpoint_file(data_dir, mode):
+    """Read checkpoint file to get last completed image index"""
+    checkpoint_file = os.path.join(data_dir, f'{mode}_craft_checkpoint.txt')
+    if os.path.exists(checkpoint_file):
+        with open(checkpoint_file, 'r') as f:
+            try:
+                return int(f.read().strip())
+            except:
+                return -1
+    return -1
+
 def convert_polygons_to_boxes(polygons, pad=False, asym=False):
     """Convert polygons to bounding boxes"""
     boxes = []
@@ -192,28 +209,51 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             raise FileNotFoundError(f"No dataset file found at {h5_file} or {npz_file}")
         
         output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
-        with h5py.File(output_file, 'w') as h5f:  # Truncate existing file
-            h5f.create_group('boxes')
-            h5f['boxes'].attrs['preprocessing_batch_size'] = batch_size
 
-        
-        # Check for partial file and resume if requested        
+        start_idx = 0
         if resume:
-            existing_batches = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
-            if existing_batches:
-                # Extract batch numbers and find the maximum
-                batch_numbers = [int(f.split('_')[1].split('.')[0]) for f in existing_batches]
-                max_batch = max(batch_numbers)
-                start_idx = (max_batch + 1) * batch_size
-                print(f"Resuming from batch {max_batch + 1}: {start_idx} images already processed")
-            else:
-                start_idx = 0
+            try:
+                # Test if file can be opened and read
+                with h5py.File(output_file, 'r') as h5f:
+                    if 'boxes' in h5f:
+                        pass  # File seems valid
+            except Exception as e:
+                print(f"H5 file appears corrupted: {e}")
+                print(f"Creating backup and starting fresh")
+                backup_file = output_file + ".backup"
+                if os.path.exists(backup_file):
+                    os.remove(backup_file)
+                os.rename(output_file, backup_file)
+                resume = False  # Force starting fresh
+
+            # First check the checkpoint file (most reliable)
+            checkpoint_idx = read_checkpoint_file(data_dir, mode)
+            if checkpoint_idx >= 0:
+                start_idx = checkpoint_idx + 1
+                print(f"Resuming from checkpoint at index {start_idx}")
+            # If no checkpoint or checkpoint is corrupted, try to scan H5 file
+            elif os.path.exists(output_file):
+                try:
+                    with h5py.File(output_file, 'r') as h5f:
+                        if 'boxes' in h5f:
+                            try:
+                                processed_indices = list(h5f['boxes'].keys())
+                                if processed_indices:
+                                    processed_indices = [int(idx) for idx in processed_indices]
+                                    start_idx = max(processed_indices) + 1
+                                    print(f"Resuming from H5 file at index {start_idx}")
+                            except Exception as e:
+                                print(f"Error reading H5 keys: {e}. Starting from scratch.")
+                except Exception as e:
+                    print(f"Error opening H5 file: {e}. Starting from scratch.")
         else:
-            # Remove any existing batch files to start fresh
-            existing_batches = [f for f in os.listdir(data_dir) if f.startswith(f'batch_') and f.endswith('.npz')]
-            for batch_file in existing_batches:
-                os.remove(os.path.join(data_dir, batch_file))
-            start_idx = 0
+            # Not resuming, start fresh
+            if os.path.exists(output_file):
+                os.remove(output_file)
+            checkpoint_file = os.path.join(data_dir, f'{mode}_craft_checkpoint.txt')
+            if os.path.exists(checkpoint_file):
+                os.remove(checkpoint_file)
+
 
         num_images = len(images)
         for i in tqdm(range(start_idx, num_images, batch_size)):
@@ -237,30 +277,36 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             batch_boxes = [convert_polygons_to_boxes(polygons, pad=True, asym=True) for polygons in batch_polys]
             #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             
-            output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
-            with h5py.File(output_file, 'a') as h5f:  
-                group = h5f.require_group('boxes')
-                # Store each image's boxes individually
-                for j, boxes in enumerate(batch_boxes):
-                    img_idx = i + j
-                   
-                    if img_idx < num_images:  # Make sure we don't go beyond the dataset size
-                        try:
-                            # Ensure boxes has shape (n, 4)
-                            boxes_array = np.array(boxes, dtype=np.int32)
-                            if len(boxes) == 0:
-                                boxes_array = np.empty((0, 4), dtype=np.int32)
-                            elif boxes_array.ndim == 1:
-                                # If somehow we got a 1D array, reshape it
-                                boxes_array = boxes_array.reshape(-1, 4)
+            for j, boxes in enumerate(batch_boxes):
+                img_idx = i + j
+
+                if img_idx < num_images:  # Make sure we don't go beyond the dataset size
+                    try:
+                        # Ensure boxes has shape (n, 4)
+                        boxes_array = np.array(boxes, dtype=np.int32)
+                        if len(boxes) == 0:
+                            boxes_array = np.empty((0, 4), dtype=np.int32)
+                        elif boxes_array.ndim == 1:
+                            # If somehow we got a 1D array, reshape it
+                            boxes_array = boxes_array.reshape(-1, 4)
+                            
+                        # Open file for each image, write, and immediately close
+                        with h5py.File(output_file, 'a') as h5f:
+                            group = h5f.require_group('boxes')
                             dset = group.create_dataset(
                                 name=str(img_idx),
                                 data=boxes_array,
                                 compression="gzip"
                             )
-                        except Exception as e:
-                            print(f"Error storing boxes for image {img_idx}: {e}")
-            
+                            # Make sure data is written to disk
+                            h5f.flush()
+                    except Exception as e:
+                        print(f"Error storing boxes for image {img_idx}: {e}")
+
+            last_processed_idx = i + len(batch_boxes) - 1
+            if last_processed_idx < num_images:
+                create_checkpoint_file(data_dir, mode, last_processed_idx)
+                        
         # Close H5 file if opened
         if using_h5 and h5_file_handle is not None:
             h5_file_handle.close()
