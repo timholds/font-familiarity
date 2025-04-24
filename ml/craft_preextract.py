@@ -296,13 +296,12 @@ def preprocess_craft_optimized(data_dir, device="cuda", batch_size=32, resume=Tr
                 if chunk_id != current_chunk or h5f is None:
                     if h5f is not None:
                         h5f.close()
-                        print(f"Closed H5 file after chunk {current_chunk}")
+                        #print(f"Closed H5 file after chunk {current_chunk}")
                     
                     h5f = h5py.File(output_file, 'a')
                     group = h5f.require_group('boxes')
                     group.attrs['preprocessing_batch_size'] = batch_size
                     current_chunk = chunk_id
-                    print(f"Opened H5 file for chunk {current_chunk}")
                 
                 # Extract images from batch - handle different formats
                 if 'images' in batch:
