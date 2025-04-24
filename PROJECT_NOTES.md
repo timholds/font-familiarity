@@ -522,6 +522,9 @@ font_size_range=(24, 70),
 
 Tweaked craft preextraction low_text from .5 to .4, link_threshold down from 1.9 to 1, and the text_treshold down from .9 to .8. I also added some padding around the character boxes skewing to the left, because thats what looked best when I was looking at the data. This is important so we don't cut off parts of letters and preserve details in characters like serifs at the very top or bottom of the patch.
 
+We went a little overboard with the backgrounds and image augmentations, so we ended up having to filter out about 2% of the dataset because they didnt have any patches extracted. These were almost exclusively cases where we had a dark background with dark font. 
+
+![Example image that we filter out because no characters are detected](assets/patchless_image_example_filtered_out.png)
 
 # V0.5.0
 contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
