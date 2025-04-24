@@ -221,6 +221,7 @@ class CharacterFontDataset(Dataset):
 
         self.precomputed_boxes = None
         self.craft_h5_file = None
+        self.valid_indices = []
 
         if self.use_precomputed_craft:
             craft_h5_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.h5')
@@ -522,6 +523,7 @@ def get_char_dataloaders(
     batch_size: int = 32,
     num_workers: int = 4, 
     use_precomputed_craft: bool = False,
+    save_problematic_images: bool = False
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
@@ -535,6 +537,68 @@ def get_char_dataloaders(
         data_dir, train=False, 
         use_precomputed_craft=use_precomputed_craft,
     )
+
+    num_classes = train_dataset.num_classes
+    label_mapping = train_dataset.label_mapping
+
+    if use_precomputed_craft:
+        # For training set
+        train_valid_indices = []
+        train_invalid_indices = []
+        for idx in range(len(train_dataset)):
+            # Check if this sample has any boxes
+            has_boxes = False
+            if train_dataset.craft_h5_file is not None:
+                if str(idx) in train_dataset.boxes_group:
+                    boxes = train_dataset.boxes_group[str(idx)][()]
+                    has_boxes = boxes.size > 0
+            else:
+                boxes = train_dataset.precomputed_boxes[idx]
+                has_boxes = len(boxes) > 0
+                
+            if has_boxes:
+                train_valid_indices.append(idx)
+            else:
+                train_invalid_indices.append(idx)
+        
+        # Same for test set
+        test_valid_indices = []
+        test_invalid_indices = []
+        for idx in range(len(test_dataset)):
+            has_boxes = False
+            if test_dataset.craft_h5_file is not None:
+                if str(idx) in test_dataset.boxes_group:
+                    boxes = test_dataset.boxes_group[str(idx)][()]
+                    has_boxes = boxes.size > 0
+            else:
+                boxes = test_dataset.precomputed_boxes[idx]
+                has_boxes = len(boxes) > 0
+                
+            if has_boxes:
+                test_valid_indices.append(idx)
+            else:
+                test_invalid_indices.append(idx)
+        
+        # Print statistics
+        print(f"\nFiltering statistics:")
+        print(f"Train set: {len(train_valid_indices)}/{len(train_dataset)} valid samples "
+              f"({len(train_valid_indices)/len(train_dataset)*100:.2f}%)")
+        print(f"Test set: {len(test_valid_indices)}/{len(test_dataset)} valid samples "
+              f"({len(test_valid_indices)/len(test_dataset)*100:.2f}%)")
+        
+        # Create filtered datasets using torch.utils.data.Subset
+        from torch.utils.data import Subset
+        train_dataset = Subset(train_dataset, train_valid_indices)
+        test_dataset = Subset(test_dataset, test_valid_indices)
+        train_dataset.num_classes = num_classes
+        train_dataset.label_mapping = label_mapping
+        test_dataset.num_classes = num_classes
+        test_dataset.label_mapping = label_mapping
+        
+        if save_problematic_images:
+            # Save problematic sample information (optional)
+            _save_problematic_samples(data_dir, train_dataset, train_invalid_indices, train=True)
+            _save_problematic_samples(data_dir, test_dataset, test_invalid_indices, train=False)
 
     assert train_dataset.num_classes == test_dataset.num_classes, (
         f"Mismatch between train ({train_dataset.num_classes}) and "
@@ -573,6 +637,57 @@ def get_char_dataloaders(
     )
     
     return train_loader, test_loader, train_dataset.num_classes
+
+def _save_problematic_samples(data_dir, dataset, invalid_indices, train=True):
+    """Save problematic samples for debugging."""
+    import os
+    from PIL import Image
+    import json
+    
+    # Create debug directory
+    debug_dir = os.path.join(data_dir, "debug-patchless")
+    os.makedirs(debug_dir, exist_ok=True)
+    
+    # Create subdirectory for train/test
+    split = "train" if train else "test"
+    split_dir = os.path.join(debug_dir, split)
+    os.makedirs(split_dir, exist_ok=True)
+    
+    # Track problematic fonts
+    problem_fonts = {}
+    
+    # Original dataset if using Subset
+    orig_dataset = dataset.dataset if hasattr(dataset, 'dataset') else dataset
+    
+    # Save each problematic image
+    for i, idx in enumerate(invalid_indices):
+        # Get the image and target
+        if hasattr(dataset, 'dataset'):
+            # If we're using a Subset, we need the original indices
+            img = orig_dataset.data[idx].astype(np.uint8)
+            target = int(orig_dataset.targets[idx])
+            font_name = orig_dataset.idx_to_font.get(target, f"unknown_{target}")
+        else:
+            img = dataset.data[idx].astype(np.uint8)
+            target = int(dataset.targets[idx])
+            font_name = dataset.idx_to_font.get(target, f"unknown_{target}")
+        
+        # Save the image
+        img_path = os.path.join(split_dir, f"{font_name}_{idx}.png")
+        Image.fromarray(img).save(img_path)
+        
+        # Track problematic fonts
+        problem_fonts[font_name] = problem_fonts.get(font_name, 0) + 1
+    
+    # Save font statistics
+    stats_path = os.path.join(debug_dir, f"{split}_problem_fonts.json")
+    with open(stats_path, 'w') as f:
+        json.dump(problem_fonts, f, indent=2)
+    
+    # Print top problematic fonts
+    print(f"\nTop problematic fonts ({split}):")
+    for font, count in sorted(problem_fonts.items(), key=lambda x: x[1], reverse=True)[:5]:
+        print(f"  {font}: {count} samples")
 
 
 if __name__ == "__main__":
