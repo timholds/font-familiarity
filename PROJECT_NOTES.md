@@ -508,8 +508,29 @@ Here's a couple images from the Abeezee font family that I generated with the ne
 ![Sample v0.3.0 Font Dataset Image 2](assets/v3_abeezee_sample_0008.jpg) 
 ![Sample v0.3.0 Font Dataset Image 3](assets/v3_abeezee_sample_0009.jpg)
 
+
+# V0.4.0
+1.3M dataset of 384x384 images with 
+```
+font_size_range=(24, 70),
+                 weight_primary_modes=[400, 700],
+                 weight_primary_prob=0.3,
+                 letter_spacing_range=(-0.1, 0.6),
+                 line_height_range=(.7, 1.4),
+                 color_probability=0.3  
+```  
+
+Tweaked craft preextraction low_text from .5 to .4, link_threshold down from 1.9 to 1, and the text_treshold down from .9 to .8. I also added some padding around the character boxes skewing to the left, because thats what looked best when I was looking at the data. This is important so we don't cut off parts of letters and preserve details in characters like serifs at the very top or bottom of the patch.
+
+
+# V0.5.0
+contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
+Fonts have a hierarchical similarity structure (serif/sans-serif, weight, style, etc.).
+
+
+
 # Note to user: 
-The closer to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
+The closer to 384x384 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
 
 
 # Similar Tools
