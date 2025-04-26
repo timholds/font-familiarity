@@ -4,8 +4,7 @@ from pathlib import Path
 
 def get_model_path(base_dir, prefix, batch_size, embedding_dim, initial_channels,
                    patch_size=32):
-    model_name = f"{prefix}_BS{batch_size}-ED{embedding_dim}-IC{initial_channels} \
-        -PS{patch_size}.pt"
+    model_name = f"{prefix}_BS{batch_size}-ED{embedding_dim}-IC{initial_channels}-PS{patch_size}.pt"
     model_path = Path(os.path.join(base_dir, model_name))
     return model_path
 
