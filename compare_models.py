@@ -7,7 +7,6 @@ import torch.nn.functional as F
 import logging
 import traceback
 import json
-from ml.font_model import SimpleCNN
 from ml.char_model import CRAFTFontClassifier
 
 # Configure logging
@@ -37,65 +36,46 @@ def get_top_k_predictions(logits, k=5):
     
     return top_k_indices.cpu().numpy(), top_k_probs.cpu().numpy()
 
-def load_model(model_path, embeddings_path, label_mapping_path, is_char_model=False):
-    """Load model and its associated embeddings and label mapping."""
+def load_model(model_path, embeddings_path):
+    """Load character-based model and its embeddings."""
     try:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f"Using device: {device}")
-        
-        # Load label mapping
-        label_mapping_raw = np.load(label_mapping_path, allow_pickle=True).item()
-        label_mapping = {v: k for k, v in label_mapping_raw.items()}
         
         # Load model state
         state = torch.load(model_path, map_location=device)
         state_dict = state['model_state_dict']
         
-        if is_char_model:
-            # For character-based model
-            classifier_key = 'font_classifier.font_classifier.weight'
-            if classifier_key in state_dict:
+        # Determine number of classes from classifier
+        classifier_key = 'font_classifier.font_classifier.weight'
+        if classifier_key in state_dict:
+            num_fonts = state_dict[classifier_key].shape[0]
+        else:
+            # Try to find classifier key
+            classifier_keys = [k for k in state_dict.keys() if 'classifier' in k and 'weight' in k]
+            if classifier_keys:
+                classifier_key = classifier_keys[0]
                 num_fonts = state_dict[classifier_key].shape[0]
             else:
-                # Try to find classifier key
-                classifier_keys = [k for k in state_dict.keys() if 'classifier' in k and 'weight' in k]
-                if classifier_keys:
-                    classifier_key = classifier_keys[0]
-                    num_fonts = state_dict[classifier_key].shape[0]
-                else:
-                    raise ValueError("Could not determine number of font classes from model")
-            
-            # Determine embedding dimension
-            embedding_dim = 512  # Default fallback
-            for key in state_dict.keys():
-                if 'projection' in key and 'weight' in key:
-                    embedding_dim = state_dict[key].shape[0]
-                    break
-            
-            # Initialize model
-            model = CRAFTFontClassifier(
-                num_fonts=num_fonts,
-                device=device,
-                patch_size=32, 
-                embedding_dim=embedding_dim,
-                craft_fp16=False,
-                use_precomputed_craft=False
-            )
-        else:
-            # For SimpleCNN model
-            embedding_weight = state_dict['embedding_layer.0.weight']
-            classifier_weight = state_dict['classifier.weight']
-            embedding_dim = embedding_weight.shape[0]
-            num_classes = classifier_weight.shape[0]
-            initial_channels = state_dict['features.0.weight'].shape[0]
-            
-            # Initialize model
-            model = SimpleCNN(
-                num_classes=num_classes,
-                embedding_dim=embedding_dim,
-                initial_channels=initial_channels
-            ).to(device)
-
+                raise ValueError("Could not determine number of font classes from model")
+        
+        # Determine embedding dimension
+        embedding_dim = 512  # Default fallback
+        for key in state_dict.keys():
+            if 'projection' in key and 'weight' in key:
+                embedding_dim = state_dict[key].shape[0]
+                break
+        
+        # Initialize model
+        model = CRAFTFontClassifier(
+            num_fonts=num_fonts,
+            device=device,
+            patch_size=32, 
+            embedding_dim=embedding_dim,
+            craft_fp16=False,
+            use_precomputed_craft=False
+        )
+        
         # Load weights and set to eval mode
         model.load_state_dict(state_dict)
         model = model.to(device)
@@ -104,7 +84,7 @@ def load_model(model_path, embeddings_path, label_mapping_path, is_char_model=Fa
         # Load embeddings
         class_embeddings = torch.from_numpy(np.load(embeddings_path)).to(device)
         
-        return model, class_embeddings, label_mapping, device
+        return model, class_embeddings, device
         
     except Exception as e:
         logger.error(f"Error during model initialization: {str(e)}")
@@ -125,22 +105,16 @@ def process_image(image_path, device):
         logger.error(f"Error processing image: {str(e)}")
         raise
 
-def compare_models(image_path, model1_info, model2_info, k=5, output_file=None):
+def compare_models(image_path, model_paths, embeddings_paths, label_mapping, k=5, output_file=None):
     """Compare predictions from two models on the same image."""
-    # Load models
-    model1, embeddings1, labels1, device = load_model(
-        model1_info['model_path'], 
-        model1_info['embeddings_path'], 
-        model1_info['label_mapping_path'], 
-        model1_info['is_char_model']
-    )
+    # Load label mapping
+    label_map = np.load(label_mapping, allow_pickle=True).item()
+    # Invert mapping from index -> font name
+    labels = {v: k for k, v in label_map.items()}
     
-    model2, embeddings2, labels2, device = load_model(
-        model2_info['model_path'], 
-        model2_info['embeddings_path'], 
-        model2_info['label_mapping_path'], 
-        model2_info['is_char_model']
-    )
+    # Load models
+    model1, embeddings1, device = load_model(model_paths[0], embeddings_paths[0])
+    model2, embeddings2, device = load_model(model_paths[1], embeddings_paths[1])
     
     # Process image
     image_tensor = process_image(image_path, device)
@@ -148,22 +122,14 @@ def compare_models(image_path, model1_info, model2_info, k=5, output_file=None):
     # Get predictions from models
     with torch.no_grad():
         # Model 1
-        if model1_info['is_char_model']:
-            outputs1 = model1(image_tensor)
-            embedding1 = outputs1['font_embedding']
-            logits1 = outputs1['logits']
-        else:
-            embedding1 = model1.get_embedding(image_tensor)
-            logits1 = model1.classifier(embedding1)
+        outputs1 = model1(image_tensor)
+        embedding1 = outputs1['font_embedding']
+        logits1 = outputs1['logits']
         
         # Model 2
-        if model2_info['is_char_model']:
-            outputs2 = model2(image_tensor)
-            embedding2 = outputs2['font_embedding']
-            logits2 = outputs2['logits']
-        else:
-            embedding2 = model2.get_embedding(image_tensor)
-            logits2 = model2.classifier(embedding2)
+        outputs2 = model2(image_tensor)
+        embedding2 = outputs2['font_embedding']
+        logits2 = outputs2['logits']
         
         # Get similarities and predictions
         indices1_emb, scores1_emb = get_top_k_similar_fonts(embedding1, embeddings1, k)
@@ -176,24 +142,24 @@ def compare_models(image_path, model1_info, model2_info, k=5, output_file=None):
     results = {
         'image_path': image_path,
         'model1': {
-            'name': os.path.basename(model1_info['model_path']),
+            'name': os.path.basename(model_paths[0]),
             'embedding_similarity': [
-                {'font': labels1.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
+                {'font': labels.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
                 for idx, score in zip(indices1_emb, scores1_emb)
             ],
             'classifier_predictions': [
-                {'font': labels1.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
+                {'font': labels.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
                 for idx, score in zip(indices1_cls, scores1_cls)
             ],
         },
         'model2': {
-            'name': os.path.basename(model2_info['model_path']),
+            'name': os.path.basename(model_paths[1]),
             'embedding_similarity': [
-                {'font': labels2.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
+                {'font': labels.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
                 for idx, score in zip(indices2_emb, scores2_emb)
             ],
             'classifier_predictions': [
-                {'font': labels2.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
+                {'font': labels.get(int(idx), f'Unknown Font ({idx})'), 'score': float(score)}
                 for idx, score in zip(indices2_cls, scores2_cls)
             ],
         }
@@ -230,22 +196,18 @@ def compare_models(image_path, model1_info, model2_info, k=5, output_file=None):
 
 def main():
     """Parse command line arguments and run model comparison."""
-    parser = argparse.ArgumentParser(description="Compare font prediction models")
+    parser = argparse.ArgumentParser(description="Compare character-based font prediction models")
     
     # Required arguments
     parser.add_argument("--image_path", required=True, help="Path to input image")
+    parser.add_argument("--label_mapping", required=True, help="Path to shared label mapping file")
     
-    # Model 1 arguments
+    # Model paths
     parser.add_argument("--model1_path", required=True, help="Path to first model .pt file")
     parser.add_argument("--embeddings1_path", required=True, help="Path to first model embeddings")
-    parser.add_argument("--label_mapping1_path", required=True, help="Path to first model label mapping")
-    parser.add_argument("--model1_is_char", action="store_true", help="First model is character-based")
     
-    # Model 2 arguments
     parser.add_argument("--model2_path", required=True, help="Path to second model .pt file")
     parser.add_argument("--embeddings2_path", required=True, help="Path to second model embeddings")
-    parser.add_argument("--label_mapping2_path", required=True, help="Path to second model label mapping")
-    parser.add_argument("--model2_is_char", action="store_true", help="Second model is character-based")
     
     # Optional arguments
     parser.add_argument("--top_k", type=int, default=5, help="Number of top predictions to show")
@@ -253,23 +215,15 @@ def main():
     
     args = parser.parse_args()
     
-    # Create model info dictionaries
-    model1_info = {
-        'model_path': args.model1_path,
-        'embeddings_path': args.embeddings1_path,
-        'label_mapping_path': args.label_mapping1_path,
-        'is_char_model': args.model1_is_char
-    }
-    
-    model2_info = {
-        'model_path': args.model2_path,
-        'embeddings_path': args.embeddings2_path,
-        'label_mapping_path': args.label_mapping2_path,
-        'is_char_model': args.model2_is_char
-    }
-    
     # Run comparison
-    compare_models(args.image_path, model1_info, model2_info, args.top_k, args.output_file)
+    compare_models(
+        args.image_path, 
+        [args.model1_path, args.model2_path],
+        [args.embeddings1_path, args.embeddings2_path],
+        args.label_mapping,
+        args.top_k, 
+        args.output_file
+    )
 
 if __name__ == "__main__":
     main()
