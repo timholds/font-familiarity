@@ -165,14 +165,15 @@ class SelfAttentionAggregator(nn.Module):
         return aggregated, attn_weights
     
 class CharacterBasedFontClassifier(nn.Module):
-    def __init__(self, num_fonts, patch_size=32, embedding_dim=256):
+    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16):
         super().__init__()
         
         # Character feature extractor - reuse existing CNN architecture
         self.char_encoder = CharSimpleCNN(
             num_classes=embedding_dim,  # Use as feature extractor
             input_size=patch_size,
-            embedding_dim=embedding_dim
+            embedding_dim=embedding_dim,
+            initial_channels=initial_channels,
         )
         
         # Replace classifier with identity to get embeddings only
@@ -248,7 +249,7 @@ class CRAFTFontClassifier(nn.Module):
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
                  patch_size=32, embedding_dim=256, craft_fp16=False, 
-                 use_precomputed_craft=False):
+                 use_precomputed_craft=False, initial_channels=16):
         super().__init__()
 
         self.use_precomputed_craft = use_precomputed_craft
@@ -271,7 +272,8 @@ class CRAFTFontClassifier(nn.Module):
         self.font_classifier = CharacterBasedFontClassifier(
             num_fonts=num_fonts,
             patch_size=patch_size,
-            embedding_dim=embedding_dim
+            embedding_dim=embedding_dim,
+            initial_channels=initial_channels
         )
         
         self.device = device
