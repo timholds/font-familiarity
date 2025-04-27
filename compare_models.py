@@ -32,31 +32,51 @@ model2_name = None
 is_initialized = False
 
 def sanitize_font_name(font_name):
-    """Sanitize and validate font name for Google Fonts API."""
-    # Remove any special characters that might cause issues in URLs
+    """Clean and prepare font name for Google Fonts API."""
     import re
+    
+    # Remove any version numbers, weights or styles in parentheses
+    clean_name = re.sub(r'\s*\([^)]*\)', '', font_name)
+    
+    # Remove common weight/style suffixes
+    for suffix in [' Regular', ' Bold', ' Italic', ' Light', ' Medium', ' Black', ' Thin']:
+        if clean_name.endswith(suffix):
+            clean_name = clean_name[:-len(suffix)]
+    
     # Keep alphanumerics, spaces, and some safe characters
-    sanitized = re.sub(r'[^a-zA-Z0-9 \-_]', '', font_name)
-    return sanitized
+    clean_name = re.sub(r'[^a-zA-Z0-9 \-_]', '', clean_name)
+    
+    return clean_name.strip()
 
 def generate_font_html(font_name):
-    """Generate HTML to display sample text in the specified font."""
-    # Encode the font name for Google Fonts URL - replace spaces with plus signs
+    """Generate HTML to display sample text in the specified font with fallbacks."""
+    # Original font name (for display)
+    original_name = font_name
+    
+    # Clean the font name for Google Fonts
     sanitized_font = sanitize_font_name(font_name)
     encoded_font_name = sanitized_font.replace(' ', '+')
     
-    # Create the Google Fonts link
-    font_link = f"https://fonts.googleapis.com/css?family={encoded_font_name}&display=swap"
+    # Create a unique ID for font loading detection
+    import hashlib
+    font_id = hashlib.md5(original_name.encode()).hexdigest()[:8]
     
-    # Create the HTML with inline CSS to use the font
+    # Create the HTML with font loading detection
     html = f"""
-    <div class="font-preview">
-        <link rel="stylesheet" href="{font_link}">
-        <p style="font-family: '{sanitized_font}', sans-serif;">
-            The quick brown fox jumps over the lazy dog.
-        </p>
-        <p class="font-error-message" style="display: none; color: red;">Error loading font: {font_name}</p>
-
+    <div class="font-preview" id="font-{font_id}">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family={encoded_font_name}&display=swap">
+        <div class="font-header">
+            <span class="font-name-display">{original_name}</span>
+        </div>
+        <div class="font-sample-wrapper">
+            <p class="font-sample" style="font-family: '{sanitized_font}', sans-serif;">
+                The quick brown fox jumps over the lazy dog. 0123456789
+            </p>
+        </div>
+        <div class="font-fallback hidden">
+            <p class="fallback-message">Font preview unavailable</p>
+            <p class="fallback-sample">Sample: The quick brown fox jumps over the lazy dog. 0123456789</p>
+        </div>
     </div>
     """
     return html
