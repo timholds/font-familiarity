@@ -196,7 +196,9 @@ def load_char_model_and_embeddings(model_path: str,
             patch_size=32, 
             embedding_dim=embedding_dim,
             craft_fp16=False,  # Conservative setting for production
-            use_precomputed_craft=False
+            use_precomputed_craft=False,
+            pad_x=.15,
+            pad_y=.2,
         )
         
         # Load the weights
@@ -359,6 +361,9 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
             #     #transforms.ToTensor()
             # ])
             # convert pil image to numpy
+
+            # TODO can i pass a numpy array to the model since craft extract patches wants numpy array
+            # and then convert to torch tensor afterwards? would save a data roundtrip
             image_np = np.array(image)
             image_tensor = torch.from_numpy(image_np).unsqueeze(0).to(device)
             # image tensor BHWC 0, 255 still
