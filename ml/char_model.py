@@ -582,8 +582,8 @@ class CRAFTFontClassifier(nn.Module):
             img_patches = []
             print(f"Extracting patches from {len(polygons)} polygons")
             for polygon in polygons:
-                print(f"Polygon {polygon}")
-                polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
+                # TODO turn this on with craft preextraction
+                #polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
 
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
