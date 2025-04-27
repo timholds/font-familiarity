@@ -385,7 +385,7 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                         targets=None,
                         save_path=None
                     )
-                    print(f"finsiedh vis craft detections, image type: {type(visual_image)}")
+                    print(f"finished vis craft detections, image type: {type(visual_image)}")
 
                     # Convert visualization to base64
                     import io as bio

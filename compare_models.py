@@ -31,6 +31,36 @@ model1_name = None
 model2_name = None
 is_initialized = False
 
+def sanitize_font_name(font_name):
+    """Sanitize and validate font name for Google Fonts API."""
+    # Remove any special characters that might cause issues in URLs
+    import re
+    # Keep alphanumerics, spaces, and some safe characters
+    sanitized = re.sub(r'[^a-zA-Z0-9 \-_]', '', font_name)
+    return sanitized
+
+def generate_font_html(font_name):
+    """Generate HTML to display sample text in the specified font."""
+    # Encode the font name for Google Fonts URL - replace spaces with plus signs
+    sanitized_font = sanitize_font_name(font_name)
+    encoded_font_name = sanitized_font.replace(' ', '+')
+    
+    # Create the Google Fonts link
+    font_link = f"https://fonts.googleapis.com/css?family={encoded_font_name}&display=swap"
+    
+    # Create the HTML with inline CSS to use the font
+    html = f"""
+    <div class="font-preview">
+        <link rel="stylesheet" href="{font_link}">
+        <p style="font-family: '{sanitized_font}', sans-serif;">
+            The quick brown fox jumps over the lazy dog.
+        </p>
+        <p class="font-error-message" style="display: none; color: red;">Error loading font: {font_name}</p>
+
+    </div>
+    """
+    return html
+
 def get_top_k_similar_fonts(query_embedding, class_embeddings, k=5):
     """Find k most similar fonts using embedding similarity."""
     # Normalize query embedding for cosine similarity
@@ -275,39 +305,41 @@ def create_app(model1_path, model2_path, embeddings1_path, embeddings2_path,
                 top_k_cls_indices1, top_k_probs1 = get_top_k_predictions(logits1, k=5)
                 top_k_cls_indices2, top_k_probs2 = get_top_k_predictions(logits2, k=5)
                 
-                # Format results for model 1
-                embedding_results1 = [
-                    {
-                        'font': label_mapping.get(idx, f'Unknown Font ({idx})'),
-                        'similarity': float(score)
-                    }
-                    for idx, score in zip(top_k_indices1, top_k_similarities1)
-                ]
-                
-                classifier_results1 = [
-                    {
-                        'font': label_mapping.get(idx, f'Unknown Font ({idx})'),
-                        'probability': float(prob)
-                    }
-                    for idx, prob in zip(top_k_cls_indices1, top_k_probs1)
-                ]
-                
-                # Format results for model 2
-                embedding_results2 = [
-                    {
-                        'font': label_mapping.get(idx, f'Unknown Font ({idx})'),
-                        'similarity': float(score)
-                    }
-                    for idx, score in zip(top_k_indices2, top_k_similarities2)
-                ]
-                
-                classifier_results2 = [
-                    {
-                        'font': label_mapping.get(idx, f'Unknown Font ({idx})'),
-                        'probability': float(prob)
-                    }
-                    for idx, prob in zip(top_k_cls_indices2, top_k_probs2)
-                ]
+                embedding_results1 = []
+                for idx, score in zip(top_k_indices1, top_k_similarities1):
+                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
+                    embedding_results1.append({
+                        'font': font_name,
+                        'similarity': float(score),
+                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
+                    })
+
+                classifier_results1 = []
+                for idx, prob in zip(top_k_cls_indices1, top_k_probs1):
+                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
+                    classifier_results1.append({
+                        'font': font_name,
+                        'probability': float(prob),
+                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
+                    })
+
+                embedding_results2 = []
+                for idx, score in zip(top_k_indices2, top_k_similarities2):
+                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
+                    embedding_results2.append({
+                        'font': font_name,
+                        'similarity': float(score),
+                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
+                    })
+
+                classifier_results2 = []
+                for idx, prob in zip(top_k_cls_indices2, top_k_probs2):
+                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
+                    classifier_results2.append({
+                        'font': font_name,
+                        'probability': float(prob),
+                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
+                    })
                 
                 # Combine results
                 response_data.update({

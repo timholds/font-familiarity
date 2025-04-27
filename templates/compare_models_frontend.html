@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Font Model Comparison</title>
     <style>
+        .font-preview.font-error .font-sample {
+            font-family: sans-serif !important; /* Fallback to ensure text is visible */
+            color: #999; /* Grayed out to indicate error */
+        }
+        
+        .font-preview.font-error .font-error-message {
+            display: block !important;
+        }
+    </style>
+    <style>
         /* Basic styles */
         body {
             font-family: Arial, sans-serif;
@@ -437,6 +447,24 @@
                     alert('Visualization error: ' + data.visualization_error);
                 }
             }
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait for all font links to either load or fail
+            setTimeout(function() {
+                document.querySelectorAll('.font-preview').forEach(function(preview) {
+                    const fontSample = preview.querySelector('.font-sample');
+                    const fontName = fontSample.style.fontFamily.split(',')[0].replace(/['"]+/g, '');
+                    
+                    // Check if the font actually loaded
+                    const fontLoaded = document.fonts.check(`1em "${fontName}"`);
+                    
+                    if (!fontLoaded) {
+                        preview.classList.add('font-error');
+                    }
+                });
+            }, 1000); // Wait 1 second for fonts to load
         });
     </script>
 </body>
