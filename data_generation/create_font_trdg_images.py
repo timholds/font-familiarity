@@ -236,7 +236,8 @@ def process_font(args):
         size = random.randint(24, 70)
         skewing_angle = random.uniform(0, 4) if random.random() > 0.5 else 0
         blur = random.uniform(0, 1.5) if random.random() > 0.7 else 0
-        background_type = random.choice([0, 1, 2, 3])
+        # TODO add backgrounds 
+        background_type = random.choice([0, 1, 2])
         character_spacing = random.uniform(-0.1, 0.6)
         
         # Random text color (30% chance of custom color)
@@ -262,7 +263,7 @@ def process_font(args):
                 random_blur=False,
                 background_type=background_type,
                 character_spacing=int(character_spacing),
-                text_color=text_color,
+                text_color="#000000" if text_color is None else text_color, 
                 width=int(512),  # Use width instead of width/height
                 fit=False   # Don't use tight fit
             )
