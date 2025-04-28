@@ -1,3 +1,13 @@
+# Features
+
+# Bugs
+## Font Names not rendering correctly on frontend
+Unifrakturmaguntia  https://fonts.google.com/specimen/UnifrakturMaguntia, trying specimen/Unifrakturmaguntia need to capitalize Maguntia  
+Unifrakturcook  https://fonts.google.com/specimen/UnifrakturCook, trying specimen/Unifrakturcook
+Im Fell Double Pica https://fonts.google.com/specimen/IM+Fell+Double+Pica, trying specimen/Im+Fell+Double+Pica need to capitalize the M in IM
+
+
+# Other
 [ ] fix the health check for the container that is unhealthy on the server
 
 
@@ -20,10 +30,3 @@ The UI will maintain all the same functionality while looking cleaner and more p
 
 I want you to feel inspired by Edwards Tufte think carefully about what the most elegant way to display the information visually is. 
 
-As a reminder, the information is the image the user uploaded (either via drag and drop or by file menu upload) which contains some font we want to find similar fonts to. We then display a list of 5 of the most similar fonts, and want affordances for the user to clear out or to reupload. 
-
-One super low hanging fruit would be to actually load the suggested fonts in since we have the name and to render the example sentence in the font!
-
-This is a side project so we don't want the code to be complicated, and we should stick to industry standards unless we have a good reason to deviate. 
-
-In your first message, do not write any code. Instead, think carefully and come back to clarify constraints and criteria so we can nail this in one shot. Anyway, let's begin improving the page

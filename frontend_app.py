@@ -13,6 +13,9 @@ import logging
 import argparse
 import time
 import json
+import io as bio
+import base64
+import re
 
 import uuid 
 from datetime import datetime
@@ -180,20 +183,36 @@ def load_char_model_and_embeddings(model_path: str,
             else:
                 raise ValueError("Could not determine number of font classes from model")
         
-        # Determine embedding dimension - look at projection layer in aggregator
         embedding_dim = 512  # Default fallback
         for key in state_dict.keys():
             if 'projection' in key and 'weight' in key:
                 embedding_dim = state_dict[key].shape[0]
                 logger.info(f"Found embedding dimension: {embedding_dim}")
                 break
+                
+        # Extract parameters from model filename
+        patch_size = 32  # Default value
+        initial_channels = 16  # Default value
+        
+        # Parse PS (patch size)
+        ps_match = re.search(r'PS(\d+)', os.path.basename(model_path))
+        if ps_match:
+            patch_size = int(ps_match.group(1))
+            logger.info(f"Found patch size {patch_size} from filename")
+            
+        # Parse IC (initial channels)
+        ic_match = re.search(r'IC(\d+)', os.path.basename(model_path))
+        if ic_match:
+            initial_channels = int(ic_match.group(1))
+            logger.info(f"Found initial channels {initial_channels} from filename")
+        
         
         # Initialize model
         # TODO pull this from state_dict
         model = CRAFTFontClassifier(
             num_fonts=num_fonts,
             device=device,
-            patch_size=32, 
+            patch_size=patch_size, 
             embedding_dim=embedding_dim,
             craft_fp16=False,  # Conservative setting for production
             use_precomputed_craft=False,
@@ -388,8 +407,6 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                     print(f"finished vis craft detections, image type: {type(visual_image)}")
 
                     # Convert visualization to base64
-                    import io as bio
-                    import base64
                     buffer = bio.BytesIO()
                     visual_image.save(buffer, format='PNG')
                     encoded_img = base64.b64encode(buffer.getvalue()).decode('utf-8')

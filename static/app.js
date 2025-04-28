@@ -159,6 +159,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Hide reset button
         document.getElementById('resetButtonContainer').classList.add('hidden');
     });
+
+    function getGoogleFontURL(fontName) {
+        // Create Google Fonts URL with proper formatting
+        const googleFontParam = fontName.replace(/\s+/g, '+');
+        return `https://fonts.googleapis.com/css2?family=${googleFontParam}&display=swap`;
+    }
     
     // Function to format font name from model format (lowercase_with_underscores) to display format (Title Case)
     function formatFontName(modelFontName) {
@@ -198,8 +204,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Create Google Fonts URL
         const googleFontParam = displayName.replace(/\s+/g, '+');
-        const fontUrl = `https://fonts.googleapis.com/css2?family=${googleFontParam}&display=swap`;
-        
+        const fontUrl = getGoogleFontURL(displayName);
+                
         // Check if we already loaded this font
         const existingLink = document.getElementById(`font-${googleFontParam}`);
         if (existingLink) {
