@@ -4,13 +4,17 @@ import torch
 import numpy as np
 from PIL import Image
 import io
-import torch.nn.functional as F
-import logging
-import traceback
 import argparse
 import time
 import json
+import io as bio
 import base64
+import re
+import traceback
+import logging
+from datetime import datetime
+import uuid
+import torch.nn.functional as F
 from ml.char_model import CRAFTFontClassifier
 
 # Configure logging
@@ -20,394 +24,268 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global variables for model state
-model1 = None
-model2 = None
-embeddings1 = None
-embeddings2 = None
+# Global variables for both models
+model_a = None
+model_b = None
+class_embeddings_a = None
+class_embeddings_b = None
 device = None
-label_mapping = None
-model1_name = None
-model2_name = None
-is_initialized = False
+label_mapping_a = None
+label_mapping_b = None
 
-def sanitize_font_name(font_name):
-    """Clean and prepare font name for Google Fonts API."""
-    import re
-    
-    # Remove any version numbers, weights or styles in parentheses
-    clean_name = re.sub(r'\s*\([^)]*\)', '', font_name)
-    
-    # Remove common weight/style suffixes
-    for suffix in [' Regular', ' Bold', ' Italic', ' Light', ' Medium', ' Black', ' Thin']:
-        if clean_name.endswith(suffix):
-            clean_name = clean_name[:-len(suffix)]
-    
-    # Keep alphanumerics, spaces, and some safe characters
-    clean_name = re.sub(r'[^a-zA-Z0-9 \-_]', '', clean_name)
-    
-    return clean_name.strip()
-
-# TODO this is not even used
-def generate_font_html(font_name):
-    """Generate HTML to display sample text in the specified font with fallbacks."""
-    # Original font name (for display)
-    print("\n\n\n!!!!!!!!!!!!!!!!!!!\n\n\n")
-    original_name = font_name
-    
-    # Clean the font name for Google Fonts
-    sanitized_font = sanitize_font_name(font_name)
-    encoded_font_name = sanitized_font.replace(' ', '+')
-    
-    # Create a unique ID for font loading detection
-    import hashlib
-    font_id = hashlib.md5(original_name.encode()).hexdigest()[:8]
-    
-    # Create the HTML with font loading detection
-    html = f"""
-    <div class="font-preview" id="font-{font_id}">
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family={encoded_font_name}&display=swap">
-        <div class="font-header">
-            <span class="font-name-display">{original_name}</span>
-        </div>
-        <div class="font-sample-wrapper">
-            <p class="font-sample" style="font-family: '{sanitized_font}', sans-serif;">
-                The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
-            </p>
-        </div>
-        <div class="font-fallback hidden">
-            <p class="fallback-message">Font preview unavailable</p>
-            <p class="fallback-sample">Sample: The quick brown fox jumps over the lazy dog. 0123456789</p>
-        </div>
-    </div>
-    """
-    return html
-
-def get_top_k_similar_fonts(query_embedding, class_embeddings, k=5):
-    """Find k most similar fonts using embedding similarity."""
-    # Normalize query embedding for cosine similarity
-    query_embedding = F.normalize(query_embedding, p=2, dim=1)
-    
-    # Compute cosine similarity with all class embeddings
-    similarities = torch.mm(query_embedding, class_embeddings.t())
-    
-    # Get top k similarities and indices
-    top_k_similarities, top_k_indices = similarities[0].topk(k)
-    
-    return top_k_indices.cpu().numpy(), top_k_similarities.cpu().numpy()
-
-def get_top_k_predictions(logits, k=5):
-    """Get top k predictions from classifier."""
-    probabilities = F.softmax(logits, dim=1)
-    top_k_probs, top_k_indices = probabilities[0].topk(k)
-    
-    return top_k_indices.cpu().numpy(), top_k_probs.cpu().numpy()
-
-def load_models(model1_path, model2_path, embeddings1_path, embeddings2_path, label_mapping_path):
-    """Initialize both models and load pre-computed embeddings."""
-    global model1, model2, embeddings1, embeddings2, device, label_mapping, is_initialized, model1_name, model2_name
-    
+def load_model(model_path, embeddings_path, label_mapping_path):
+    """Load a single model and return the model, embeddings, and label mapping."""
     try:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        logger.info(f"Using device: {device}")
-        
         # Load label mapping
-        if not os.path.isfile(label_mapping_path):
-            raise FileNotFoundError(f"Label mapping file not found: {label_mapping_path}")
-        
-        logger.info(f"Loading label mapping from {label_mapping_path}")
         label_mapping_raw = np.load(label_mapping_path, allow_pickle=True).item()
-        
-        # Invert the mapping to go from index -> font name
         label_mapping = {v: k for k, v in label_mapping_raw.items()}
         
-        # Load Model 1
-        logger.info(f"Loading model 1 from {model1_path}")
-        model1_name = os.path.basename(model1_path)
-        state1 = torch.load(model1_path, map_location=device)
-        state_dict1 = state1['model_state_dict']
+        # Load model state
+        state = torch.load(model_path, map_location=device)
+        state_dict = state['model_state_dict']
         
-        # Determine number of classes from classifier
+
+        # Character-based model logic
         classifier_key = 'font_classifier.font_classifier.weight'
-        if classifier_key in state_dict1:
-            num_fonts = state_dict1[classifier_key].shape[0]
+        if classifier_key in state_dict:
+            num_fonts = state_dict[classifier_key].shape[0]
         else:
-            # Try to find classifier key
-            classifier_keys = [k for k in state_dict1.keys() if 'classifier' in k and 'weight' in k]
+            classifier_keys = [k for k in state_dict.keys() if 'classifier' in k and 'weight' in k]
             if classifier_keys:
                 classifier_key = classifier_keys[0]
-                num_fonts = state_dict1[classifier_key].shape[0]
+                num_fonts = state_dict[classifier_key].shape[0]
             else:
-                raise ValueError("Could not determine number of font classes from model 1")
+                raise ValueError("Could not determine font classes")
         
-        # Determine embedding dimension
-        embedding_dim = 512  # Default fallback
-        for key in state_dict1.keys():
+        embedding_dim = 512  # Default
+        for key in state_dict.keys():
             if 'projection' in key and 'weight' in key:
-                embedding_dim = state_dict1[key].shape[0]
+                embedding_dim = state_dict[key].shape[0]
                 break
         
-        # Initialize model 1
-        model1 = CRAFTFontClassifier(
+        # Extract parameters from filename
+        patch_size = 32  # Default
+        ps_match = re.search(r'PS(\d+)', os.path.basename(model_path))
+        if ps_match:
+            patch_size = int(ps_match.group(1))
+        
+        # Initialize model
+        model = CRAFTFontClassifier(
             num_fonts=num_fonts,
             device=device,
-            patch_size=32, 
+            patch_size=patch_size, 
             embedding_dim=embedding_dim,
             craft_fp16=False,
-            use_precomputed_craft=False
+            use_precomputed_craft=False,
+            pad_x=.15,
+            pad_y=.2,
         )
         
-        # Load weights
-        model1.load_state_dict(state_dict1)
-        model1 = model1.to(device)
-        model1.eval()
         
-        # Load embeddings for model 1
-        logger.info(f"Loading embeddings for model 1 from {embeddings1_path}")
-        embeddings1 = torch.from_numpy(np.load(embeddings1_path)).to(device)
+        model.load_state_dict(state_dict)
+        model = model.to(device)
+        model.eval()
         
-        # Load Model 2
-        logger.info(f"Loading model 2 from {model2_path}")
-        model2_name = os.path.basename(model2_path)
-        state2 = torch.load(model2_path, map_location=device)
-        state_dict2 = state2['model_state_dict']
+        # Load embeddings
+        class_embeddings = torch.from_numpy(np.load(embeddings_path)).to(device)
         
-        # Determine number of classes from classifier
-        if classifier_key in state_dict2:
-            num_fonts = state_dict2[classifier_key].shape[0]
-        else:
-            # Try to find classifier key
-            classifier_keys = [k for k in state_dict2.keys() if 'classifier' in k and 'weight' in k]
-            if classifier_keys:
-                classifier_key = classifier_keys[0]
-                num_fonts = state_dict2[classifier_key].shape[0]
-            else:
-                raise ValueError("Could not determine number of font classes from model 2")
-        
-        # Initialize model 2
-        model2 = CRAFTFontClassifier(
-            num_fonts=num_fonts,
-            device=device,
-            patch_size=32, 
-            embedding_dim=embedding_dim,
-            craft_fp16=False,
-            use_precomputed_craft=False
-        )
-        
-        # Load weights
-        model2.load_state_dict(state_dict2)
-        model2 = model2.to(device)
-        model2.eval()
-        
-        # Load embeddings for model 2
-        logger.info(f"Loading embeddings for model 2 from {embeddings2_path}")
-        embeddings2 = torch.from_numpy(np.load(embeddings2_path)).to(device)
-        
-        is_initialized = True
-        logger.info("Models initialization completed successfully!")
+        return model, class_embeddings, label_mapping
         
     except Exception as e:
-        logger.error(f"Error during model initialization: {str(e)}")
+        logger.error(f"Error loading model: {str(e)}")
         logger.error(traceback.format_exc())
         raise
 
-def create_app(model1_path, model2_path, embeddings1_path, embeddings2_path, 
-               label_mapping_path, uploads_dir="uploads"):
-    """Factory function to create and configure Flask app instance."""
+def predict_with_model(model, class_embeddings, label_mapping, image_tensor, research_mode=False):
+    """Process an image with the given model and return formatted results."""
+    results = {}
+    
+    # Generate visualization if in research mode
+    if research_mode and isinstance(model, CRAFTFontClassifier):
+        try:
+            visual_image = model.visualize_craft_detections(
+                images=image_tensor,
+                label_mapping=label_mapping,
+                targets=None,
+                save_path=None
+            )
+            
+            buffer = bio.BytesIO()
+            visual_image.save(buffer, format='PNG')
+            encoded_img = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            results['visualization'] = encoded_img
+        except Exception as vis_error:
+            logger.error(f"Visualization error: {str(vis_error)}")
+            results['visualization_error'] = str(vis_error)
+    
+    # Run model inference
+    with torch.no_grad():
+        if isinstance(model, CRAFTFontClassifier):
+            outputs = model(image_tensor)
+            embedding = outputs['font_embedding']
+            logits = outputs['logits']
+        else:
+            embedding = model.get_embedding(image_tensor)
+            logits = model.classifier(embedding)
+        
+        # Get embedding similarity results
+        similarities = torch.mm(F.normalize(embedding, p=2, dim=1), 
+                                F.normalize(class_embeddings, p=2, dim=1).t())
+        top_k_similarities, top_k_indices = similarities[0].topk(5)
+        
+        # Get classifier prediction results
+        probabilities = F.softmax(logits, dim=1)
+        top_k_probs, top_k_cls_indices = probabilities[0].topk(5)
+        
+        # Format results
+        embedding_results = [
+            {
+                'font': label_mapping.get(idx.item(), f'Unknown Font ({idx.item()})'),
+                'similarity': float(score)
+            }
+            for idx, score in zip(top_k_indices, top_k_similarities)
+        ]
+        
+        classifier_results = [
+            {
+                'font': label_mapping.get(idx.item(), f'Unknown Font ({idx.item()})'),
+                'probability': float(prob)
+            }
+            for idx, prob in zip(top_k_cls_indices, top_k_probs)
+        ]
+        
+        results['embedding_similarity'] = embedding_results
+        results['classifier_predictions'] = classifier_results
+    
+    return results
+
+def create_app(model_path_a, model_path_b, data_dir, 
+               embeddings_path_a, embeddings_path_b,
+               label_mapping_file_a, label_mapping_file_b, 
+               uploads_dir="uploads"):
+    """Create Flask app instance for model comparison."""
+    global model_a, model_b, class_embeddings_a, class_embeddings_b, label_mapping_a, label_mapping_b, device
+    
     app = Flask(__name__)
     uploads_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), uploads_dir)
     os.makedirs(uploads_path, exist_ok=True)
     logger.info(f"Uploads directory: {uploads_path}")
+
+    model_a_name = os.path.basename(model_path_a)
+    model_b_name = os.path.basename(model_path_b)
     
-    # Store path in app config for access in routes
     app.config['UPLOADS_PATH'] = uploads_path
-
-    # Load models
-    load_models(model1_path, model2_path, embeddings1_path, embeddings2_path, label_mapping_path)
+    app.config['MODEL_A_NAME'] = model_a_name
+    app.config['MODEL_B_NAME'] = model_b_name
     
-    @app.route('/test')
-    def test():
-        """Test route to verify Flask is working."""
-        return "Flask server is running!"
-
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+    
+    # Prepare paths
+    label_mapping_path_a = os.path.join(data_dir, label_mapping_file_a)
+    label_mapping_path_b = os.path.join(data_dir, label_mapping_file_b)
+    
+    # Load models
+    logger.info(f"Loading model A: {model_a_name}")
+    model_a, class_embeddings_a, label_mapping_a = load_model(
+        model_path_a, embeddings_path_a, label_mapping_path_a,
+    )
+    
+    logger.info(f"Loading model B: {model_b_name}")
+    model_b, class_embeddings_b, label_mapping_b = load_model(
+        model_path_b, embeddings_path_b, label_mapping_path_b,
+    )
+    
+    # Define routes
     @app.route('/')
     def index():
-        """Serve the main page."""
+        """Serve the comparison page."""
         css_version = int(time.time())
-        return render_template('compare_models_frontend.html', 
-                               css_version=css_version,
-                               model1_name=model1_name,
-                               model2_name=model2_name)
-
-    @app.route('/compare', methods=['POST'])
-    def compare():
-        """Endpoint for comparing font predictions from both models."""
-        if not is_initialized:
-            return jsonify({'error': 'Models not initialized'}), 500
-            
+        return render_template('compare_models.html', 
+                              css_version=css_version,
+                              model_a_name=app.config['MODEL_A_NAME'],
+                              model_b_name=app.config['MODEL_B_NAME'])
+    
+    @app.route('/predict', methods=['POST'])
+    def predict():
+        """Process image with both models."""
         if 'image' not in request.files:
             return jsonify({'error': 'No image provided'}), 400
-            
+        
         research_mode = request.form.get('research_mode', 'false').lower() == 'true'
         
         try:
-            # Get and preprocess image
+            # Process the uploaded image
             image_bytes = request.files['image'].read()
             
-            # Save the uploaded image (optional)
-            image_path = os.path.join(app.config['UPLOADS_PATH'], f"compare_{int(time.time())}.png")
-            with open(image_path, 'wb') as f:
-                f.write(image_bytes)
+            # Get IP address
+            if request.headers.getlist("X-Forwarded-For"):
+                ip_address = request.headers.getlist("X-Forwarded-For")[0]
+            else:
+                ip_address = request.remote_addr
             
-            # Convert uploaded image bytes to tensor
+           
+            # Prepare image tensor
             original_image = Image.open(io.BytesIO(image_bytes))
             image = original_image.convert('RGB')
             image_np = np.array(image)
             image_tensor = torch.from_numpy(image_np).unsqueeze(0).to(device)
             
-            response_data = {
-                'model1_name': model1_name,
-                'model2_name': model2_name
+            # Get predictions from both models
+            results_a = predict_with_model(model_a, class_embeddings_a, label_mapping_a, image_tensor, research_mode)
+            results_b = predict_with_model(model_b, class_embeddings_b, label_mapping_b, image_tensor, research_mode)
+            
+            # Combine results
+            prediction_results = {
+                model_a_name: results_a,
+                model_b_name: results_b,
+                'research_mode': research_mode
             }
             
-            # Generate visualizations if in research mode
-            if research_mode:
-                logger.info("Generating visualizations for research mode")
-                try:
-                    # Model 1 visualization
-                    visual_image1 = model1.visualize_craft_detections(
-                        images=image_tensor,
-                        label_mapping=label_mapping,
-                        targets=None,
-                        save_path=None
-                    )
-                    
-                    # Model 2 visualization
-                    visual_image2 = model2.visualize_craft_detections(
-                        images=image_tensor,
-                        label_mapping=label_mapping,
-                        targets=None,
-                        save_path=None
-                    )
-                    
-                    # Convert visualizations to base64
-                    buffer1 = io.BytesIO()
-                    visual_image1.save(buffer1, format='PNG')
-                    encoded_img1 = base64.b64encode(buffer1.getvalue()).decode('utf-8')
-                    
-                    buffer2 = io.BytesIO()
-                    visual_image2.save(buffer2, format='PNG')
-                    encoded_img2 = base64.b64encode(buffer2.getvalue()).decode('utf-8')
-                    
-                    response_data['visualization1'] = encoded_img1
-                    response_data['visualization2'] = encoded_img2
-                    
-                    logger.info("Visualizations generated successfully")
-                except Exception as vis_error:
-                    logger.error(f"Visualization error: {str(vis_error)}")
-                    response_data['visualization_error'] = str(vis_error)
             
-            # Process with both models
-            with torch.no_grad():
-                # Model 1 predictions
-                outputs1 = model1(image_tensor)
-                embedding1 = outputs1['font_embedding']
-                logits1 = outputs1['logits']
-                
-                # Model 2 predictions
-                outputs2 = model2(image_tensor)
-                embedding2 = outputs2['font_embedding']
-                logits2 = outputs2['logits']
-                
-                # Get predictions using embedding similarity
-                top_k_indices1, top_k_similarities1 = get_top_k_similar_fonts(embedding1, embeddings1, k=5)
-                top_k_indices2, top_k_similarities2 = get_top_k_similar_fonts(embedding2, embeddings2, k=5)
-                
-                # Get predictions using classifier
-                top_k_cls_indices1, top_k_probs1 = get_top_k_predictions(logits1, k=5)
-                top_k_cls_indices2, top_k_probs2 = get_top_k_predictions(logits2, k=5)
-                
-                embedding_results1 = []
-                for idx, score in zip(top_k_indices1, top_k_similarities1):
-                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
-                    embedding_results1.append({
-                        'font': font_name,
-                        'similarity': float(score),
-                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
-                    })
-
-                classifier_results1 = []
-                for idx, prob in zip(top_k_cls_indices1, top_k_probs1):
-                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
-                    classifier_results1.append({
-                        'font': font_name,
-                        'probability': float(prob),
-                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
-                    })
-
-                embedding_results2 = []
-                for idx, score in zip(top_k_indices2, top_k_similarities2):
-                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
-                    embedding_results2.append({
-                        'font': font_name,
-                        'similarity': float(score),
-                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
-                    })
-
-                classifier_results2 = []
-                for idx, prob in zip(top_k_cls_indices2, top_k_probs2):
-                    font_name = label_mapping.get(idx, f'Unknown Font ({idx})')
-                    classifier_results2.append({
-                        'font': font_name,
-                        'probability': float(prob),
-                        'html': generate_font_html(font_name) if 'Unknown Font' not in font_name else ''
-                    })
-                
-                # Combine results
-                response_data.update({
-                    'model1': {
-                        'embedding_similarity': embedding_results1,
-                        'classifier_predictions': classifier_results1
-                    },
-                    'model2': {
-                        'embedding_similarity': embedding_results2,
-                        'classifier_predictions': classifier_results2
-                    },
-                    'research_mode': research_mode
-                })
-                
-                return jsonify(response_data)
-
+            # Return combined results
+            return jsonify({
+                app.config['MODEL_A_NAME']: results_a,
+                app.config['MODEL_B_NAME']: results_b,
+            })
+            
         except Exception as e:
-            logger.error(f"Error processing comparison: {str(e)}")
+            logger.error(f"Error processing prediction: {str(e)}")
             logger.error(traceback.format_exc())
             return jsonify({
                 'error': f"Error processing image: {str(e)}",
                 'details': traceback.format_exc()
             }), 500
-
+    
     return app
 
 def main():
-    """Initialize and run the Flask application when run directly."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model1_path", required=True, help="Path to first model .pt file")
-    parser.add_argument("--model2_path", required=True, help="Path to second model .pt file")
-    parser.add_argument("--embeddings1_path", required=True, help="Path to first model embeddings")
-    parser.add_argument("--embeddings2_path", required=True, help="Path to second model embeddings")
-    parser.add_argument("--label_mapping_path", required=True, help="Path to label mapping file")
+    """Initialize and run the Flask application."""
+    parser = argparse.ArgumentParser(description="Compare two font models in a web interface")
+    parser.add_argument("--model_a_path", required=True, help="Path to model A .pt file")
+    parser.add_argument("--model_b_path", required=True, help="Path to model B .pt file")
+    parser.add_argument("--data_dir", required=True, help="Directory containing embeddings and label mappings")
+    parser.add_argument("--embeddings_a_path", required=True, help="Path to embeddings for model A")
+    parser.add_argument("--embeddings_b_path", required=True, help="Path to embeddings for model B")
+    parser.add_argument("--label_mapping_a", default="label_mapping.npy", help="Label mapping file for model A")
+    parser.add_argument("--label_mapping_b", default="label_mapping.npy", help="Label mapping file for model B")
     parser.add_argument("--uploads_dir", default="uploads", help="Directory to save uploaded images")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", type=int, default=8080, help="Port to run the Flask server on")
+    
     args = parser.parse_args()
     
     app = create_app(
-        args.model1_path, 
-        args.model2_path, 
-        args.embeddings1_path, 
-        args.embeddings2_path, 
-        args.label_mapping_path,
-        uploads_dir=args.uploads_dir
+        model_path_a=args.model_a_path,
+        model_path_b=args.model_b_path,
+        data_dir=args.data_dir,
+        embeddings_path_a=args.embeddings_a_path,
+        embeddings_path_b=args.embeddings_b_path,
+        label_mapping_file_a=args.label_mapping_a,
+        label_mapping_file_b=args.label_mapping_b,
+        uploads_dir=args.uploads_dir,
     )
+    
     app.run(host='0.0.0.0', port=args.port, debug=True)
 
 if __name__ == '__main__':
