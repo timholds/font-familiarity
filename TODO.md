@@ -4,6 +4,12 @@ Handle italics better
 
 ## Frontend Features
 
+# Software TODO
+[ ] add the hyperparams to the filename for embeddings, not just the pt
+[ ] what other hyperparams could we add to the model filename
+  - learning rate
+  - number of attention heads
+  - add the parsing as a method so we dont have to do it in both frontend app and embeddings
 
 # Bugs
 ## Font Names not rendering correctly on frontend
