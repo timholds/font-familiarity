@@ -33,49 +33,6 @@ device = None
 label_mapping_a = None
 label_mapping_b = None
 
-def save_uploaded_image(image_bytes, save_dir, ip_address=None, prediction_data=None):
-    """Same as original function, reused"""
-    os.makedirs(save_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    unique_id = str(uuid.uuid4())[:8]
-    filename = f"{timestamp}_{unique_id}.png"
-    
-    image_path = os.path.join(save_dir, filename)
-    metadata_path = os.path.join(save_dir, f"{timestamp}_{unique_id}_metadata.json")
-    
-    with open(image_path, 'wb') as f:
-        f.write(image_bytes)
-    
-    metadata = {
-        'timestamp': datetime.now().isoformat(),
-        'filename': filename,
-        'ip_address': ip_address
-    }
-    
-    if prediction_data:
-        metadata['prediction_data'] = prediction_data
-    
-    with open(metadata_path, 'w') as f:
-        json.dump(metadata, f, indent=2)
-    
-    logger.info(f"Saved uploaded image to: {image_path}")
-    return image_path, metadata_path
-
-def update_metadata(metadata_path, prediction_data):
-    """Same as original function, reused"""
-    try:
-        with open(metadata_path, 'r') as f:
-            metadata = json.load(f)
-        
-        metadata['prediction_data'] = prediction_data
-        
-        with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=2)
-        
-        logger.info(f"Updated metadata at: {metadata_path} with prediction results")
-    except Exception as e:
-        logger.error(f"Error updating metadata: {str(e)}")
-
 def load_model(model_path, embeddings_path, label_mapping_path):
     """Load a single model and return the model, embeddings, and label mapping."""
     try:
@@ -268,13 +225,7 @@ def create_app(model_path_a, model_path_b, data_dir,
             else:
                 ip_address = request.remote_addr
             
-            # Save uploaded image
-            image_path, metadata_path = save_uploaded_image(
-                image_bytes, 
-                app.config['UPLOADS_PATH'], 
-                ip_address
-            )
-            
+           
             # Prepare image tensor
             original_image = Image.open(io.BytesIO(image_bytes))
             image = original_image.convert('RGB')
@@ -292,8 +243,6 @@ def create_app(model_path_a, model_path_b, data_dir,
                 'research_mode': research_mode
             }
             
-            # Update metadata
-            update_metadata(metadata_path, prediction_results)
             
             # Return combined results
             return jsonify({

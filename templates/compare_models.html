@@ -54,12 +54,36 @@
             flex-direction: column;
             gap: 20px;
         }
+
+        .upload-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .section-header {
+            width: 100%;
+            margin-bottom: 10px;
+            margin-top: 20px;
+        }
+
+        .section-header h3 {
+            margin: 0;
+            padding: 10px 0;
+            border-bottom: 1px solid #e1e4e8;
+        }
         
         .results-section {
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            padding: 15px;
-            background-color: #f8f9fa;
+            display: block;
+            width: 100%;
+            border: none;
+            padding: 0px;
+            background-color: transparent;
+        }
+
+        .result-item {
+            width: 100%;
+            margin-bottom: 20px;
+            
         }
         
         .font-sample {
@@ -73,9 +97,15 @@
             width: 100%;
             overflow-wrap: break-word;
         }
+
+        .font-name {
+            font-size: 38px;
+            font-weight: bold;
+            color: #333;
+        }
         
         .result-header {
-            display: block;
+            display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 5px;
@@ -211,32 +241,36 @@
                 <!-- Model A column -->
                 <div class="model-column">
                     <div class="model-header">{{ model_a_name }}</div>
-                    <div class="results-wrapper">
-                        <div class="results-section">
-                            <h3>Classifier Predictions</h3>
-                            <div id="classifierResultsA"></div>
-                        </div>
-                        
-                        <div class="results-section">
-                            <h3>Similar Fonts</h3>
-                            <div id="embeddingResultsA"></div>
-                        </div>
+                    <div class="section-header">
+                        <h3>Classifier Predictions</h3>
+                    </div>
+                    <div class="results-section">
+                        <div id="classifierResultsA"></div>
+                    </div>
+                    
+                    <div class="section-header">
+                        <h3>Similar Fonts</h3>
+                    </div>
+                    <div class="results-section">
+                        <div id="embeddingResultsA"></div>
                     </div>
                 </div>
                 
                 <!-- Model B column -->
                 <div class="model-column">
                     <div class="model-header">{{ model_b_name }}</div>
-                    <div class="results-wrapper">
-                        <div class="results-section">
-                            <h3>Classifier Predictions</h3>
-                            <div id="classifierResultsB"></div>
-                        </div>
-                        
-                        <div class="results-section">
-                            <h3>Similar Fonts</h3>
-                            <div id="embeddingResultsB"></div>
-                        </div>
+                    <div class="section-header">
+                        <h3>Classifier Predictions</h3>
+                    </div>
+                    <div class="results-section">
+                        <div id="classifierResultsB"></div>
+                    </div>
+                    
+                    <div class="section-header">
+                        <h3>Similar Fonts</h3>
+                    </div>
+                    <div class="results-section">
+                        <div id="embeddingResultsB"></div>
                     </div>
                 </div>
             </div>
@@ -615,7 +649,7 @@
                             <span class="score">${percentage}%</span>
                         </div>
                         <div class="font-sample" style="font-family: ${fontFamily};">
-                            The quick brown fox jumps over the lazy dog 1234567890
+                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
                         </div>
                         <div class="font-actions">
                             <button class="copy-btn" onclick="navigator.clipboard.writeText('${displayFontName}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>

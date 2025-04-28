@@ -48,9 +48,11 @@ def sanitize_font_name(font_name):
     
     return clean_name.strip()
 
+# TODO this is not even used
 def generate_font_html(font_name):
     """Generate HTML to display sample text in the specified font with fallbacks."""
     # Original font name (for display)
+    print("\n\n\n!!!!!!!!!!!!!!!!!!!\n\n\n")
     original_name = font_name
     
     # Clean the font name for Google Fonts
@@ -70,7 +72,7 @@ def generate_font_html(font_name):
         </div>
         <div class="font-sample-wrapper">
             <p class="font-sample" style="font-family: '{sanitized_font}', sans-serif;">
-                The quick brown fox jumps over the lazy dog. 0123456789
+                The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
             </p>
         </div>
         <div class="font-fallback hidden">
