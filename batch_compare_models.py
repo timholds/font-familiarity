@@ -111,6 +111,7 @@ REPORT_TEMPLATE = """
         
         .font-name {
             font-weight: bold;
+            font-size: 18px;
         }
         
         .score {
@@ -118,12 +119,259 @@ REPORT_TEMPLATE = """
             color: #4285f4;
         }
         
+        .comparison-container {
+            display: flex;
+            gap: 20px;
+            align-items: stretch;
+        }
+
+        .model-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+            /* Container for the results sections */
+        .results-section-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+            /* Ensure each result item has a consistent height */
+        .result-item {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            height: 260px; /* same height for all result items */
+        }
+
+        .font-sample {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #e1e4e8;
+            font-size: 24px;
+            line-height: 1.5;
+            overflow-wrap: break-word;
+            flex: 1; /* Let it grow to fill available space */
+            overflow: auto; /* Add scrollbar if text overflows */
+        }
+
+        .font-actions {
+            margin-top: auto; /* Push to bottom of container */
+            padding-top: 8px;
+        }
+        
+        .copy-btn, .font-link {
+            padding: 6px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        
+        .copy-btn {
+            background-color: #eaeaea;
+            border: 1px solid #ccc;
+            color: #333;
+            cursor: pointer;
+        }
+        
+        .copy-btn:hover {
+            background-color: #d5d5d5;
+        }
+        
+        .font-link {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            text-decoration: none;
+        }
+        
+        .font-link:hover {
+            background-color: #3367d6;
+        }
+        
         @media (max-width: 768px) {
             .comparison-container {
                 flex-direction: column;
             }
         }
+        
+        .font-error .font-sample {
+            font-family: sans-serif !important;
+            color: #999;
+        }
+        
+        .font-error-message {
+            display: none;
+            color: #e74c3c;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .font-error .font-error-message {
+            display: block;
+        }
     </style>
+    <script>
+        const fontList = {{ all_fonts|tojson }};
+        const fontCapitalizationMap = {};
+        
+        // Create initial mapping
+        fontList.forEach(font => {
+            fontCapitalizationMap[font.toLowerCase()] = font;
+        });
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Preload all fonts
+            fontList.forEach(font => {
+                preloadGoogleFont(font);
+            });
+            
+            // Check for font loading errors after a delay
+            setTimeout(checkFontLoadingErrors, 2000);
+        });
+        
+        function formatFontName(fontName) {
+            const lookupName = fontName.toLowerCase();
+            
+            if (fontCapitalizationMap[lookupName]) {
+                return fontCapitalizationMap[lookupName];
+            }
+            
+            return lookupName.split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+        
+        function preloadGoogleFont(fontName) {
+            const displayName = formatFontName(fontName);
+            const fontId = displayName.replace(/\s+/g, '_').toLowerCase();
+            
+            // Check if already loaded
+            if (document.getElementById(`font-${fontId}`)) {
+                return;
+            }
+            
+            const fontUrl = getGoogleFontURL(displayName);
+            
+            const link = document.createElement('link');
+            link.id = `font-${fontId}`;
+            link.rel = 'stylesheet';
+            link.href = fontUrl;
+            document.head.appendChild(link);
+        }
+
+        // Font mapping utilities
+        const fontWeightMap = {
+            'buda': '300',
+            'opensanscondensed': '300',
+            'unifrakturcook': '700',
+        };
+        
+        const fontStyleMap = {
+            'molle': 'ital@1'
+        };
+        
+        const fontRenameMap = {
+            'codacaption': 'Coda'
+        };
+
+        function equalizeHeights() {
+            // Get all classifier prediction sections
+            const leftClassifiers = document.querySelectorAll('.model-column:nth-child(1) .results-section-container:nth-child(3) .result-item');
+            const rightClassifiers = document.querySelectorAll('.model-column:nth-child(2) .results-section-container:nth-child(3) .result-item');
+
+            // Get all similar fonts sections
+            const leftSimilar = document.querySelectorAll('.model-column:nth-child(1) .results-section-container:nth-child(5) .result-item');
+            const rightSimilar = document.querySelectorAll('.model-column:nth-child(2) .results-section-container:nth-child(5) .result-item');
+
+            // Set all boxes to the same height
+            const resultItems = document.querySelectorAll('.result-item');
+            resultItems.forEach(item => {
+                item.style.height = '160px';
+            });
+        }
+
+        
+        // Load all fonts when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Collect all fonts from the page
+            const allFonts = new Set();
+            document.querySelectorAll('.font-data').forEach(el => {
+                allFonts.add(el.dataset.font);
+            });
+            
+            // Preload all fonts
+            allFonts.forEach(fontName => {
+                preloadGoogleFont(fontName);
+            });
+            
+            // Check for font loading errors after a delay
+            setTimeout(checkFontLoadingErrors, 1500);
+        });
+        
+        function preloadGoogleFont(fontName) {
+            const fontId = fontName.replace(/\s+/g, '_').toLowerCase();
+            
+            // Check if we already loaded this font
+            if (document.getElementById(`font-${fontId}`)) {
+                return;
+            }
+            
+            const fontUrl = getGoogleFontURL(fontName);
+            
+            const link = document.createElement('link');
+            link.id = `font-${fontId}`;
+            link.rel = 'stylesheet';
+            link.href = fontUrl;
+            document.head.appendChild(link);
+        }
+        
+        function getGoogleFontURL(fontName) {
+            const fontLower = fontName.toLowerCase().replace(/\s+/g, '');
+            let formattedName = fontName;
+            
+            if (fontRenameMap[fontLower]) {
+                formattedName = fontRenameMap[fontLower];
+            }
+            
+            const googleFontParam = formattedName.replace(/\s+/g, '+');
+            
+            if (fontWeightMap[fontLower]) {
+                return `https://fonts.googleapis.com/css2?family=${googleFontParam}:wght@${fontWeightMap[fontLower]}&display=swap`;
+            }
+            
+            if (fontStyleMap[fontLower]) {
+                return `https://fonts.googleapis.com/css2?family=${googleFontParam}:${fontStyleMap[fontLower]}&display=swap`;
+            }
+            
+            return `https://fonts.googleapis.com/css2?family=${googleFontParam}&display=swap`;
+        }
+        
+        function checkFontLoadingErrors() {
+            document.querySelectorAll('.result-item').forEach(function(item) {
+                const fontSample = item.querySelector('.font-sample');
+                if (fontSample) {
+                    const fontName = fontSample.style.fontFamily.split(',')[0].replace(/['"]+/g, '');
+                    if (!document.fonts.check(`1em "${fontName}"`)) {
+                        item.classList.add('font-error');
+                        if (!item.querySelector('.font-error-message')) {
+                            const errorMsg = document.createElement('div');
+                            errorMsg.className = 'font-error-message';
+                            errorMsg.textContent = 'Font failed to load - displaying fallback';
+                            item.appendChild(errorMsg);
+                        }
+                    }
+                }
+            });
+        }
+    </script>
 </head>
 <body>
     <h1>Batch Font Analysis Report</h1>
@@ -152,6 +400,13 @@ REPORT_TEMPLATE = """
                             <span class="font-name">{{ result.font }}</span>
                             <span class="score">{{ "%.1f"|format(result.probability*100) }}%</span>
                         </div>
+                        <div class="font-sample font-data" data-font="{{ result.font }}" style="font-family: '{{ result.font }}', sans-serif;">
+                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
+                        </div>
+                        <div class="font-actions">
+                            <button class="copy-btn" onclick="navigator.clipboard.writeText('{{ result.font }}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
+                            <a href="https://fonts.google.com/specimen/{{ result.font.replace(' ', '+') }}" target="_blank" class="font-link">View on Google Fonts</a>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -165,6 +420,13 @@ REPORT_TEMPLATE = """
                         <div class="result-header">
                             <span class="font-name">{{ result.font }}</span>
                             <span class="score">{{ "%.1f"|format(result.similarity*100) }}%</span>
+                        </div>
+                        <div class="font-sample font-data" data-font="{{ result.font }}" style="font-family: '{{ result.font }}', sans-serif;">
+                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
+                        </div>
+                        <div class="font-actions">
+                            <button class="copy-btn" onclick="navigator.clipboard.writeText('{{ result.font }}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
+                            <a href="https://fonts.google.com/specimen/{{ result.font.replace(' ', '+') }}" target="_blank" class="font-link">View on Google Fonts</a>
                         </div>
                     </div>
                     {% endfor %}
@@ -184,6 +446,13 @@ REPORT_TEMPLATE = """
                             <span class="font-name">{{ result.font }}</span>
                             <span class="score">{{ "%.1f"|format(result.probability*100) }}%</span>
                         </div>
+                        <div class="font-sample font-data" data-font="{{ result.font }}" style="font-family: '{{ result.font }}', sans-serif;">
+                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
+                        </div>
+                        <div class="font-actions">
+                            <button class="copy-btn" onclick="navigator.clipboard.writeText('{{ result.font }}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
+                            <a href="https://fonts.google.com/specimen/{{ result.font.replace(' ', '+') }}" target="_blank" class="font-link">View on Google Fonts</a>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -198,6 +467,13 @@ REPORT_TEMPLATE = """
                             <span class="font-name">{{ result.font }}</span>
                             <span class="score">{{ "%.1f"|format(result.similarity*100) }}%</span>
                         </div>
+                        <div class="font-sample font-data" data-font="{{ result.font }}" style="font-family: '{{ result.font }}', sans-serif;">
+                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
+                        </div>
+                        <div class="font-actions">
+                            <button class="copy-btn" onclick="navigator.clipboard.writeText('{{ result.font }}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
+                            <a href="https://fonts.google.com/specimen/{{ result.font.replace(' ', '+') }}" target="_blank" class="font-link">View on Google Fonts</a>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -209,8 +485,9 @@ REPORT_TEMPLATE = """
 </html>
 """
 
-def process_image_directory(directory_path, model_a, model_b, class_embeddings_a, class_embeddings_b, 
-                           label_mapping_a, label_mapping_b, device, model_a_name, model_b_name):
+def process_image_directory(directory_path, model_a, model_b, class_embeddings_a, 
+                            class_embeddings_b, label_mapping_a, label_mapping_b,
+                            device, model_a_name, model_b_name, font_mapping):
     """Process all images in the given directory with both models."""
     results = []
     
@@ -248,6 +525,13 @@ def process_image_directory(directory_path, model_a, model_b, class_embeddings_a
             results_b = compare_models.predict_with_model(
                 model_b, class_embeddings_b, label_mapping_b, image_tensor, False
             )
+
+            for result in results_a['embedding_similarity'] + results_a['classifier_predictions']:
+                result['font'] = format_font_name(result['font'], font_mapping)
+                
+            for result in results_b['embedding_similarity'] + results_b['classifier_predictions']:
+                result['font'] = format_font_name(result['font'], font_mapping)
+            
             
             # Add to results list
             results.append({
@@ -263,12 +547,20 @@ def process_image_directory(directory_path, model_a, model_b, class_embeddings_a
     
     return results, total_images
 
-def generate_report(results, total_images, model_a_name, model_b_name, output_path):
+def generate_report(results, total_images, model_a_name, model_b_name, output_path, font_mapping):
     """Generate HTML report with all results."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # Create a minimal Flask app for templating
     app = Flask(__name__)
+
+    all_fonts = set()
+    for item in results:
+        for result in (item['results_a']['embedding_similarity'] + 
+                      item['results_a']['classifier_predictions'] +
+                      item['results_b']['embedding_similarity'] + 
+                      item['results_b']['classifier_predictions']):
+            all_fonts.add(result['font'])
     
     # Use app context for rendering
     with app.app_context():
@@ -279,7 +571,8 @@ def generate_report(results, total_images, model_a_name, model_b_name, output_pa
             total_images=total_images,
             timestamp=timestamp,
             model_a_name=model_a_name,
-            model_b_name=model_b_name
+            model_b_name=model_b_name,
+            all_fonts=list(all_fonts)
         )
     
     # Save the HTML file
@@ -288,6 +581,18 @@ def generate_report(results, total_images, model_a_name, model_b_name, output_pa
     
     logger.info(f"Report generated at: {output_path}")
     return output_path
+
+
+def format_font_name(model_font_name, font_mapping):
+    """Format font name from model format to display format."""
+    lookup_name = model_font_name.replace('_', ' ').lower()
+    
+    if lookup_name in font_mapping:
+        return font_mapping[lookup_name]
+    
+    # Fallback to capitalization
+    return ' '.join(word.capitalize() for word in lookup_name.split())
+
 
 def main():
     """Run the batch processing script."""
@@ -305,6 +610,24 @@ def main():
     parser.add_argument("--port", type=int, default=8080, help="Port for the webserver")
     
     args = parser.parse_args()
+
+    # Load font capitalization mapping
+    font_mapping = {}
+    font_mapping_path = os.path.join(os.path.dirname(__file__), 'static', 'available_fonts.txt')
+    
+    try:
+        if os.path.exists(font_mapping_path):
+            with open(font_mapping_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    fontname = line.strip()
+                    if fontname:
+                        font_mapping[fontname.lower()] = fontname
+            logger.info(f"Loaded {len(font_mapping)} fonts from mapping file")
+        else:
+            logger.warning(f"Font mapping file not found: {font_mapping_path}")
+    except Exception as e:
+        logger.error(f"Error loading font mapping: {e}")
+
     
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -333,12 +656,13 @@ def main():
         args.image_dir, model_a, model_b, 
         class_embeddings_a, class_embeddings_b,
         label_mapping_a, label_mapping_b, 
-        device, model_a_name, model_b_name
+        device, model_a_name, model_b_name, font_mapping
     )
     
     # Generate the HTML report
     report_path = generate_report(
-        results, total_images, model_a_name, model_b_name, args.output_html
+        results, total_images, model_a_name, model_b_name, 
+        args.output_html, font_mapping
     )
     
     print(f"Report generated: {report_path}")
