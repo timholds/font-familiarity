@@ -10,6 +10,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetBtn = document.getElementById('resetBtn');
     const researchModeToggle = document.getElementById('researchModeToggle');
     const visualizationContainer = document.getElementById('visualizationContainer');
+    const fontCapitalizationMap = {};
+
+    fetch('/static/available_fonts.txt')
+        .then(response => response.text())
+        .then(text => {
+            // Create mapping from lowercase -> proper capitalization
+            text.split('\n')
+                .filter(font => font.trim())
+                .forEach(fontName => {
+                    fontCapitalizationMap[fontName.toLowerCase()] = fontName;
+                });
+            console.log("Font mapping initialized with " + Object.keys(fontCapitalizationMap).length + " fonts");
+        })
+        .catch(error => {
+            console.error('Error loading fonts:', error);
+        });
+
 
     // File size limit (5MB)
     const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -160,66 +177,90 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('resetButtonContainer').classList.add('hidden');
     });
 
+    const fontWeightMap = {
+        // These fonts only available in specific weights
+        'buda': '300',
+        'opensanscondensed': '300',
+        'unifrakturcook': '700',
+      };
+
+    // Add this mapping for fonts that need italic style
+    const fontStyleMap = {
+        'molle': 'ital@1'  // Molle is only available in italic
+    };
+    
+    // Add this mapping for fonts that have been renamed
+    const fontRenameMap = {
+        'codacaption': 'Coda'  // "Coda Caption" has been renamed to "Coda"
+    };
+      
     function getGoogleFontURL(fontName) {
         // Create Google Fonts URL with proper formatting
         const googleFontParam = fontName.replace(/\s+/g, '+');
+          
+        // Check if this font needs a specific weight
+        const fontLower = fontName.toLowerCase().replace(/\s+/g, '');
+        if (fontWeightMap[fontLower]) {
+            return `https://fonts.googleapis.com/css2?family=${googleFontParam}:wght@${fontWeightMap[fontLower]}&display=swap`;
+         }
+
         return `https://fonts.googleapis.com/css2?family=${googleFontParam}&display=swap`;
     }
     
     // Function to format font name from model format (lowercase_with_underscores) to display format (Title Case)
     function formatFontName(modelFontName) {
-        // Convert underscores to spaces
-        let formattedName = modelFontName.replace(/_/g, ' ');
+        // Convert underscores to spaces for lookup
+        const lookupName = modelFontName.replace(/_/g, ' ').toLowerCase();
         
-        // Capitalize each word
-        formattedName = formattedName.split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-            
-        // Handle special cases
-        const specialCases = {
-            'Pt Sans': 'PT Sans',
-            'Pt Serif': 'PT Serif',
-            'Ibm Plex': 'IBM Plex',
-            'Dm Sans': 'DM Sans',
-            'Dm Serif': 'DM Serif',
-            'Eb Garamond': 'EB Garamond'
-        };
-        
-        // Check if the formatted name starts with any special case key
-        for (const [special, correct] of Object.entries(specialCases)) {
-            if (formattedName.startsWith(special)) {
-                formattedName = formattedName.replace(special, correct);
-                break;
-            }
+        // Use mapping if available
+        if (fontCapitalizationMap[lookupName]) {
+            return fontCapitalizationMap[lookupName];
         }
         
-        return formattedName;
+        // Fallback to basic title case
+        return lookupName.split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
     }
+
+    function waitForFonts(fontNames) {
+        return Promise.all(fontNames.map(async (fontName) => {
+            const displayName = formatFontName(fontName);
+            try {
+                // Use the document.fonts API to wait for the font to load
+                await document.fonts.ready;
+                console.log(`Font "${displayName}" is loaded and ready`);
+            } catch (e) {
+                console.warn(`Error waiting for font "${displayName}": ${e.message}`);
+            }
+        }));
+    }
+    
     
     // Preload Google Fonts
     async function preloadGoogleFont(modelFontName) {
         // Get properly formatted name 
         const displayName = formatFontName(modelFontName);
         
-        // Create Google Fonts URL
-        const googleFontParam = displayName.replace(/\s+/g, '+');
-        const fontUrl = getGoogleFontURL(displayName);
-                
+        // Create a consistent ID for the font link element
+        const fontId = displayName.replace(/\s+/g, '_').toLowerCase();
+        
         // Check if we already loaded this font
-        const existingLink = document.getElementById(`font-${googleFontParam}`);
+        const existingLink = document.getElementById(`font-${fontId}`);
         if (existingLink) {
             return displayName; // Font already requested
         }
         
+        // For debugging - log exact font name and URL
+        const fontUrl = getGoogleFontURL(displayName);
+        console.log(`Loading font: "${displayName}" (URL: ${fontUrl})`);
+        
         // Add link element
         const link = document.createElement('link');
-        link.id = `font-${googleFontParam}`;
+        link.id = `font-${fontId}`;
         link.rel = 'stylesheet';
         link.href = fontUrl;
         document.head.appendChild(link);
-        
-        console.log(`Loading font: ${displayName} (URL: ${fontUrl})`);
         
         // Return the display name
         return displayName;
@@ -284,6 +325,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Wait for all fonts to load
             await Promise.all(fontPromises);
+
+            // Wait for fonts to actually load in the browser
+            await waitForFonts(Array.from(allFonts));
             
             // Display results
             displayResults(data);
@@ -322,6 +366,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Create the font-family CSS value
         const fontFamily = `'${displayFontName}', sans-serif`;
+        console.log(`Creating result for "${displayFontName}" with font-family: ${fontFamily}`);
+
         
         return `
             <div class="result-item">

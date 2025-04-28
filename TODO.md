@@ -1,10 +1,15 @@
 # Features
+## Data Features
+Handle italics better
+
+## Frontend Features
+
 
 # Bugs
 ## Font Names not rendering correctly on frontend
-Unifrakturmaguntia  https://fonts.google.com/specimen/UnifrakturMaguntia, trying specimen/Unifrakturmaguntia need to capitalize Maguntia  
-Unifrakturcook  https://fonts.google.com/specimen/UnifrakturCook, trying specimen/Unifrakturcook
-Im Fell Double Pica https://fonts.google.com/specimen/IM+Fell+Double+Pica, trying specimen/Im+Fell+Double+Pica need to capitalize the M in IM
+Unifrakturmaguntia need  https://fonts.google.com/specimen/UnifrakturMaguntia, trying specimen/Unifrakturmaguntia need to capitalize Maguntia  
+Unifrakturcook need https://fonts.google.com/specimen/UnifrakturCook, trying specimen/Unifrakturcook  
+Im Fell Double Pica need https://fonts.google.com/specimen/IM+Fell+Double+Pica, trying specimen/Im+Fell+Double+Pica need to capitalize the M in IM  
 
 
 # Other
