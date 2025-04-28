@@ -531,7 +531,6 @@ contrastive loss - tricky because some fonts are more similar to each other than
 Fonts have a hierarchical similarity structure (serif/sans-serif, weight, style, etc.).
 
 
-
 # Note to user: 
 The closer to 384x384 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
 
