@@ -12,6 +12,25 @@ from tqdm import tqdm
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from trdg.generators import GeneratorFromStrings
+import importlib
+from PIL import ImageFont
+from functools import wraps
+
+# Add compatibility for newer PIL versions that don't have getsize
+def add_getsize_compatibility():
+    """Add getsize method to FreeTypeFont class for compatibility with newer PIL versions."""
+    if not hasattr(ImageFont.FreeTypeFont, 'getsize') and hasattr(ImageFont.FreeTypeFont, 'getbbox'):
+        # Define a getsize method that uses getbbox
+        def getsize(self, text):
+            bbox = self.getbbox(text)
+            return bbox[2] - bbox[0], bbox[3] - bbox[1]
+            
+        # Add the method to the FreeTypeFont class
+        ImageFont.FreeTypeFont.getsize = getsize
+        print("Added getsize compatibility to PIL FreeTypeFont")
+
+# Run the compatibility function
+add_getsize_compatibility()
 
 # Import FontMatcher from the same module used in create_font_pil_images.py
 try:
@@ -205,6 +224,73 @@ def process_font(args):
         except FileNotFoundError as e:
             print(f"Warning: {e}")
             return 0  # Skip this font
+        
+    for i in range(samples_per_font):
+        if images_created >= samples_per_font:
+            break
+            
+        # Get a random text sample
+        text_sample = random.choice(text_samples)
+        
+        # Randomize parameters (similar to the PIL version)
+        size = random.randint(24, 70)
+        skewing_angle = random.uniform(0, 4) if random.random() > 0.5 else 0
+        blur = random.uniform(0, 1.5) if random.random() > 0.7 else 0
+        background_type = random.choice([0, 1, 2, 3])
+        character_spacing = random.uniform(-0.1, 0.6)
+        
+        # Random text color (30% chance of custom color)
+        text_color = None
+        if random.random() < 0.3:
+            r = random.randint(0, 255)
+            g = random.randint(0, 255)
+            b = random.randint(0, 255)
+            text_color = f"#{r:02x}{g:02x}{b:02x}"
+        
+        try:
+            print(f"Generating image for '{font_name}' with text: {text_sample[:20]}...")
+            print(f"Font path: {actual_font_path}")
+            
+            # Create a generator for this image - using the correct parameters from TRDG documentation
+            generator = GeneratorFromStrings(
+                [text_sample],
+                fonts=[actual_font_path],
+                size=size,
+                skewing_angle=int(skewing_angle),
+                random_skew=False,
+                blur=int(blur),
+                random_blur=False,
+                background_type=background_type,
+                character_spacing=int(character_spacing),
+                text_color=text_color,
+                width=int(512),  # Use width instead of width/height
+                fit=False   # Don't use tight fit
+            )
+            
+            # Get one image from this generator
+            for img, lbl in generator:
+                try:
+                    # Save the image
+                    img_filename = f"sample_{start_idx + images_created:04d}.jpg"
+                    img_path = os.path.join(font_output_dir, img_filename)
+                    
+                    # Try to save the image
+                    img.save(img_path, quality=90)
+                    print(f"Saved image {img_filename} for font '{font_name}'")
+                    images_created += 1
+                    break
+                except Exception as e:
+                    print(f"Error saving image for font '{font_name}': {e}")
+                    # Try alternate saving method if the first fails
+                    try:
+                        img.save(img_path)  # Try without quality parameter
+                    except Exception as inner_e:
+                        print(f"Alternative save method failed: {inner_e}")
+        except Exception as e:
+            print(f"Error generating image for font '{font_name}': {e}")
+    
+    return images_created
+
 
 def generate_font_images(
     font_names: List[str],
@@ -240,10 +326,10 @@ def generate_font_images(
     # Create arguments for each font
     args_list = []
     for font_name in font_names:
+        # Remove the fallback_path logic and just pass font_dir
         text_samples = get_text_samples(text_content, samples_per_font)
         # Pass the font_matcher and font_dir to the process_font function
         args_list.append((font_name, font_dir, text_samples, output_dir, samples_per_font, 0, font_matcher))
-    
     # Process fonts in parallel
     total_fonts = len(args_list)
     print(f"Processing {total_fonts} fonts with {samples_per_font} samples each...")

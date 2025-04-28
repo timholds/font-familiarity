@@ -108,7 +108,7 @@ class CharSimpleCNN(nn.Module):
         return x
     
 class SelfAttentionAggregator(nn.Module):
-    def __init__(self, embedding_dim, num_heads=4):
+    def __init__(self, embedding_dim, num_heads=16):
         super().__init__()
         self.multihead_attn = nn.MultiheadAttention(
             embed_dim=embedding_dim, 
