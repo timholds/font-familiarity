@@ -205,8 +205,7 @@ def predict_with_model(model, class_embeddings, label_mapping, image_tensor, res
 def create_app(model_path_a, model_path_b, data_dir, 
                embeddings_path_a, embeddings_path_b,
                label_mapping_file_a, label_mapping_file_b, 
-               uploads_dir="uploads",
-               model_a_name="Model A", model_b_name="Model B"):
+               uploads_dir="uploads"):
     """Create Flask app instance for model comparison."""
     global model_a, model_b, class_embeddings_a, class_embeddings_b, label_mapping_a, label_mapping_b, device
     
@@ -214,6 +213,9 @@ def create_app(model_path_a, model_path_b, data_dir,
     uploads_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), uploads_dir)
     os.makedirs(uploads_path, exist_ok=True)
     logger.info(f"Uploads directory: {uploads_path}")
+
+    model_a_name = os.path.basename(model_path_a)
+    model_b_name = os.path.basename(model_path_b)
     
     app.config['UPLOADS_PATH'] = uploads_path
     app.config['MODEL_A_NAME'] = model_a_name
@@ -319,8 +321,6 @@ def main():
     parser.add_argument("--embeddings_b_path", required=True, help="Path to embeddings for model B")
     parser.add_argument("--label_mapping_a", default="label_mapping.npy", help="Label mapping file for model A")
     parser.add_argument("--label_mapping_b", default="label_mapping.npy", help="Label mapping file for model B")
-    parser.add_argument("--model_a_name", default="Model A", help="Display name for model A")
-    parser.add_argument("--model_b_name", default="Model B", help="Display name for model B")
     parser.add_argument("--uploads_dir", default="uploads", help="Directory to save uploaded images")
     parser.add_argument("--port", type=int, default=8080, help="Port to run the Flask server on")
     
@@ -335,8 +335,6 @@ def main():
         label_mapping_file_a=args.label_mapping_a,
         label_mapping_file_b=args.label_mapping_b,
         uploads_dir=args.uploads_dir,
-        model_a_name=args.model_a_name,
-        model_b_name=args.model_b_name
     )
     
     app.run(host='0.0.0.0', port=args.port, debug=True)
