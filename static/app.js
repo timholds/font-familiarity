@@ -195,15 +195,29 @@ document.addEventListener('DOMContentLoaded', function() {
     };
       
     function getGoogleFontURL(fontName) {
-        // Create Google Fonts URL with proper formatting
-        const googleFontParam = fontName.replace(/\s+/g, '+');
-          
-        // Check if this font needs a specific weight
+        // Check if this font has been renamed
         const fontLower = fontName.toLowerCase().replace(/\s+/g, '');
+        let formattedName = fontName;
+        
+        // Apply any font renaming first
+        if (fontRenameMap[fontLower]) {
+          formattedName = fontRenameMap[fontLower];
+        }
+        
+        // Create Google Fonts URL param
+        const googleFontParam = formattedName.replace(/\s+/g, '+');
+        
+        // Check if this font needs a specific weight
         if (fontWeightMap[fontLower]) {
-            return `https://fonts.googleapis.com/css2?family=${googleFontParam}:wght@${fontWeightMap[fontLower]}&display=swap`;
-         }
-
+          return `https://fonts.googleapis.com/css2?family=${googleFontParam}:wght@${fontWeightMap[fontLower]}&display=swap`;
+        }
+        
+        // Check if this font needs a specific style
+        if (fontStyleMap[fontLower]) {
+          return `https://fonts.googleapis.com/css2?family=${googleFontParam}:${fontStyleMap[fontLower]}&display=swap`;
+        }
+        
+        // Standard URL for fonts with regular weight
         return `https://fonts.googleapis.com/css2?family=${googleFontParam}&display=swap`;
     }
     
@@ -229,9 +243,9 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 // Use the document.fonts API to wait for the font to load
                 await document.fonts.ready;
-                console.log(`Font "${displayName}" is loaded and ready`);
+                // console.log(`Font "${displayName}" is loaded and ready`);
             } catch (e) {
-                console.warn(`Error waiting for font "${displayName}": ${e.message}`);
+                // console.warn(`Error waiting for font "${displayName}": ${e.message}`);
             }
         }));
     }
@@ -253,7 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // For debugging - log exact font name and URL
         const fontUrl = getGoogleFontURL(displayName);
-        console.log(`Loading font: "${displayName}" (URL: ${fontUrl})`);
+        // console.log(`Loading font: "${displayName}" (URL: ${fontUrl})`);
         
         // Add link element
         const link = document.createElement('link');
@@ -366,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Create the font-family CSS value
         const fontFamily = `'${displayFontName}', sans-serif`;
-        console.log(`Creating result for "${displayFontName}" with font-family: ${fontFamily}`);
+        // console.log(`Creating result for "${displayFontName}" with font-family: ${fontFamily}`);
 
         
         return `
