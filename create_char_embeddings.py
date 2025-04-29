@@ -172,7 +172,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained character model .pt file")
     parser.add_argument("--data_dir", required=True, help="Path to dataset directory")
-    parser.add_argument("--embeddings_file", help="Path to save embeddings (optional)")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size (smaller for char model)")
     parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT boxes from data_dir")
 
@@ -196,17 +195,6 @@ def main():
     
     
     embeddings_path = get_embedding_path(args.data_dir, args.model_path)
-
-    # Save embeddings
-    # if args.embeddings_file:
-    #     embeddings_path = args.embeddings_file
-    # else:
-    #     # Default naming using model embedding dimension
-    #     embedding_dim = model.font_classifier.aggregator.projection.out_features
-    #     embeddings_path = os.path.join(
-    #         args.data_dir, 
-    #         f"class_embeddings_{embedding_dim}.npy"
-    #     )
     
     print(f"\nSaving embeddings to {embeddings_path}")
     np.save(embeddings_path, class_embeddings)
