@@ -7,7 +7,7 @@ from typing import Tuple
 
 from ml.char_model import CRAFTFontClassifier
 from ml.dataset import get_char_dataloaders
-from ml.utils import get_embedding_path
+from ml.utils import get_params_from_model_path, get_embedding_path
 
 def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tuple[CRAFTFontClassifier, torch.device]:
     """
@@ -20,7 +20,8 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
         device: Torch device (cuda or cpu)
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+    hparams = get_params_from_model_path(model_path)
+
     # Load the saved state
     print(f"Loading model from {model_path}")
     state = torch.load(model_path, map_location=device)
@@ -70,9 +71,11 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
     # Initialize model with correct parameters
     model = CRAFTFontClassifier(
         num_fonts=num_fonts,
-        device=device,
-        patch_size=patch_size,  # Now using parsed value
-        embedding_dim=embedding_dim,
+        device=device,  # Pass device but also explicitly move model to device below
+        patch_size=hparams["patch_size"],
+        embedding_dim=hparams["embedding_dim"],
+        initial_channels=hparams["initial_channels"],
+        n_attn_heads=hparams["n_attn_heads"],
         craft_fp16=False,
         use_precomputed_craft=use_precomputed_craft,
         initial_channels=initial_channels  # Add this parameter
@@ -186,7 +189,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", required=True, help="Path to trained character model .pt file")
     parser.add_argument("--data_dir", required=True, help="Path to dataset directory")
-    parser.add_argument("--embeddings_file", help="Path to save embeddings (optional)")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size (smaller for char model)")
     parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT boxes from data_dir")
 
@@ -208,16 +210,8 @@ def main():
     # Compute embeddings
     class_embeddings = compute_char_embeddings(model, test_loader, num_classes, device)
     
-    # Save embeddings
-    if args.embeddings_file:
-        embeddings_path = args.embeddings_file
-    else:
-        # Default naming using model embedding dimension
-        embedding_dim = model.font_classifier.aggregator.projection.out_features
-        embeddings_path = os.path.join(
-            args.data_dir, 
-            f"class_embeddings_{embedding_dim}.npy"
-        )
+    
+    embeddings_path = get_embedding_path(args.data_dir, args.model_path)
     
     print(f"\nSaving embeddings to {embeddings_path}")
     np.save(embeddings_path, class_embeddings)

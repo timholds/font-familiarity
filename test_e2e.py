@@ -289,12 +289,12 @@ def test_frontend_server(model_path, dataset_dir, embeddings_path):
 
 def run_unit_tests():
     expected_params = {
-        'epochs': 10,
+        'epochs': 3,
         'batch_size': 64,
         'learning_rate': .0001,
         'weight_decay': .01,
-        'embedding_dim': 128,
-        'resolution': 64,
+        'embedding_dim': 1024,
+        'resolution': 384,
         'initial_channels': 16,
     }
     
