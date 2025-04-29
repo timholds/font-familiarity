@@ -15,10 +15,9 @@ import time
 import json
 import io as bio
 import base64
-import re
-
 import uuid 
 from datetime import datetime
+from ml.utils import get_params_from_model_path
 
 # Configure logging
 logging.basicConfig(
@@ -183,42 +182,25 @@ def load_char_model_and_embeddings(model_path: str,
             else:
                 raise ValueError("Could not determine number of font classes from model")
         
-        embedding_dim = 512  # Default fallback
-        for key in state_dict.keys():
-            if 'projection' in key and 'weight' in key:
-                embedding_dim = state_dict[key].shape[0]
-                logger.info(f"Found embedding dimension: {embedding_dim}")
-                break
+
                 
         # Extract parameters from model filename
-        patch_size = 32  # Default value
-        initial_channels = 16  # Default value
-        
-        # Parse PS (patch size)
-        ps_match = re.search(r'PS(\d+)', os.path.basename(model_path))
-        if ps_match:
-            patch_size = int(ps_match.group(1))
-            logger.info(f"Found patch size {patch_size} from filename")
-            
-        # Parse IC (initial channels)
-        ic_match = re.search(r'IC(\d+)', os.path.basename(model_path))
-        if ic_match:
-            initial_channels = int(ic_match.group(1))
-            logger.info(f"Found initial channels {initial_channels} from filename")
+        hparams = get_params_from_model_path(model_path)
         
         
-        # Initialize model
-        # TODO pull this from state_dict
         model = CRAFTFontClassifier(
             num_fonts=num_fonts,
-            device=device,
-            patch_size=patch_size, 
-            embedding_dim=embedding_dim,
-            craft_fp16=False,  # Conservative setting for production
+            device=device,  # Pass device but also explicitly move model to device below
+            patch_size=hparams["patch_size"],
+            embedding_dim=hparams["embedding_dim"],
+            initial_channels=hparams["initial_channels"],
+            n_attn_heads=hparams["n_attn_heads"],
+            craft_fp16=False,
             use_precomputed_craft=False,
             pad_x=.15,
             pad_y=.2,
         )
+        
         
         # Load the weights
         model.load_state_dict(state_dict)
