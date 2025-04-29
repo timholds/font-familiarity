@@ -15,6 +15,14 @@ from trdg.generators import GeneratorFromStrings
 import importlib
 from PIL import ImageFont
 from functools import wraps
+import importlib
+
+# Add this code before the generator is created
+# Find the actual path to TRDG's images directory
+trdg_package_dir = os.path.dirname(importlib.import_module('trdg').__file__)
+# Use your background directory as a fallback
+image_dir = os.path.join(trdg_package_dir, 'images') if os.path.exists(os.path.join(trdg_package_dir, 'images')) else 'backgrounds/'
+
 
 # Add compatibility for newer PIL versions that don't have getsize
 def add_getsize_compatibility():
@@ -198,6 +206,7 @@ def process_font(args):
     
     # Generate images for this font
     images_created = 0
+    none_count = 0
     
     # Try to determine the font path
     actual_font_path = None
@@ -228,7 +237,7 @@ def process_font(args):
     for i in range(samples_per_font):
         if images_created >= samples_per_font:
             break
-            
+
         # Get a random text sample
         text_sample = random.choice(text_samples)
         
@@ -237,7 +246,7 @@ def process_font(args):
         skewing_angle = random.uniform(0, 4) if random.random() > 0.5 else 0
         blur = random.uniform(0, 1.5) if random.random() > 0.7 else 0
         # TODO add backgrounds 
-        background_type = random.choice([0, 1, 2])
+        background_type = random.choice([0, 1, 2, 3])
         character_spacing = random.uniform(-0.1, 0.6)
         
         # Random text color (30% chance of custom color)
@@ -249,8 +258,8 @@ def process_font(args):
             text_color = f"#{r:02x}{g:02x}{b:02x}"
         
         try:
-            print(f"Generating image for '{font_name}' with text: {text_sample[:20]}...")
-            print(f"Font path: {actual_font_path}")
+            # print(f"Generating image for '{font_name}' with text: {text_sample[:20]}...")
+            # print(f"Font path: {actual_font_path}")
             
             # Create a generator for this image - using the correct parameters from TRDG documentation
             generator = GeneratorFromStrings(
@@ -265,11 +274,17 @@ def process_font(args):
                 character_spacing=int(character_spacing),
                 text_color="#000000" if text_color is None else text_color, 
                 width=int(512),  # Use width instead of width/height
-                fit=False   # Don't use tight fit
+                fit=False,   # Don't use tight fit
+                image_dir=image_dir,
             )
             
             # Get one image from this generator
             for img, lbl in generator:
+                if img is None:
+                    print(f"Warning: Font '{font_name}' produced a None image - skipping")
+                    break
+
+                # Convert to PIL Image        
                 try:
                     # Save the image
                     img_filename = f"sample_{start_idx + images_created:04d}.jpg"
@@ -277,7 +292,7 @@ def process_font(args):
                     
                     # Try to save the image
                     img.save(img_path, quality=90)
-                    print(f"Saved image {img_filename} for font '{font_name}'")
+                    #print(f"Saved image {img_filename} for font '{font_name}'")
                     images_created += 1
                     break
                 except Exception as e:
@@ -289,8 +304,8 @@ def process_font(args):
                         print(f"Alternative save method failed: {inner_e}")
         except Exception as e:
             print(f"Error generating image for font '{font_name}': {e}")
-    
-    return images_created
+            none_count += 1
+    return images_created, font_name, none_count
 
 
 def generate_font_images(
@@ -335,9 +350,30 @@ def generate_font_images(
     total_fonts = len(args_list)
     print(f"Processing {total_fonts} fonts with {samples_per_font} samples each...")
     
+    font_failures = {}
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         results = list(tqdm(executor.map(process_font, args_list), total=total_fonts))
+        # Collect the failure statistics
+        for images_created, font_name, none_images in results:
+            if none_images > 0:
+                font_failures[font_name] = none_images
     
+    # Print summary of problematic fonts
+    if font_failures:
+        print("\n--- Fonts with Issues ---")
+        print("{:<30} {:<10}".format("Font Name", "None Images"))
+        print("-" * 45)
+        for font, count in sorted(font_failures.items(), key=lambda x: x[1], reverse=True):
+            print("{:<30} {:<10}".format(font, count))
+        
+        # Optionally, save the list to a file
+        with open(os.path.join(output_dir, "problematic_fonts.txt"), "w") as f:
+            f.write("Font Name,None Images\n")
+            for font, count in sorted(font_failures.items(), key=lambda x: x[1], reverse=True):
+                f.write(f"{font},{count}\n")
+                
+        print(f"\nList of problematic fonts saved to {os.path.join(output_dir, 'problematic_fonts.txt')}")
+
     # Create a dataset description file
     # description_path = os.path.join(output_dir, "deb/dataset_info.txt")
     # with open(description_path, 'w') as f:
