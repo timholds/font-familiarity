@@ -3,19 +3,91 @@ import os
 from pathlib import Path
 
 def get_model_path(base_dir, prefix, batch_size, embedding_dim, initial_channels,
-                   patch_size=32):
-    model_name = f"{prefix}_BS{batch_size}-ED{embedding_dim}-IC{initial_channels}-PS{patch_size}.pt"
+                   patch_size=32, n_attn_heads=4):
+    model_name = f"{prefix}-BS{batch_size}-ED{embedding_dim}-IC{initial_channels}-PS{patch_size}-NH{n_attn_heads}.pt"
     model_path = Path(os.path.join(base_dir, model_name))
     return model_path
 
 
-def get_embedding_path(base_dir, embedding_file=None, embedding_dim=None):
-    if embedding_file is not None:
-        return Path(os.path.join(base_dir, embedding_file))
+# def get_embedding_path(base_dir, embedding_file=None, embedding_dim=None):
+#     if embedding_file is not None:
+#         return Path(os.path.join(base_dir, embedding_file))
+#     else:
+#         # TODO make sure this still works when embedding_dim is None
+#         embedding_file = f"class_embeddings_{embedding_dim}.npy"
+#         return Path(os.path.join(base_dir, embedding_file))
+
+def get_embedding_path(base_dir, model_path):
+    """
+    Get the path to the class embeddings file based on the model path.
+    Args:
+        base_dir: Base directory where the embeddings are stored
+        model_path: Path to the model file
+    Returns:
+        Path to the class embeddings file inside the base_dir
+    
+    """
+    hparams = get_params_from_model_path(model_path)
+    embedding_file = f"class_embeddings-BS{hparams['batch_size']}-ED{hparams['embedding_dim']}-IC{hparams['initial_channels']}-PS{hparams['patch_size']}-NH{hparams['n_attn_heads']}.npy"
+    embedding_path = Path(os.path.join(base_dir, embedding_file))
+    # Check if the embedding file already exists
+    if embedding_path.exists():
+        print(f"Embedding file already exists: {embedding_path}")
+        return embedding_path
     else:
-        # TODO make sure this still works when embedding_dim is None
-        embedding_file = f"class_embeddings_{embedding_dim}.npy"
-        return Path(os.path.join(base_dir, embedding_file))
+        return embedding_path
+    
+
+
+def get_params_from_model_path(model_path):
+    """ Get the hyperparameters out of a model filename
+    Args:
+        model_path: Path to the model file
+        ex: fontCNN_BS64-ED1024-IC16-PS64-NH16.pt
+    Returns dict with keys:
+        batch_size: Batch size used for training
+        embedding_dim: Embedding dimension used for training
+        initial_channels: Initial channels used for training
+        patch_size: Patch size used for training
+        nheads: Number of self-attention heads 
+        LR: Learning rate used for training
+        WD: Weight decay used for training
+    """
+
+    # Default values in case they are not in the filename
+    params = {
+        "batch_size": 64,
+        "embedding_dim": 1024,
+        "initial_channels": 16,
+        "patch_size": 32,
+        "n_attn_heads": 4,
+        "learning_rate": 0.00005,
+        "weight_decay": 0.001
+    }
+
+    model_name = os.path.basename(model_path)
+    model_name = os.path.splitext(model_name)[0]  # Remove the .pt extension
+
+    parts = model_name.split("-")
+    for part in parts:
+        if part.startswith("BS"):
+            params["batch_size"] = int(part[2:])
+        elif part.startswith("ED"):
+            params["embedding_dim"] = int(part[2:])
+        elif part.startswith("IC"):
+            params["initial_channels"] = int(part[2:])
+        elif part.startswith("PS"):
+            params["patch_size"] = int(part[2:])
+        elif part.startswith("NH"):
+            params["n_attn_heads"] = int(part[2:])
+        elif part.startswith("LR"):
+            params["learning_rate"] = float(part[2:])
+        elif part.startswith("WD"):
+            params["weight_decay"] = float(part[2:])
+
+    return params
+
+
 
 def check_char_model_batch_independence(model, batch_size=4, max_chars=10, 
                                        target_index=2, device='cuda'):

@@ -165,21 +165,22 @@ class SelfAttentionAggregator(nn.Module):
         return aggregated, attn_weights
     
 class CharacterBasedFontClassifier(nn.Module):
-    def __init__(self, num_fonts, patch_size=32, embedding_dim=256):
+    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16):
         super().__init__()
         
         # Character feature extractor - reuse existing CNN architecture
         self.char_encoder = CharSimpleCNN(
             num_classes=embedding_dim,  # Use as feature extractor
             input_size=patch_size,
-            embedding_dim=embedding_dim
+            embedding_dim=embedding_dim,
+            initial_channels=initial_channels,
         )
         
         # Replace classifier with identity to get embeddings only
         self.char_encoder.classifier = nn.Identity()
         
         # Self-attention aggregation
-        self.aggregator = SelfAttentionAggregator(embedding_dim)
+        self.aggregator = SelfAttentionAggregator(embedding_dim, n_attn_heads)
         
         # Final font classifier
         self.font_classifier = nn.Linear(embedding_dim, num_fonts)
@@ -247,8 +248,8 @@ class CRAFTFontClassifier(nn.Module):
     During inference, uses CRAFT to extract character patches.
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
-                 patch_size=32, embedding_dim=256, craft_fp16=False, 
-                 use_precomputed_craft=False, pad_x=.1, pad_y=.2):
+                 patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16,
+                 craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2):
         super().__init__()
 
         self.use_precomputed_craft = use_precomputed_craft
@@ -273,7 +274,9 @@ class CRAFTFontClassifier(nn.Module):
         self.font_classifier = CharacterBasedFontClassifier(
             num_fonts=num_fonts,
             patch_size=patch_size,
-            embedding_dim=embedding_dim
+            embedding_dim=embedding_dim, 
+            initial_channels=initial_channels,
+            n_attn_heads=n_attn_heads
         )
         
         self.device = device
@@ -437,40 +440,6 @@ class CRAFTFontClassifier(nn.Module):
                 return pil_img
                 #pil_img.show()  # Display directly with PIL
 
-    # def add_padding_to_polygons(self, polygons, padding_x=5, padding_y=8, asym=False):
-    #     "The CRAFT patches tend to skew right, so we add padding to the left only with asym=True"
-    #     padded_polygons = []
-
-    #     for polygon in polygons:
-    #         # Convert to numpy array if it's not already
-    #         polygon = np.array(polygon)
-
-    #         # Find min and max coordinates
-    #         min_x = np.min(polygon[:, 0])
-    #         max_x = np.max(polygon[:, 0])
-    #         min_y = np.min(polygon[:, 1])
-    #         max_y = np.max(polygon[:, 1])
-
-    #         # Create expanded rectangle
-    #         if not asym:
-    #             expanded_rect = np.array([
-    #                 [min_x - padding_x, min_y - padding_y],
-    #                 [max_x + padding_x, min_y - padding_y],
-    #                 [max_x + padding_x, max_y + padding_y],
-    #                 [min_x - padding_x, max_y + padding_y]
-    #             ])
-    #         else:
-    #             expanded_rect = np.array([
-    #                 [min_x - padding_x, min_y - padding_y],
-    #                 [max_x, min_y - padding_y],
-    #                 [max_x, max_y + padding_y],
-    #                 [min_x - padding_x, max_y + padding_y]
-    #             ])
-
-    #         padded_polygons.append(expanded_rect)
-
-    #     return padded_polygons
-    
     def add_padding_to_polygons(self, polygon, padding_x=.1, padding_y=.2, asym=False):
         """
         Add padding to a single polygon from CRAFT.
@@ -583,7 +552,7 @@ class CRAFTFontClassifier(nn.Module):
             print(f"Extracting patches from {len(polygons)} polygons")
             for polygon in polygons:
                 # TODO turn this on with craft preextraction
-                #polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
+                polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
 
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
