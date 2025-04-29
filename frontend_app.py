@@ -13,9 +13,11 @@ import logging
 import argparse
 import time
 import json
-
+import io as bio
+import base64
 import uuid 
 from datetime import datetime
+from ml.utils import get_params_from_model_path
 
 # Configure logging
 logging.basicConfig(
@@ -180,24 +182,25 @@ def load_char_model_and_embeddings(model_path: str,
             else:
                 raise ValueError("Could not determine number of font classes from model")
         
-        # Determine embedding dimension - look at projection layer in aggregator
-        embedding_dim = 512  # Default fallback
-        for key in state_dict.keys():
-            if 'projection' in key and 'weight' in key:
-                embedding_dim = state_dict[key].shape[0]
-                logger.info(f"Found embedding dimension: {embedding_dim}")
-                break
+
+                
+        # Extract parameters from model filename
+        hparams = get_params_from_model_path(model_path)
         
-        # Initialize model
-        # TODO pull this from state_dict
+        
         model = CRAFTFontClassifier(
             num_fonts=num_fonts,
-            device=device,
-            patch_size=32, 
-            embedding_dim=embedding_dim,
-            craft_fp16=False,  # Conservative setting for production
-            use_precomputed_craft=False
+            device=device,  # Pass device but also explicitly move model to device below
+            patch_size=hparams["patch_size"],
+            embedding_dim=hparams["embedding_dim"],
+            initial_channels=hparams["initial_channels"],
+            n_attn_heads=hparams["n_attn_heads"],
+            craft_fp16=False,
+            use_precomputed_craft=False,
+            pad_x=.15,
+            pad_y=.2,
         )
+        
         
         # Load the weights
         model.load_state_dict(state_dict)
@@ -359,6 +362,9 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
             #     #transforms.ToTensor()
             # ])
             # convert pil image to numpy
+
+            # TODO can i pass a numpy array to the model since craft extract patches wants numpy array
+            # and then convert to torch tensor afterwards? would save a data roundtrip
             image_np = np.array(image)
             image_tensor = torch.from_numpy(image_np).unsqueeze(0).to(device)
             # image tensor BHWC 0, 255 still
@@ -380,11 +386,9 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                         targets=None,
                         save_path=None
                     )
-                    print(f"finsiedh vis craft detections, image type: {type(visual_image)}")
+                    print(f"finished vis craft detections, image type: {type(visual_image)}")
 
                     # Convert visualization to base64
-                    import io as bio
-                    import base64
                     buffer = bio.BytesIO()
                     visual_image.save(buffer, format='PNG')
                     encoded_img = base64.b64encode(buffer.getvalue()).decode('utf-8')
