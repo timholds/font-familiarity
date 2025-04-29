@@ -39,35 +39,6 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
             print(f"- {key}: {state_dict[key].shape}")
         raise ValueError(f"Could not find classifier weights at {classifier_key}")
     
-    # Determine embedding dimension
-    embedding_keys = [k for k in state_dict.keys() if 'embedding' in k and 'weight' in k]
-    if embedding_keys:
-        embedding_key = embedding_keys[0]
-        # For many embedding layers, output dim is first dimension of weight matrix
-        embedding_dim = state_dict[embedding_key].shape[0]
-        print(f"Model has embedding dimension {embedding_dim}")
-    else:
-        # Default value if not found
-        embedding_dim = 512
-        print(f"Could not determine embedding dimension, using default: {embedding_dim}")
-    
-    # Extract parameters from model filename
-    import re
-    patch_size = 32  # Default value
-    initial_channels = 16  # Default value
-    
-    # Parse PS (patch size)
-    ps_match = re.search(r'PS(\d+)', os.path.basename(model_path))
-    if ps_match:
-        patch_size = int(ps_match.group(1))
-        print(f"Found patch size {patch_size} from filename")
-        
-    # Parse IC (initial channels)
-    ic_match = re.search(r'IC(\d+)', os.path.basename(model_path))
-    if ic_match:
-        initial_channels = int(ic_match.group(1))
-        print(f"Found initial channels {initial_channels} from filename")
-
     # Initialize model with correct parameters
     model = CRAFTFontClassifier(
         num_fonts=num_fonts,
@@ -78,7 +49,6 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
         n_attn_heads=hparams["n_attn_heads"],
         craft_fp16=False,
         use_precomputed_craft=use_precomputed_craft,
-        initial_channels=initial_channels  # Add this parameter
     )
     
     # Load the trained weights
