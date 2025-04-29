@@ -250,6 +250,7 @@ class CRAFTFontClassifier(nn.Module):
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
                  patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16,
                  craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2):
+
         super().__init__()
 
         self.use_precomputed_craft = use_precomputed_craft

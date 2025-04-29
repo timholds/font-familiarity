@@ -51,6 +51,23 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
         embedding_dim = 512
         print(f"Could not determine embedding dimension, using default: {embedding_dim}")
     
+    # Extract parameters from model filename
+    import re
+    patch_size = 32  # Default value
+    initial_channels = 16  # Default value
+    
+    # Parse PS (patch size)
+    ps_match = re.search(r'PS(\d+)', os.path.basename(model_path))
+    if ps_match:
+        patch_size = int(ps_match.group(1))
+        print(f"Found patch size {patch_size} from filename")
+        
+    # Parse IC (initial channels)
+    ic_match = re.search(r'IC(\d+)', os.path.basename(model_path))
+    if ic_match:
+        initial_channels = int(ic_match.group(1))
+        print(f"Found initial channels {initial_channels} from filename")
+
     # Initialize model with correct parameters
     model = CRAFTFontClassifier(
         num_fonts=num_fonts,
@@ -60,7 +77,8 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
         initial_channels=hparams["initial_channels"],
         n_attn_heads=hparams["n_attn_heads"],
         craft_fp16=False,
-        use_precomputed_craft=use_precomputed_craft
+        use_precomputed_craft=use_precomputed_craft,
+        initial_channels=initial_channels  # Add this parameter
     )
     
     # Load the trained weights
@@ -76,7 +94,6 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
     model.eval()
     
     return model, device
-
 def compute_char_embeddings(
     model: CRAFTFontClassifier, 
     dataloader, 
