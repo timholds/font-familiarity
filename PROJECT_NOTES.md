@@ -551,3 +551,9 @@ The closer to 384x384 images, square images with black text and white background
 
 # Similar Tools
 Identifont.com  
+
+# Misc
+Could use the Adobe VFR dataset to get examples of images that are outside the dataset https://www.dropbox.com/scl/fo/l7ip8qs7f7bcf3mom3vrh/AH1fN2bwEm072FBpjdyRzw4?dl=0&rlkey=pq1doxi1kmoxqut6j00smxyh4
+
+## Frontend ideas
+Let people search whether a given font they want is in the dataset

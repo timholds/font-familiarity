@@ -34,7 +34,8 @@ def count_parameters(model):
 
 # TODO update this to work with character patches
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, 
-                warmup_epochs, warmup_scheduler, main_scheduler, metrics_calculator, char_model=False):
+                warmup_epochs, warmup_scheduler, main_scheduler,
+                metrics_calculator, char_model=False, model_name=None):
     """Train for one epoch, supporting both character-based and whole-image models."""
     model.train()
     running_loss = 0.0
@@ -126,9 +127,11 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
+        breakpoint()
         if batch_idx % 1000 == 0:
             # Visualize a few samples from the batch
-            vis_path = f"debug/epoch_{epoch}_batch_{batch_idx}"
+            debug_path = os.path.splitext(model_name).split('.')[0]
+            vis_path = f"debug/{debug_path}-epoch_{epoch}_batch_{batch_idx}"
 
             # Extract patches for visualization - handle both cases
             if 'patches' in batch_data and char_model:
@@ -449,7 +452,7 @@ def main():
                 patch_size=args.patch_size,
                 embedding_dim=args.embedding_dim,
                 initial_channels=args.initial_channels,
-                n_heads=args.n_attn_heads,
+                n_attn_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
             ).to(device)
@@ -603,6 +606,16 @@ def main():
     print("Starting training...")
     best_test_acc = 0.0
     metrics_calculator.reset_timing()
+
+    model_path = get_model_path(
+                base_dir=args.data_dir,
+                prefix='fontCNN',
+                batch_size=args.batch_size,
+                embedding_dim=args.embedding_dim,
+                initial_channels=args.initial_channels,
+                patch_size=args.patch_size, 
+                n_attn_heads=args.n_attn_heads,
+            )
     
     for epoch in range(start_epoch, args.epochs):
         print(f'\nEpoch: {epoch+1}/{args.epochs}')
@@ -611,7 +624,8 @@ def main():
         # Train
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, device, epoch,
-            warmup_epochs, warmup_scheduler, main_scheduler, metrics_calculator, args.char_model
+            warmup_epochs, warmup_scheduler, main_scheduler, 
+            metrics_calculator, args.char_model, os.path.basename(model_path)
         )
         
         # Evaluate
@@ -666,15 +680,7 @@ def main():
             # model_name = f"fontCNN_BS{args.batch_size}\
             #     -ED{args.embedding_dim}-IC{args.initial_channels}.pt"
             # model_path = os.path.join(args.data_dir, model_name)
-            model_path = get_model_path(
-                base_dir=args.data_dir,
-                prefix='fontCNN',
-                batch_size=args.batch_size,
-                embedding_dim=args.embedding_dim,
-                initial_channels=args.initial_channels,
-                patch_size=args.patch_size, 
-                n_attn_heads=args.n_attn_heads,
-            )
+            
             # classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
             # assert classifier_shape[0] == num_classes, (
             #     f"Critical Error: Attempting to save model with wrong number of classes. "
