@@ -74,6 +74,27 @@ So if Font_A with n images, we get one 1024-dim vector representing the "average
 ### Create embeddings with the trained model
 `python create_embeddings.py --model_path fontCNN_BS64-ED512-IC16.pt --data_dir data/font-dataset-npz -- embeddings_file class_embeddings_512.npy --output_path data/font-dataset-npz` `
 
+### Compare trained models
+```
+python compare_models.py \      
+  --data_dir data/dataset-384-spc2000/ 
+  --model_a_path data/dataset-384-spc2000/fontCNN_BS128-ED1024-IC16-PS48.pt \                                      
+  --model_b_path model/fontCNN_BS64-ED1024-IC16.pt \
+  --embeddings_a_path data/dataset-384-spc2000/class_embeddings_1024.npy \
+  --embeddings_b_path model/class_embeddings_1024.npy \
+  --port 8080   
+```            
+
+```
+python batch_compare_models.py \
+  --data_dir data/dataset-384-spc2000/ 
+  --model_a_path data/dataset-384-spc2000/fontCNN_BS128-ED1024-IC16-PS48.pt \
+  --model_b_path model/fontCNN_BS64-ED1024-IC16.pt \
+  --embeddings_a_path data/dataset-384-spc2000/class_embeddings_1024.npy \
+  --embeddings_b_path model/class_embeddings_1024.npy \
+  --port 8080 --image_dir test-images --serve
+```
+
 
 # Frontend
 **Note**: `data_dir` from the `train.py` and `create_embeddings.py` should be the same as the `data_dir` in the `frontend_app.py` script.

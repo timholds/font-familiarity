@@ -30,5 +30,7 @@ fonts/
 backgrounds/
 debug_output/
 data/
-assets/
 uploads/
+test-images/
+trdg-font-images/
+compare_models.html

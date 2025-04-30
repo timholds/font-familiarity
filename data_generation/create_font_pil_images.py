@@ -1,4 +1,5 @@
 import os
+import gc
 import random
 import logging
 import argparse
@@ -97,12 +98,12 @@ class TextAugmentation:
     """Generates continuous text augmentation parameters for dataset diversity."""
     
     def __init__(self, 
-                 font_size_range=(16, 80),
+                 font_size_range=(24, 70),
                  weight_primary_modes=[400, 700],
                  weight_primary_prob=0.3,
-                 letter_spacing_range=(-0.1, 0.4),
-                 line_height_range=(.7, 1.7),
-                 color_probability=0.5):
+                 letter_spacing_range=(-0.1, 0.6),
+                 line_height_range=(.7, 1.4),
+                 color_probability=0.3):
         
         self.font_size_range = font_size_range
         self.weight_primary_modes = weight_primary_modes
@@ -147,8 +148,23 @@ class TextAugmentation:
             return color2, color1
 
     def sample_font_size(self):
-        """Sample a font size from the specified range."""
+        """Sample a font size using a distribution that reflects real-world usage."""
         return round(random.uniform(*self.font_size_range))
+        
+        # rand = random.random()
+
+        # # Small text (10% of samples) - footnotes, captions
+        # if rand < 0.1:
+        #     return round(random.uniform(self.font_size_range[0], 14))
+        # # Body text (50% of samples) - most common size range
+        # elif rand < 0.4:
+        #     return round(random.uniform(14, 32))
+        # # Heading text (20% of samples)
+        # elif rand < 0.7:
+        #     return round(random.uniform(32, 48))
+        # # Display text (20% of samples) - large, decorative text
+        # else:
+        #     return round(random.uniform(48, self.font_size_range[1]))
     
     def sample_font_weight(self):
         """Sample a font weight using a mixture model approach."""
@@ -334,69 +350,70 @@ class TextRenderer:
         img_array = np.array(image)
 
         # Choose transformation strategy
-        transform_type = random.choices(
-            ["affine_only", "perspective_only", "3d_rotation_only", "combined"],
-            weights=[0.4, 0.2, 0.1, 0.3]  # 30% chance of combined transforms
-        )[0]
+        # transform_type = random.choices(
+        #     ["affine_only", "perspective_only", "3d_rotation_only", "2d_rotation_only", "combined"],
+        #     weights=[0.1, 0.1, 0.1, 0.6, 0.1]  # 30% chance of combined transforms
+        # )[0]
 
-        if "affine" in transform_type or transform_type == "combined":
-            # Apply affine transformation (with gentler values for combined case)
-            scale_factor = 0.5 if transform_type == "combined" else 1.0
-            rotation = random.uniform(-3, 3) * scale_factor
-            scale_x = random.uniform(0.97, 1.03)
-            scale_y = random.uniform(0.97, 1.03)
-            shear_x = random.uniform(-0.03, 0.03) * scale_factor
-            shear_y = random.uniform(-0.02, 0.02) * scale_factor
+        # if "affine" in transform_type or transform_type == "combined":
+        #     # Apply affine transformation (with gentler values for combined case)
+        #     scale_factor = 0.1 if transform_type == "combined" else .5
+        #     rotation = random.uniform(-3, 3) * scale_factor
+        #     scale_x = random.uniform(0.97, 1.03)
+        #     scale_y = random.uniform(0.97, 1.03)
+        #     shear_x = random.uniform(-0.03, 0.03) * scale_factor
+        #     shear_y = random.uniform(-0.02, 0.02) * scale_factor
             
-            # Create affine matrix
-            M = np.float32([
-                [scale_x * np.cos(np.radians(rotation)), 
-                    scale_x * (np.sin(np.radians(rotation)) + shear_x), 0],
-                [scale_y * (-np.sin(np.radians(rotation)) + shear_y), 
-                    scale_y * np.cos(np.radians(rotation)), 0]
-            ])
+        #     # Create affine matrix
+        #     M = np.float32([
+        #         [scale_x * np.cos(np.radians(rotation)), 
+        #          scale_x * (np.sin(np.radians(rotation)) + shear_x), 0],
+        #         [scale_y * (-np.sin(np.radians(rotation)) + shear_y), 
+        #          scale_y * np.cos(np.radians(rotation)), 0]
+        #     ])
             
-            img_array = cv2.warpAffine(img_array, M, (width, height), 
-                                        borderMode=cv2.BORDER_REPLICATE)
+        #     img_array = cv2.warpAffine(img_array, M, (width, height), 
+        #                                 borderMode=cv2.BORDER_REPLICATE)
 
-        if "perspective" in transform_type or transform_type == "combined":
-            # Apply perspective transformation (gentler for combined case)
-            scale_factor = 0.6 if transform_type == "combined" else 1.0
-            src_points = np.array([
-                [0, 0], [width, 0], [width, height], [0, height]
-            ], dtype=np.float32)
+        # if "perspective" in transform_type or transform_type == "combined":
+        #     # Apply perspective transformation (gentler for combined case)
+        #     scale_factor = 0.6 if transform_type == "combined" else 1.0
+        #     src_points = np.array([
+        #         [0, 0], [width, 0], [width, height], [0, height]
+        #     ], dtype=np.float32)
             
-            max_shift = min(width, height) * 0.03 * scale_factor
-            dst_points = np.array([
-                [0 + random.uniform(-max_shift, max_shift), 
-                    0 + random.uniform(-max_shift, max_shift)],
-                [width + random.uniform(-max_shift, max_shift), 
-                    0 + random.uniform(-max_shift, max_shift)],
-                [width + random.uniform(-max_shift, max_shift), 
-                    height + random.uniform(-max_shift, max_shift)],
-                [0 + random.uniform(-max_shift, max_shift), 
-                    height + random.uniform(-max_shift, max_shift)]
-            ], dtype=np.float32)
+        #     max_shift = min(width, height) * 0.03 * scale_factor
+        #     dst_points = np.array([
+        #         [0 + random.uniform(-max_shift, max_shift), 
+        #             0 + random.uniform(-max_shift, max_shift)],
+        #         [width + random.uniform(-max_shift, max_shift), 
+        #             0 + random.uniform(-max_shift, max_shift)],
+        #         [width + random.uniform(-max_shift, max_shift), 
+        #             height + random.uniform(-max_shift, max_shift)],
+        #         [0 + random.uniform(-max_shift, max_shift), 
+        #             height + random.uniform(-max_shift, max_shift)]
+        #     ], dtype=np.float32)
             
-            M = cv2.getPerspectiveTransform(src_points, dst_points)
-            img_array = cv2.warpPerspective(img_array, M, (width, height), 
-                                            borderMode=cv2.BORDER_REPLICATE)
+        #     M = cv2.getPerspectiveTransform(src_points, dst_points)
+        #     img_array = cv2.warpPerspective(img_array, M, (width, height), 
+        #                                     borderMode=cv2.BORDER_REPLICATE)
 
-        if "3d_rotation" in transform_type:
-            # Apply 3D rotation projection
-            thetaX = random.uniform(-0.002, 0.002)
-            thetaY = random.uniform(-0.002, 0.002) 
-            thetaZ = random.uniform(-0.005, 0.005)
+        # if "3d_rotation" in transform_type:
+        #     # Apply 3D rotation projection
+        #     thetaX = random.uniform(-0.002, 0.002)
+        #     thetaY = random.uniform(-0.002, 0.002) 
+        #     thetaZ = random.uniform(-0.005, 0.005)
             
-            M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
-            img_array = cv2.warpAffine(img_array, M, (width, height), 
-                                        borderMode=cv2.BORDER_REPLICATE)
+        #     M = get_rotation_matrix(width, height, thetaX, thetaY, thetaZ)
+        #     img_array = cv2.warpAffine(img_array, M, (width, height), 
+        #                                 borderMode=cv2.BORDER_REPLICATE)
 
         # Convert back to PIL
         image = Image.fromarray(img_array)
         # Slight rotation
-        if random.random() < 0.3:  # 30% chance of rotation
-            rotation_angle = random.uniform(-5, 5)
+        # if "2d_rotation" in transform_type or transform_type == "combined":
+        if random.random() < .3:  # 30% chance of rotation
+            rotation_angle = random.uniform(-4, 4)
             image = image.rotate(rotation_angle, resample=Image.BICUBIC, expand=False)
         
         # Add slight noise
@@ -619,7 +636,7 @@ class FontDatasetGenerator:
             logger.error(f"Text file not found: {self.text_file}")
             raise
     
-    def _get_text_sample(self, length=100):
+    def _get_text_sample(self, length=150):
         """Get a sample of text with the specified length."""
         if len(self.text) <= length:
             return self.text
@@ -674,7 +691,7 @@ class FontDatasetGenerator:
             image_path = font_dir / image_filename
             image.save(image_path, quality=90)
      
-            logger.info(f"Generated sample {sample_id} for font {font_name}")
+            #logger.info(f"Generated sample {sample_id} for font {font_name}")
             return True
         except Exception as e:
             logger.error(f"Error generating sample for font {font_name}: {e}")
@@ -682,28 +699,45 @@ class FontDatasetGenerator:
     
    
     def generate_dataset(self):
-        """Generate the dataset."""
+        """Generate the dataset by processing one font at a time."""
         logger.info(f"Starting dataset generation with {len(self.fonts)} fonts")
         
-        # Generate configurations for all font samples
-        font_configs = []
-        for font in self.fonts:
-            for sample_id in range(self.num_samples_per_font):
-                font_configs.append((font, sample_id))
+        num_workers = max(1, multiprocessing.cpu_count())
+        batch_size = 256 
         
-        logger.info(f"Generated {len(font_configs)} font configurations")
-        
-        # Process font configurations in parallel
-        with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-            futures = []
-            for font_name, sample_id in font_configs:
-                futures.append(executor.submit(self._process_font, font_name, sample_id))
+        # Process one font at a time
+        for font_idx, font in enumerate(self.fonts):
+            logger.info(f"Processing font {font_idx+1}/{len(self.fonts)}: {font}")
             
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Font processing failed: {e}")
+            # Create font directory (if needed)
+            font_dir = self.output_dir / font.lower().replace(' ', '_')
+            font_dir.mkdir(exist_ok=True)
+            
+            # Process this font in batches
+            for batch_start in range(0, self.num_samples_per_font, batch_size):
+                batch_end = min(batch_start + batch_size, self.num_samples_per_font)
+                sample_ids = range(batch_start, batch_end)
+                
+                logger.info(f"  Processing samples {batch_start+1}-{batch_end} for font {font}")
+                
+                # Use a fresh pool for each batch
+                with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                    futures = []
+                    for sample_id in sample_ids:
+                        futures.append(executor.submit(self._process_font, font, sample_id))
+                    
+                    # Process all futures in this batch
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Font processing failed: {e}")
+                
+                # Clean up between batches
+                gc.collect()
+                
+                # Optional: Log progress after each batch
+                logger.info(f"  Completed batch for font {font} ({batch_end}/{self.num_samples_per_font})")
         
         self._create_dataset_description()
     

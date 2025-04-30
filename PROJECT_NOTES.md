@@ -487,10 +487,52 @@ We can probably get some perf gains from parallelizing some parts of the model a
 
 Related; i wonder if i could skip the image magnification and resizing they do
 - remove it and see what the patches look like on your training data and figure out why this is even there in the first place. i put that on chesterton and his fence frfr
-  
+
+# V0.3.0
+Remove CRAFT from the training loop and preprocess the character patches before training so we don't have to do it every epoch. Takes about 10 hours to preextract that bounding boxes for a 700k dataset and each epoch takes around 20 minutes. 
+
+### Dataset Details
+- 700k dataset of 384x384 images with .25 chance of having a background, 100 word max per image as set in get_text_sample (bumped from 50 in v0.2.0)  
+- various font sizes, boldness/width, spacing/kerning, and line height 
+- slight rotations  
+```
+font_size_range=(16, 80),
+weight_primary_modes=[400, 700],
+weight_primary_prob=0.3,
+letter_spacing_range=(-0.1, 0.4),
+line_height_range=(.7, 1.7)
+```  
+
+Here's a couple images from the Abeezee font family that I generated with the new data generation script. The images are 384x384 and the text is black on a white background. The text is randomly placed in the image, and the font size, weight, and spacing are all randomized.
+![Sample v0.3.0 Font Dataset Image 1](assets/v3_abeezee_sample_0007.jpg)
+![Sample v0.3.0 Font Dataset Image 2](assets/v3_abeezee_sample_0008.jpg) 
+![Sample v0.3.0 Font Dataset Image 3](assets/v3_abeezee_sample_0009.jpg)
+
+
+# V0.4.0
+1.3M dataset of 384x384 images with 
+```
+font_size_range=(24, 70),
+                 weight_primary_modes=[400, 700],
+                 weight_primary_prob=0.3,
+                 letter_spacing_range=(-0.1, 0.6),
+                 line_height_range=(.7, 1.4),
+                 color_probability=0.3  
+```  
+
+Tweaked craft preextraction low_text from .5 to .4, link_threshold down from 1.9 to 1, and the text_treshold down from .9 to .8. I also added some padding around the character boxes skewing to the left, because thats what looked best when I was looking at the data. This is important so we don't cut off parts of letters and preserve details in characters like serifs at the very top or bottom of the patch.
+
+We went a little overboard with the backgrounds and image augmentations, so we ended up having to filter out about 2% of the dataset because they didnt have any patches extracted. These were almost exclusively cases where we had a dark background with dark font. 
+
+![Example image that we filter out because no characters are detected](assets/patchless_image_example_filtered_out.png)
+
+# V0.5.0
+contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
+Fonts have a hierarchical similarity structure (serif/sans-serif, weight, style, etc.).
+
 
 # Note to user: 
-The closer to 512x512 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
+The closer to 384x384 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 
 
 
 # Similar Tools
