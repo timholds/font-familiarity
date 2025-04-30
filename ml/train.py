@@ -358,6 +358,8 @@ def main():
     parser.add_argument("--char_model", action="store_true", help="Use character-based model")
     parser.add_argument("--pretrained_model", type=str, default=None, help="Path to pretrained model")
     parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT results")
+    parser.add_argument("--patch_size", type=int, default=32, help="Size of character patches")
+    parser.add_argument("--n_attn_heads", type=int, default=16, help="Number of attention heads")
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -444,8 +446,10 @@ def main():
             model = CRAFTFontClassifier(
                 num_fonts=num_classes,
                 device=device,
-                patch_size=32,
+                patch_size=args.patch_size,
                 embedding_dim=args.embedding_dim,
+                initial_channels=args.initial_channels,
+                n_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
             ).to(device)
@@ -466,6 +470,8 @@ def main():
                     device=craft_device,
                     patch_size=32,
                     embedding_dim=args.embedding_dim,
+                    initial_channels=args.initial_channels,
+                    n_heads=args.n_attn_heads,
                     craft_fp16=False
                 )
                 # Only move classifier to GPU
@@ -665,7 +671,9 @@ def main():
                 prefix='fontCNN',
                 batch_size=args.batch_size,
                 embedding_dim=args.embedding_dim,
-                initial_channels=args.initial_channels
+                initial_channels=args.initial_channels,
+                patch_size=args.patch_size, 
+                n_attn_heads=args.n_attn_heads,
             )
             # classifier_shape = best_model_state['model_state_dict']['classifier.weight'].shape
             # assert classifier_shape[0] == num_classes, (
