@@ -510,7 +510,8 @@ Here's a couple images from the Abeezee font family that I generated with the ne
 
 
 # V0.4.0
-1.3M dataset of 384x384 images with 
+## Dataset
+1.4M dataset of 384x384 images with 
 ```
 font_size_range=(24, 70),
                  weight_primary_modes=[400, 700],
@@ -524,7 +525,20 @@ Tweaked craft preextraction low_text from .5 to .4, link_threshold down from 1.9
 
 We went a little overboard with the backgrounds and image augmentations, so we ended up having to filter out about 2% of the dataset because they didnt have any patches extracted. These were almost exclusively cases where we had a dark background with dark font. 
 
+Increase the number of characters in each image from a max of 100 to 150.
+
+Make it so we can create the preextracted craft boxes incrementally by picking back up where the last run left off. This is important because the dataset is so large that it takes almost a full day to process, and we want to be able to pick up where we left off if the process is interrupted.
+
 ![Example image that we filter out because no characters are detected](assets/patchless_image_example_filtered_out.png)
+
+## Model
+Move from 32x32 patches in the character model to 64x64 patches
+
+Increase the number of self attention heads from 4 to 16 
+
+## Frontend
+Fix issue with fonts that have irregular capitalization not being rendered properly. 
+
 
 # V0.5.0
 contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
