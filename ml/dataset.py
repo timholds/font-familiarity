@@ -291,6 +291,47 @@ class CharacterFontDataset(Dataset):
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
     
+    def add_padding_to_polygons(self, box, padding_x=.1, padding_y=.2, asym=False):
+        """
+        Add padding to a single polygon from CRAFT.
+        The CRAFT patches tend to skew right, so we add padding to the left only with asym=True.
+
+        Args:
+            polygon: A single polygon (list of coordinate points)
+            padding_x: Horizontal padding to add
+            padding_y: Vertical padding to add
+            asym: If True, only add padding to the left side
+
+        Returns:
+            Padded polygon as a numpy array
+        """
+
+        if len(box) != 4:
+            raise ValueError(f"Expected box format [x1, y1, x2, y2], but got: {box}")
+
+        # Extract box coordinates
+        x1, y1, x2, y2 = box
+
+        width = x2 - x1
+        height = y2 - y1
+
+        pad_x = int(padding_x * width)
+        pad_y = int(padding_y * height)
+
+        # Apply padding
+        if not asym:
+            x1 -= pad_x
+            x2 += pad_x
+        else:
+            x1 -= pad_x
+            x2 += int(pad_x // 3)  # Smaller padding on the right
+
+        y1 -= pad_y
+        y2 += pad_y
+
+        # Return the padded bounding box
+        return [x1, y1, x2, y2]
+    
     def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx) -> tuple:
         """Extract character patches from image using precomputed bounding boxes.
         Images HWC [0, 255]"""
@@ -312,7 +353,11 @@ class CharacterFontDataset(Dataset):
         #print(f"Image dimensions: height={height}, width={width}")
         
         # Process each box
+        
         for box in boxes:
+            # print(f"\n\n\nProcessing box: {box}\n\n\n")
+            # TODO appears this is not getting applied to the visualized patches
+            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.2, asym=True)
             try:
                 # Handle different box formats
                 if len(box) == 4:

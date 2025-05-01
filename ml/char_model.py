@@ -330,7 +330,7 @@ class CRAFTFontClassifier(nn.Module):
         import matplotlib.pyplot as plt
         import os
         
-        batch_size = min(4, patches.size(0))  # Visualize up to 4 samples
+        batch_size = min(10, patches.size(0))  # Visualize up to 10 samples
         
         for b in range(batch_size):
             # Create figure

@@ -127,11 +127,12 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
-        breakpoint()
         if batch_idx % 1000 == 0:
             # Visualize a few samples from the batch
-            debug_path = os.path.splitext(model_name).split('.')[0]
-            vis_path = f"debug/{debug_path}-epoch_{epoch}_batch_{batch_idx}"
+            debug_path = os.path.splitext(model_name)[0]
+            vis_path  = f"debug/{debug_path}/char_preds_epoch_{epoch}_batch_{batch_idx}"
+            vis_path2 = f"debug/{debug_path}/extract_craft_epoch_{epoch}_batch_{batch_idx}"
+            vis_path3 = f"debug/{debug_path}/craft_detections_epoch_{epoch}_batch_{batch_idx}"
 
             # Extract patches for visualization - handle both cases
             if 'patches' in batch_data and char_model:
@@ -139,6 +140,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                 attention_mask = batch_data['attention_mask'].to(device)
                 
                 # If model has visualization method, use it
+                # TODO why is padding not showing up in these visualizations?
+
                 if hasattr(model, 'visualize_char_preds'):
                     with torch.no_grad():
                         model.visualize_char_preds(
@@ -157,7 +160,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                         attention_mask=patch_data['attention_mask'],
                         predictions=pred,
                         targets=targets,
-                        save_path=vis_path
+                        save_path=vis_path2
                     )
 
             # Add CRAFT detection visualization - only if not using precomputed
@@ -167,7 +170,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                     images=images,  # torch tensor BHWC 0, 255
                     label_mapping=train_loader.dataset.label_mapping,
                     targets=targets,
-                    save_path=vis_path
+                    save_path=vis_path3
                 )
 
         # Compute and log batch metrics
