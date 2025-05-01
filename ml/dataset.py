@@ -319,6 +319,7 @@ class CharacterFontDataset(Dataset):
         jittered_padding_x = padding_x + random.gauss(0, jitter_std)
         jittered_padding_y = padding_y + random.gauss(0, jitter_std)
 
+        # pad in proportion to the patch size
         pad_x = int(jittered_padding_x * width)
         pad_y = int(jittered_padding_y * height)
 
@@ -361,7 +362,7 @@ class CharacterFontDataset(Dataset):
         for box in boxes:
             # print(f"\n\n\nProcessing box: {box}\n\n\n")
             # TODO appears this is not getting applied to the visualized patches
-            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True)
+            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=.05)
             try:
                 # Handle different box formats
                 if len(box) == 4:

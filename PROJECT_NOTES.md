@@ -547,6 +547,10 @@ I think this is the train metrics from the 16 head train https://wandb.ai/tholds
 contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
 Fonts have a hierarchical similarity structure (serif/sans-serif, weight, style, etc.).
 
+## Dataset
+Adding padding to the character patches randomly as a data augmentation. Somtimes this will have parts of other characters in the patch, and sometimes it will be just whitespace. This is important because it helps the model learn to be less sensitives to the output of the craft detector, whose output we have only sampled imperfectly via our training dataset. 
+- *The How* During training, the __getitem__ method of CharacterFontDataset is called for each sample. This method invokes _extract_patches_from_boxes, which applies the jittered padding via the updated add_padding_to_polygons method.
+
 
 # Note to user: 
 The closer to 384x384 images, square images with black text and white backgrounds the better this will work. It's assumed that there is only 1 font present in the image. This probably works better on images of 2d things like screenshots compared to images of 3d things like a poster on a curved telephone pole. 

@@ -5,14 +5,15 @@ import os
 import argparse
 from tqdm import tqdm
 
-def merge_dataset_files(file1, file2, output_file):
+def merge_dataset_files(file1, file2, output_file, batch_size=100):
     """
-    Merge two H5 dataset files (train.h5 or test.h5)
+    Merge two H5 dataset files (train.h5 or test.h5) with optimized batch processing
     
     Args:
         file1: Path to the first dataset file
         file2: Path to the second dataset file
         output_file: Path to save the merged dataset
+        batch_size: Number of samples to process at once
     
     Returns:
         int: Size of the first dataset (needed for offset)
@@ -41,34 +42,43 @@ def merge_dataset_files(file1, file2, output_file):
         print(f"Dataset 2: {dataset2_images_shape[0]} images")
         print(f"Total images after merge: {total_images}")
         
+        # Optimize chunk size based on data dimensions
+        image_chunks = (min(batch_size, total_images), *images_shape[1:])
+        label_chunks = (min(batch_size, total_images), *labels_shape[1:])
+        
         # Create datasets in the output file with combined dimensions
         images_out = h5out.create_dataset(
             'images', 
             shape=(total_images, *images_shape[1:]),
             dtype=h5f1['images'].dtype,
-            chunks=True,
-            compression='gzip'
+            chunks=image_chunks,
+            compression='lzf'  # Faster than gzip
         )
         
         labels_out = h5out.create_dataset(
             'labels', 
             shape=(total_images, *labels_shape[1:]),
             dtype=h5f1['labels'].dtype,
-            chunks=True,
-            compression='gzip'
+            chunks=label_chunks,
+            compression='lzf'  # Faster than gzip
         )
         
-        # Copy data from first dataset
+        # Copy data from first dataset in batches
         print("Copying dataset 1 images and labels...")
-        for i in tqdm(range(dataset1_size)):
-            images_out[i] = h5f1['images'][i]
-            labels_out[i] = h5f1['labels'][i]
+        for i in tqdm(range(0, dataset1_size, batch_size)):
+            end_idx = min(i + batch_size, dataset1_size)
+            images_out[i:end_idx] = h5f1['images'][i:end_idx]
+            labels_out[i:end_idx] = h5f1['labels'][i:end_idx]
         
-        # Append data from second dataset
+        # Append data from second dataset in batches
         print("Copying dataset 2 images and labels...")
-        for i in tqdm(range(dataset2_images_shape[0])):
-            images_out[dataset1_size + i] = h5f2['images'][i]
-            labels_out[dataset1_size + i] = h5f2['labels'][i]
+        offset = dataset1_size
+        for i in tqdm(range(0, dataset2_images_shape[0], batch_size)):
+            end_idx = min(i + batch_size, dataset2_images_shape[0])
+            dest_start = offset + i
+            dest_end = offset + end_idx
+            images_out[dest_start:dest_end] = h5f2['images'][i:end_idx]
+            labels_out[dest_start:dest_end] = h5f2['labels'][i:end_idx]
             
         # Copy any additional dataset attributes if present
         for attr_name in h5f1.attrs:
@@ -76,15 +86,16 @@ def merge_dataset_files(file1, file2, output_file):
             
         return dataset1_size
 
-def merge_boxes_files(boxes1_file, boxes2_file, output_boxes_file, dataset1_size):
+def merge_boxes_files(boxes1_file, boxes2_file, output_boxes_file, dataset1_size, batch_size=50):
     """
-    Merge two CRAFT boxes files with index remapping
+    Merge two CRAFT boxes files with index remapping and batch processing
     
     Args:
         boxes1_file: Path to the first boxes file
         boxes2_file: Path to the second boxes file
         output_boxes_file: Path to save the merged boxes
         dataset1_size: Size of the first dataset (for index offset)
+        batch_size: Number of box entries to process in each batch
     """
     with h5py.File(boxes1_file, 'r') as h5f1, \
          h5py.File(boxes2_file, 'r') as h5f2, \
@@ -93,33 +104,37 @@ def merge_boxes_files(boxes1_file, boxes2_file, output_boxes_file, dataset1_size
         # Create boxes group in output file
         boxes_group = h5out.create_group('boxes')
         
-        # Count number of box entries in each dataset
-        boxes1_count = len(h5f1['boxes'].keys())
-        boxes2_count = len(h5f2['boxes'].keys())
+        # Get all the keys from both files
+        box_keys1 = list(h5f1['boxes'].keys())
+        box_keys2 = list(h5f2['boxes'].keys())
         
-        print(f"Dataset 1: {boxes1_count} box entries")
-        print(f"Dataset 2: {boxes2_count} box entries")
+        print(f"Dataset 1: {len(box_keys1)} box entries")
+        print(f"Dataset 2: {len(box_keys2)} box entries")
         
-        # Copy boxes from first dataset
+        # Process first dataset boxes in batches
         print("Copying boxes from dataset 1...")
-        for idx in tqdm(h5f1['boxes'].keys()):
-            boxes = h5f1['boxes'][idx][:]
-            boxes_group.create_dataset(
-                name=idx,
-                data=boxes,
-                compression="gzip"
-            )
+        for i in tqdm(range(0, len(box_keys1), batch_size)):
+            batch_keys = box_keys1[i:i+batch_size]
+            for idx in batch_keys:
+                boxes = h5f1['boxes'][idx][:]
+                boxes_group.create_dataset(
+                    name=idx,
+                    data=boxes,
+                    compression="lzf"  # Faster than gzip
+                )
         
-        # Copy boxes from second dataset with adjusted indices
+        # Process second dataset boxes in batches
         print("Copying boxes from dataset 2 with adjusted indices...")
-        for idx in tqdm(h5f2['boxes'].keys()):
-            boxes = h5f2['boxes'][idx][:]
-            new_idx = str(dataset1_size + int(idx))
-            boxes_group.create_dataset(
-                name=new_idx,
-                data=boxes,
-                compression="gzip"
-            )
+        for i in tqdm(range(0, len(box_keys2), batch_size)):
+            batch_keys = box_keys2[i:i+batch_size]
+            for idx in batch_keys:
+                boxes = h5f2['boxes'][idx][:]
+                new_idx = str(dataset1_size + int(idx))
+                boxes_group.create_dataset(
+                    name=new_idx,
+                    data=boxes,
+                    compression="lzf"  # Faster than gzip
+                )
 
 def validate_merged_files(dataset_file, boxes_file):
     """
@@ -142,17 +157,24 @@ def validate_merged_files(dataset_file, boxes_file):
             
         # Sample a few random indices to check for content
         import random
-        sample_indices = random.sample(range(dataset_size), min(5, dataset_size))
+        sample_size = min(20, dataset_size)  # Increased sample size
+        sample_indices = random.sample(range(dataset_size), sample_size)
         
         print(f"\nValidation results:")
         print(f"Total images in merged dataset: {dataset_size}")
         print(f"Total box entries in merged file: {boxes_count}")
         
         # Check if all images have corresponding boxes
+        # Optimize by checking in batches (to avoid O(n^2) behavior for large datasets)
         missing_boxes = 0
-        for i in range(dataset_size):
-            if str(i) not in h5f_boxes['boxes']:
-                missing_boxes += 1
+        batch_size = 1000
+        
+        for i in tqdm(range(0, dataset_size, batch_size), desc="Validating indices"):
+            end_idx = min(i + batch_size, dataset_size)
+            batch_indices = [str(j) for j in range(i, end_idx)]
+            for idx in batch_indices:
+                if idx not in h5f_boxes['boxes']:
+                    missing_boxes += 1
                 
         if missing_boxes > 0:
             print(f"WARNING: {missing_boxes} images don't have corresponding box entries")
@@ -185,7 +207,7 @@ def update_checkpoint(output_dir, mode, total_images):
         f.write(str(total_images - 1))  # Last processed index
     print(f"Updated checkpoint file: {checkpoint_file}")
 
-def merge_h5_datasets(dataset1_dir, dataset2_dir, output_dir, mode='train'):
+def merge_h5_datasets(dataset1_dir, dataset2_dir, output_dir, mode='train', batch_size=100):
     """
     Merge two H5 datasets and their corresponding CRAFT boxes
     
@@ -194,6 +216,7 @@ def merge_h5_datasets(dataset1_dir, dataset2_dir, output_dir, mode='train'):
         dataset2_dir: Directory containing the second dataset
         output_dir: Directory to save the merged dataset
         mode: Dataset mode ('train' or 'test')
+        batch_size: Number of samples to process at once
     """
     print(f"\n{'=' * 50}")
     print(f"Merging {mode} datasets")
@@ -224,11 +247,11 @@ def merge_h5_datasets(dataset1_dir, dataset2_dir, output_dir, mode='train'):
     
     # 1. Merge main dataset files and get the size of dataset1
     print(f"\nStep 1: Merging main dataset files...")
-    dataset1_size = merge_dataset_files(dataset1_file, dataset2_file, output_file)
+    dataset1_size = merge_dataset_files(dataset1_file, dataset2_file, output_file, batch_size)
     
     # 2. Merge CRAFT boxes files
     print(f"\nStep 2: Merging CRAFT boxes files...")
-    merge_boxes_files(boxes1_file, boxes2_file, output_boxes_file, dataset1_size)
+    merge_boxes_files(boxes1_file, boxes2_file, output_boxes_file, dataset1_size, batch_size)
     
     # 3. Validate the merged files
     print(f"\nStep 3: Validating merged files...")
@@ -252,6 +275,7 @@ def main():
     parser.add_argument("--dataset2", type=str, required=True, help="Path to the second dataset directory")
     parser.add_argument("--output", type=str, required=True, help="Path to the output directory")
     parser.add_argument("--modes", type=str, default="train,test", help="Dataset modes to merge (comma-separated)")
+    parser.add_argument("--batch-size", type=int, default=100, help="Batch size for processing")
     args = parser.parse_args()
     
     # Process each mode
@@ -259,7 +283,13 @@ def main():
     for mode in modes:
         mode = mode.strip()
         try:
-            merge_h5_datasets(args.dataset1, args.dataset2, args.output, mode)
+            merge_h5_datasets(
+                args.dataset1, 
+                args.dataset2, 
+                args.output, 
+                mode, 
+                batch_size=args.batch_size
+            )
         except Exception as e:
             print(f"Error merging {mode} datasets: {e}")
     
