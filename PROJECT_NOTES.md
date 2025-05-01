@@ -539,10 +539,17 @@ Increase the number of self attention heads from 4 to 16
 ## Frontend
 Fix issue with fonts that have irregular capitalization not being rendered properly. 
 
+## Misc
+I think this is the train metrics from the 16 head train https://wandb.ai/tholdsworth/Font-Familiarity/runs/qtksi2ad?nw=nwusertholdsworth
+
 
 # V0.5.0
 contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
 Fonts have a hierarchical similarity structure (serif/sans-serif, weight, style, etc.).
+
+## Dataset
+Adding padding to the character patches randomly as a data augmentation. Somtimes this will have parts of other characters in the patch, and sometimes it will be just whitespace. This is important because it helps the model learn to be less sensitives to the output of the craft detector, whose output we have only sampled imperfectly via our training dataset. 
+- *The How* During training, the __getitem__ method of CharacterFontDataset is called for each sample. This method invokes _extract_patches_from_boxes, which applies the jittered padding via the updated add_padding_to_polygons method.
 
 
 # Note to user: 
@@ -551,3 +558,17 @@ The closer to 384x384 images, square images with black text and white background
 
 # Similar Tools
 Identifont.com  
+
+# Misc
+Could use the Adobe VFR dataset to get examples of images that are outside the dataset https://www.dropbox.com/scl/fo/l7ip8qs7f7bcf3mom3vrh/AH1fN2bwEm072FBpjdyRzw4?dl=0&rlkey=pq1doxi1kmoxqut6j00smxyh4
+
+## Frontend ideas
+Let people search whether a given font they want is in the dataset
+
+# Open Questions
+- What is the best font size range to train on given a fixed image size of 384x384? What font size / image size performs best at test time?
+- Should we add an extra output to the model for "not in the dataset"? the classifier setup assumes that every input at test time is a member of the training set, but this is not true in the real world. Even with Google Fonts free ~700 fonts, there are thousands of just Adobe fonts alone. 
+- Can we use the font metadata to do some super course contrastive learning of things like serif / no serif?
+
+# Things I may have messed up
+- Are we jittering the font size correctly? how does this work for the fonts that are only available in say bold or italic or at a given weight (thickness)? Are we creating training examples that dont actually existi?

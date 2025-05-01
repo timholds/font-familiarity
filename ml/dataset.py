@@ -6,6 +6,7 @@ from typing import Tuple
 import cv2
 import tqdm
 import h5py
+import random
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -291,6 +292,51 @@ class CharacterFontDataset(Dataset):
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
     
+    def add_padding_to_polygons(self, box, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.02):
+        """
+        Add padding to a single polygon from CRAFT with optional jittering for data augmentation.
+
+        Args:
+            box: A single bounding box [x1, y1, x2, y2].
+            padding_x: Base horizontal padding.
+            padding_y: Base vertical padding.
+            asym: If True, only add padding to the left side.
+            jitter_std: Standard deviation for jittering the padding values.
+
+        Returns:
+            Padded bounding box as a list [x1, y1, x2, y2].
+        """
+        if len(box) != 4:
+            raise ValueError(f"Expected box format [x1, y1, x2, y2], but got: {box}")
+
+        # Extract box coordinates
+        x1, y1, x2, y2 = box
+
+        width = x2 - x1
+        height = y2 - y1
+
+        # Add random jitter to padding values
+        jittered_padding_x = padding_x + random.gauss(0, jitter_std)
+        jittered_padding_y = padding_y + random.gauss(0, jitter_std)
+
+        # pad in proportion to the patch size
+        pad_x = int(jittered_padding_x * width)
+        pad_y = int(jittered_padding_y * height)
+
+        # Apply padding
+        if not asym:
+            x1 -= pad_x
+            x2 += pad_x
+        else:
+            x1 -= pad_x
+            x2 += int(pad_x // 3)  # Smaller padding on the right
+
+        y1 -= pad_y
+        y2 += pad_y
+
+        # Return the padded bounding box
+        return [x1, y1, x2, y2]
+    
     def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx) -> tuple:
         """Extract character patches from image using precomputed bounding boxes.
         Images HWC [0, 255]"""
@@ -312,7 +358,11 @@ class CharacterFontDataset(Dataset):
         #print(f"Image dimensions: height={height}, width={width}")
         
         # Process each box
+        
         for box in boxes:
+            # print(f"\n\n\nProcessing box: {box}\n\n\n")
+            # TODO appears this is not getting applied to the visualized patches
+            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=.05)
             try:
                 # Handle different box formats
                 if len(box) == 4:

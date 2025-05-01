@@ -264,9 +264,9 @@ class CRAFTFontClassifier(nn.Module):
                 device=device,
                 use_refiner=True,
                 fp16=craft_fp16, 
-                link_threshold=1.9,
-                text_threshold=.5,
-                low_text=.5,
+                link_threshold=1.,
+                text_threshold=.8,
+                low_text=.4,
             )
         else:
             self.craft = None
@@ -330,7 +330,7 @@ class CRAFTFontClassifier(nn.Module):
         import matplotlib.pyplot as plt
         import os
         
-        batch_size = min(4, patches.size(0))  # Visualize up to 4 samples
+        batch_size = min(10, patches.size(0))  # Visualize up to 10 samples
         
         for b in range(batch_size):
             # Create figure
