@@ -7,6 +7,9 @@ import cv2
 import tqdm
 import h5py
 import random
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -192,8 +195,8 @@ class CharacterFontDataset(Dataset):
         self.max_chars = max_chars
         self.use_precomputed_craft = use_precomputed_craft
         
-        mode = 'train' if train else 'test'
-        h5_file = os.path.join(root_dir, f'{mode}.h5')
+        self.mode = 'train' if train else 'test'
+        h5_file = os.path.join(root_dir, f'{self.mode}.h5')
         
         if os.path.exists(h5_file):
             print(f"Loading H5 dataset from {h5_file}")
@@ -224,8 +227,24 @@ class CharacterFontDataset(Dataset):
         self.craft_h5_file = None
         self.valid_indices = []
 
+        if train:
+            self.augmentations = A.Compose([
+                A.RandomBrightnessContrast(p=0.5),
+                A.HueSaturationValue(p=0.5),                
+                # A.CLAHE(p=0.5),
+                A.RandomGamma(p=0.5),
+                # A.RandomRotate90(p=0.5),
+                # A.RandomScale(scale_limit=0.1, p=0.5),
+                # A.RandomCrop(height=self.char_size, width=self.char_size, p=0.5),
+                # A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
+                A.GaussianBlur(blur_limit=(3, 5), p=0.3),
+                ToTensorV2()  # Convert to PyTorch tensor
+            ])
+        else:
+            self.augmentations = None
+
         if self.use_precomputed_craft:
-            craft_h5_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.h5')
+            craft_h5_file = os.path.join(self.root_dir, f'{self.mode}_craft_boxes.h5')
             if os.path.exists(craft_h5_file):
                 try:
                     # Load CRAFT boxes
@@ -337,7 +356,7 @@ class CharacterFontDataset(Dataset):
         # Return the padded bounding box
         return [x1, y1, x2, y2]
     
-    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx) -> tuple:
+    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx, mode) -> tuple:
         """Extract character patches from image using precomputed bounding boxes.
         Images HWC [0, 255]"""
 
@@ -361,8 +380,9 @@ class CharacterFontDataset(Dataset):
         
         for box in boxes:
             # print(f"\n\n\nProcessing box: {box}\n\n\n")
-            # TODO appears this is not getting applied to the visualized patches
-            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=.05)
+            # Only add jittered padding for training mode
+            if mode == 'train':
+                box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=.05)
             try:
                 # Handle different box formats
                 if len(box) == 4:
@@ -478,8 +498,19 @@ class CharacterFontDataset(Dataset):
             
             assert boxes.ndim == 2 and boxes.shape[1] == 4, \
                 f"Invalid box shape {boxes.shape} at index {idx}"
-            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx) # HWC
+            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx, self.mode) # HWC
     
+            if self.mode == 'train':
+                augmented_patches = []
+                for patch in patches:
+                    patch_np = patch.squeeze(0).numpy()  # Convert to numpy for albumentations
+                    augmented = self.augmentations(image=patch_np)['image']
+                    augmented_patches.append(augmented)
+                
+                # Convert back to tensor and stack
+                patches = torch.stack(augmented_patches)
+                
+
             # Return patches directly
             return {
                 'patches': patches,
