@@ -264,9 +264,9 @@ class CRAFTFontClassifier(nn.Module):
                 device=device,
                 use_refiner=True,
                 fp16=craft_fp16, 
-                link_threshold=1.9,
-                text_threshold=.5,
-                low_text=.5,
+                link_threshold=1.,
+                text_threshold=.8,
+                low_text=.4,
             )
         else:
             self.craft = None

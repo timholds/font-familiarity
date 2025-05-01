@@ -127,7 +127,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
         
-        if batch_idx % 1000 == 0:
+        # just do a couple batches
+        if batch_idx == 1 or batch_idx == 10:
             # Visualize a few samples from the batch
             debug_path = os.path.splitext(model_name)[0]
             vis_path  = f"debug/{debug_path}/char_preds_epoch_{epoch}_batch_{batch_idx}"

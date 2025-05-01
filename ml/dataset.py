@@ -6,6 +6,7 @@ from typing import Tuple
 import cv2
 import tqdm
 import h5py
+import random
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -291,21 +292,20 @@ class CharacterFontDataset(Dataset):
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
     
-    def add_padding_to_polygons(self, box, padding_x=.1, padding_y=.2, asym=False):
+    def add_padding_to_polygons(self, box, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.02):
         """
-        Add padding to a single polygon from CRAFT.
-        The CRAFT patches tend to skew right, so we add padding to the left only with asym=True.
+        Add padding to a single polygon from CRAFT with optional jittering for data augmentation.
 
         Args:
-            polygon: A single polygon (list of coordinate points)
-            padding_x: Horizontal padding to add
-            padding_y: Vertical padding to add
-            asym: If True, only add padding to the left side
+            box: A single bounding box [x1, y1, x2, y2].
+            padding_x: Base horizontal padding.
+            padding_y: Base vertical padding.
+            asym: If True, only add padding to the left side.
+            jitter_std: Standard deviation for jittering the padding values.
 
         Returns:
-            Padded polygon as a numpy array
+            Padded bounding box as a list [x1, y1, x2, y2].
         """
-
         if len(box) != 4:
             raise ValueError(f"Expected box format [x1, y1, x2, y2], but got: {box}")
 
@@ -315,8 +315,12 @@ class CharacterFontDataset(Dataset):
         width = x2 - x1
         height = y2 - y1
 
-        pad_x = int(padding_x * width)
-        pad_y = int(padding_y * height)
+        # Add random jitter to padding values
+        jittered_padding_x = padding_x + random.gauss(0, jitter_std)
+        jittered_padding_y = padding_y + random.gauss(0, jitter_std)
+
+        pad_x = int(jittered_padding_x * width)
+        pad_y = int(jittered_padding_y * height)
 
         # Apply padding
         if not asym:
@@ -357,7 +361,7 @@ class CharacterFontDataset(Dataset):
         for box in boxes:
             # print(f"\n\n\nProcessing box: {box}\n\n\n")
             # TODO appears this is not getting applied to the visualized patches
-            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.2, asym=True)
+            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True)
             try:
                 # Handle different box formats
                 if len(box) == 4:

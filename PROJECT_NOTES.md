@@ -539,6 +539,9 @@ Increase the number of self attention heads from 4 to 16
 ## Frontend
 Fix issue with fonts that have irregular capitalization not being rendered properly. 
 
+## Misc
+I think this is the train metrics from the 16 head train https://wandb.ai/tholdsworth/Font-Familiarity/runs/qtksi2ad?nw=nwusertholdsworth
+
 
 # V0.5.0
 contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
@@ -557,3 +560,11 @@ Could use the Adobe VFR dataset to get examples of images that are outside the d
 
 ## Frontend ideas
 Let people search whether a given font they want is in the dataset
+
+# Open Questions
+- What is the best font size range to train on given a fixed image size of 384x384? What font size / image size performs best at test time?
+- Should we add an extra output to the model for "not in the dataset"? the classifier setup assumes that every input at test time is a member of the training set, but this is not true in the real world. Even with Google Fonts free ~700 fonts, there are thousands of just Adobe fonts alone. 
+- Can we use the font metadata to do some super course contrastive learning of things like serif / no serif?
+
+# Things I may have messed up
+- Are we jittering the font size correctly? how does this work for the fonts that are only available in say bold or italic or at a given weight (thickness)? Are we creating training examples that dont actually existi?
