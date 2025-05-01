@@ -411,6 +411,7 @@ def main():
         train_loader, test_loader, num_classes = get_char_dataloaders(
             data_dir=args.data_dir,
             batch_size=args.batch_size,
+            num_workers=os.cpu_count(),
             use_precomputed_craft=args.use_precomputed_craft,
         )
     else:
