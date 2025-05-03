@@ -111,6 +111,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         # Compute loss and backward
         loss = criterion(logits, targets)
         loss.backward()
+        # TODO log loss every batch instead of once per epoch
+        # wandb.log({'train/batch_loss': loss.item()}, commit=False)  # Log batch loss
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         

@@ -179,6 +179,7 @@ def main():
     
     # Compute embeddings
     class_embeddings = compute_char_embeddings(model, test_loader, num_classes, device)
+    # TODO move logic into this file for calling the forward pass of the model
     
     
     embeddings_path = get_embedding_path(args.data_dir, args.model_path)

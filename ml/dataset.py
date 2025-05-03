@@ -230,7 +230,7 @@ class CharacterFontDataset(Dataset):
         if train:
             self.augmentations = A.Compose([
                 A.RandomBrightnessContrast(p=0.5),
-                A.HueSaturationValue(p=0.5),                
+                # A.HueSaturationValue(p=0.5),                
                 # A.CLAHE(p=0.5),
                 A.RandomGamma(p=0.5),
                 # A.RandomRotate90(p=0.5),
