@@ -9,7 +9,7 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from dataset import add_padding_to_polygon
+from .dataset import add_padding_to_polygons
 
 from CRAFT import CRAFTModel, draw_polygons
 import numpy as np
@@ -387,7 +387,7 @@ class CRAFTFontClassifier(nn.Module):
             # Draw polygons
             for poly in polygons:
                 # Add padding to the polygon
-                poly = self.add_padding_to_polygons(poly, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
+                poly = add_padding_to_polygons(poly, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
                 # Convert to tuple format for PIL
                 poly_tuple = [tuple(p) for p in poly]
                 draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
@@ -409,53 +409,6 @@ class CRAFTFontClassifier(nn.Module):
                 return pil_img
                 #pil_img.show()  # Display directly with PIL
 
-    def add_padding_to_polygons(self, polygon, padding_x=.1, padding_y=.2, asym=False):
-        """
-        Add padding to a single polygon from CRAFT.
-        The CRAFT patches tend to skew right, so we add padding to the left only with asym=True.
-
-        Args:
-            polygon: A single polygon (list of coordinate points)
-            padding_x: Horizontal padding to add
-            padding_y: Vertical padding to add
-            asym: If True, only add padding to the left side
-
-        Returns:
-            Padded polygon as a numpy array
-        """
-        # Extract x and y coordinates
-        x_coords = [p[0] for p in polygon]
-        y_coords = [p[1] for p in polygon]
-
-        # Find min and max coordinates
-        min_x = min(x_coords)
-        max_x = max(x_coords)
-        min_y = min(y_coords)
-        max_y = max(y_coords)
-
-        height = max_y - min_y
-        width  = max_x - min_x
-        pad_x = int(padding_x * width)
-        pad_y = int(padding_y * height)
-
-
-        # Create expanded rectangle
-        if not asym:
-            expanded_rect = np.array([
-                [min_x - pad_x, min_y - pad_y],
-                [max_x + pad_x, min_y - pad_y],
-                [max_x + pad_x, max_y + pad_y],
-                [min_x - pad_x, max_y + pad_y]
-            ])
-        else:
-            expanded_rect = np.array([
-                [min_x - pad_x, min_y - pad_y],
-                [max_x + int(pad_x//3), min_y - pad_y],
-                [max_x + int(pad_x//3), max_y + pad_y],
-                [min_x - pad_x, max_y + pad_y]
-            ])
-
-        return expanded_rect
     
     def extract_patches_with_craft(self, images):
         # Add debug prints and more robust tensor handling
@@ -522,7 +475,8 @@ class CRAFTFontClassifier(nn.Module):
             for polygon in polygons:
                 # TODO turn this on with craft preextraction
                 # polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
-                polygon = add_padding_to_polygon(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
+                # TODO get add padding to return polygon format not box format
+                polygon = add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
                 y_coords = [p[1] for p in polygon]
