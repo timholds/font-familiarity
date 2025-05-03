@@ -677,6 +677,17 @@ def main():
             print(f'Test Top-5 Acc: {test_metrics["test/top5_acc"]:.2f}%')
         
         print(f'Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
+
+        checkpoint_path = os.path.join(args.data_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        torch.save({
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_metrics': train_metrics,
+            'test_metrics': test_metrics,
+            'num_classes': num_classes
+        }, checkpoint_path)
+        print(f"Saved checkpoint for epoch {epoch+1} at {checkpoint_path}")
         
         # Save best model based on test accuracy
         if test_acc > best_test_acc:
@@ -727,6 +738,7 @@ def main():
                 
                 print(f"WARNING: Could not verify classifier shape for {num_classes} classes")
             
+
             torch.save(best_model_state, model_path)
             print(f"Saved checkpoint with classifier shape: {classifier_shape}")
 
