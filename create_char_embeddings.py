@@ -64,6 +64,8 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
     model.eval()
     
     return model, device
+
+
 def compute_char_embeddings(
     model: CRAFTFontClassifier, 
     dataloader, 
@@ -91,52 +93,44 @@ def compute_char_embeddings(
     class_embeddings = torch.zeros(num_classes, embedding_dim).to(device)
     class_counts = torch.zeros(num_classes).to(device)
     
-    # Verify all model components are on the correct device
-    model_device = next(model.parameters()).device
-    print(f"Model is on device: {model_device}")
+    # Set model to evaluation mode
+    model.eval()
     
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc='Computing embeddings'):
-            # Get targets, which should be present in all batches
-            targets = batch['labels'].to(device)
+        for batch_data in tqdm(dataloader, desc='Computing embeddings'):
+            # EXACT MIRROR OF evaluate() FUNCTION FROM train.py
             
-            try:
-                # Check if we're using precomputed patches
-                if 'patches' in batch and 'attention_mask' in batch:
-                    # Using precomputed patches - move to device
-                    patches = batch['patches'].to(device)
-                    attention_mask = batch['attention_mask'].to(device).bool()
-                    
-                    # Process through font classifier directly
-                    with torch.cuda.amp.autocast(enabled=False):
-                        outputs = model.font_classifier(patches, attention_mask)
-                else:
-                    # Original code path for processing images with CRAFT
-                    if 'images' not in batch:
-                        raise ValueError("Batch does not contain 'images' key")
-                    
-                    images = batch['images'].to(device)
-                    
-                    # Get patch data using CRAFT
-                    patch_data = model.extract_patches_with_craft(images)
-                    patches = patch_data['patches'].to(device)
-                    attention_mask = patch_data['attention_mask'].to(device).bool()
-                    
-                    # Process through font classifier
-                    with torch.cuda.amp.autocast(enabled=False):
-                        outputs = model.font_classifier(patches, attention_mask)
-                
-                font_embeddings = outputs['font_embedding']  # [batch_size, embedding_dim]
-                
-                # Accumulate embeddings by class
-                for i, target in enumerate(targets):
-                    class_idx = target.item()
-                    class_embeddings[class_idx] += font_embeddings[i]
-                    class_counts[class_idx] += 1
-                    
-            except Exception as e:
-                print(f"Error processing batch: {e}")
-                continue
+            # Move labels to device (should always be present)
+            targets = batch_data['labels'].to(device)
+            
+            # Check if we're using precomputed patches or images
+            if 'patches' in batch_data and 'attention_mask' in batch_data:
+                # Using precomputed patches - move to device
+                batch_data['patches'] = batch_data['patches'].to(device)
+                batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
+                # DO NOT convert to bool explicitly here - let model handle it
+            elif 'images' in batch_data:
+                # Using images - move to device
+                batch_data['images'] = batch_data['images'].to(device)
+            else:
+                raise ValueError("Batch data must contain either 'patches' or 'images'")
+
+            # Forward pass with the batch data - EXACTLY as in evaluate()
+            outputs = model(batch_data)
+            
+            # Extract font embeddings (instead of logits as in evaluate())
+            if isinstance(outputs, dict) and 'font_embedding' in outputs:
+                font_embeddings = outputs['font_embedding']
+                print(f"Font embeddings shape: {font_embeddings.shape}")
+
+            else:
+                raise ValueError("Model output doesn't contain 'font_embedding'")
+            
+            # Accumulate embeddings by class
+            for i, target in enumerate(targets):
+                class_idx = target.item()
+                class_embeddings[class_idx] += font_embeddings[i]
+                class_counts[class_idx] += 1
     
     # Compute averages
     for i in range(num_classes):
@@ -146,14 +140,12 @@ def compute_char_embeddings(
     # L2 normalize embeddings for cosine similarity computation
     class_embeddings = torch.nn.functional.normalize(class_embeddings, p=2, dim=1)
     
-    # Verify no classes were empty
+    # Check for empty classes
     empty_classes = (class_counts == 0).sum().item()
     if empty_classes > 0:
         print(f"Warning: {empty_classes} classes had no samples!")
     
-    final_embeddings = class_embeddings.cpu().numpy()
-    print(f"Final embeddings shape: {final_embeddings.shape}")
-    return final_embeddings
+    return class_embeddings.cpu().numpy()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -175,6 +167,7 @@ def main():
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         use_precomputed_craft=args.use_precomputed_craft,
+        num_workers=os.cpu_count(),
     )
     
     # Compute embeddings
