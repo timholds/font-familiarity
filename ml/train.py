@@ -378,7 +378,7 @@ def main():
     # Set up metrics logging
     wandb.init(
         project="Font-Familiarity",
-        name=f"experiment_{time.strftime('%Y-%m-%d_%H-%M-%S')}",
+        name=f"{time.strftime('%Y-%m-%d_%H-%M')}-BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channel}-PS{args.patch_size}",
         config={
             **vars(args),
             "architecture": "CNN",
