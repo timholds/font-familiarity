@@ -602,7 +602,7 @@ def char_collate_fn(batch):
 def get_char_dataloaders(
     data_dir: str,
     batch_size: int = 32,
-    num_workers: int = 4, 
+    num_workers: int = 16, 
     use_precomputed_craft: bool = False,
     save_problematic_images: bool = False
 ) -> Tuple[DataLoader, DataLoader]:
@@ -626,36 +626,67 @@ def get_char_dataloaders(
         # For training set
         train_valid_indices = []
         train_invalid_indices = []
+        
         for idx in range(len(train_dataset)):
-            # Check if this sample has any boxes
-            has_boxes = False
+            # Check if this sample has any VALID boxes (with minimum size)
+            has_valid_boxes = False
             if train_dataset.craft_h5_file is not None:
                 if str(idx) in train_dataset.boxes_group:
                     boxes = train_dataset.boxes_group[str(idx)][()]
-                    has_boxes = boxes.size > 0
+                    if boxes.size > 0:
+                        # Check each box for minimum size
+                        for box in boxes:
+                            if box.shape[0] >= 4:  # Ensure box has enough values
+                                x1, y1, x2, y2 = box[:4]
+                                if x2-x1 >= 5 and y2-y1 >= 5:
+                                    has_valid_boxes = True
+                                    break
             else:
                 boxes = train_dataset.precomputed_boxes[idx]
-                has_boxes = len(boxes) > 0
-                
-            if has_boxes:
+                if len(boxes) > 0:
+                    # Check each box for minimum size
+                    for box in boxes:
+                        if len(box) >= 4:  # Ensure box has enough values
+                            x1, y1, x2, y2 = box[:4]
+                            if x2-x1 >= 5 and y2-y1 >= 5:
+                                has_valid_boxes = True
+                                break
+            
+            # Append to appropriate list 
+            if has_valid_boxes:
                 train_valid_indices.append(idx)
             else:
                 train_invalid_indices.append(idx)
         
-        # Same for test set
+        # Similar filtering for test set 
         test_valid_indices = []
         test_invalid_indices = []
+        
         for idx in range(len(test_dataset)):
-            has_boxes = False
+            has_valid_boxes = False
             if test_dataset.craft_h5_file is not None:
                 if str(idx) in test_dataset.boxes_group:
                     boxes = test_dataset.boxes_group[str(idx)][()]
-                    has_boxes = boxes.size > 0
+                    if boxes.size > 0:
+                        # Check each box for minimum size
+                        for box in boxes:
+                            if box.shape[0] >= 4:
+                                x1, y1, x2, y2 = box[:4]
+                                if x2-x1 >= 5 and y2-y1 >= 5:
+                                    has_valid_boxes = True
+                                    break
             else:
                 boxes = test_dataset.precomputed_boxes[idx]
-                has_boxes = len(boxes) > 0
-                
-            if has_boxes:
+                if len(boxes) > 0:
+                    # Check each box for minimum size
+                    for box in boxes:
+                        if len(box) >= 4:
+                            x1, y1, x2, y2 = box[:4]
+                            if x2-x1 >= 5 and y2-y1 >= 5:
+                                has_valid_boxes = True
+                                break
+            
+            if has_valid_boxes:
                 test_valid_indices.append(idx)
             else:
                 test_invalid_indices.append(idx)

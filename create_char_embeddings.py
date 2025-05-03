@@ -121,7 +121,6 @@ def compute_char_embeddings(
             # Extract font embeddings (instead of logits as in evaluate())
             if isinstance(outputs, dict) and 'font_embedding' in outputs:
                 font_embeddings = outputs['font_embedding']
-                print(f"Font embeddings shape: {font_embeddings.shape}")
 
             else:
                 raise ValueError("Model output doesn't contain 'font_embedding'")
