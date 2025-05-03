@@ -162,11 +162,14 @@ def main():
     
     # Get dataloaders for character-based model
     print("Loading character dataset...")
+    hparams = get_params_from_model_path(args.model_path)
     test_loader, _, num_classes = get_char_dataloaders(
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         use_precomputed_craft=args.use_precomputed_craft,
         num_workers=os.cpu_count(),
+        pad_x=hparams["pad_x"],
+        pad_y=hparams["pad_y"],
     )
     
     # Compute embeddings

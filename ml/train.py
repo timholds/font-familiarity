@@ -370,6 +370,9 @@ def main():
     parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT results")
     parser.add_argument("--patch_size", type=int, default=32, help="Size of character patches")
     parser.add_argument("--n_attn_heads", type=int, default=16, help="Number of attention heads")
+    parser.add_argument("--pad_x", type=int, default=0, help="Padding in x direction")
+    parser.add_argument("--pad_y", type=int, default=0, help="Padding in y direction")
+
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -415,6 +418,8 @@ def main():
             batch_size=args.batch_size,
             num_workers=os.cpu_count(),
             use_precomputed_craft=args.use_precomputed_craft,
+            pad_x=args.pad_x,
+            pad_y=args.pad_y,
         )
     else:
         train_loader, test_loader, num_classes = get_dataloaders(
@@ -463,6 +468,8 @@ def main():
                 n_attn_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
+                padding_x=args.pad_x,
+                padding_y=args.pad_y,
             ).to(device)
             
             # print("\nTesting batch independence...")

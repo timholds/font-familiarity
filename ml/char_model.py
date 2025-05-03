@@ -9,7 +9,7 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-
+from dataset import add_padding_to_polygon
 
 from CRAFT import CRAFTModel, draw_polygons
 import numpy as np
@@ -521,8 +521,8 @@ class CRAFTFontClassifier(nn.Module):
             print(f"Extracting patches from {len(polygons)} polygons")
             for polygon in polygons:
                 # TODO turn this on with craft preextraction
-                polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
-
+                # polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
+                polygon = add_padding_to_polygon(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
                 y_coords = [p[1] for p in polygon]
