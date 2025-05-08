@@ -488,8 +488,14 @@ We can probably get some perf gains from parallelizing some parts of the model a
 Related; i wonder if i could skip the image magnification and resizing they do
 - remove it and see what the patches look like on your training data and figure out why this is even there in the first place. i put that on chesterton and his fence frfr
 
+# V0.2.0
+## Dataset
+Switch to a character model instead of whole image by using CRAFT OCR to extract character patches from the images. This is a big step towards actually covering the font manifold in a meaningful way, since each character patch has a much higher ratio of signal to noise and we can average across all the character patches
+
 # V0.3.0
 Remove CRAFT from the training loop and preprocess the character patches before training so we don't have to do it every epoch. Takes about 10 hours to preextract that bounding boxes for a 700k dataset and each epoch takes around 20 minutes. 
+
+Add a self attention head to the patch features so that we can do a weighted average of the character patches. This is important because some characters give us more information about the font type than others, and we want to be able to learn that.
 
 ### Dataset Details
 - 700k dataset of 384x384 images with .25 chance of having a background, 100 word max per image as set in get_text_sample (bumped from 50 in v0.2.0)  
@@ -544,6 +550,12 @@ I think this is the train metrics from the 16 head train https://wandb.ai/tholds
 
 
 # V0.5.0
+## Dataset
+Combined v3 and v4 datasets to have a total of 2.1M images
+Added some image augmentations on patches using albumentations
+
+
+# V0.6.0
 contrastive loss - tricky because some fonts are more similar to each other than others. triplet loss will move negative pairs equally regardless 
 Fonts have a hierarchical similarity structure (serif/sans-serif, weight, style, etc.).
 

@@ -7,6 +7,9 @@ import cv2
 import tqdm
 import h5py
 import random
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
     """Load NPZ file using memory mapping."""
@@ -181,19 +184,84 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
         assert (labels >= 0).all(), f"Negative label indices found after converting to 0 index.\
               Expecting riginal to be >= 1"
         return images, labels
+    
+def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.0):
+    """
+    Add padding to a polygon or bounding box with optional jittering for data augmentation.
 
+    Args:
+        data: A polygon (list of lists [[x1, y1], [x2, y2], ...]) or a bounding box ([x1, y1, x2, y2]).
+        padding_x: Base horizontal padding as a fraction of width.
+        padding_y: Base vertical padding as a fraction of height.
+        asym: If True, add more padding to the left side to correct for bias.
+        jitter_std: Standard deviation for jittering the padding values.
+
+    Returns:
+        Padded polygon (list of lists) or bounding box (list).
+    """
+    if isinstance(data, list) and len(data) == 4 and all(isinstance(coord, (int, float)) for coord in data):
+        # Input is a bounding box [x1, y1, x2, y2]
+        x_coords = [data[0], data[2]]
+        y_coords = [data[1], data[3]]
+    elif isinstance(data, list) and all(isinstance(point, list) and len(point) == 2 for point in data):
+        # Input is a polygon [[x1, y1], [x2, y2], ...]
+        x_coords = [p[0] for p in data]
+        y_coords = [p[1] for p in data]
+    else:
+        raise ValueError(f"Unsupported input format for add_padding_to_polygons: {data}")
+
+    # Calculate min and max coordinates
+    min_x, max_x = min(x_coords), max(x_coords)
+    min_y, max_y = min(y_coords), max(y_coords)
+
+    # Calculate width and height
+    width = max_x - min_x
+    height = max_y - min_y
+
+    # Add random jitter to padding values
+    jittered_padding_x = padding_x + random.gauss(0, jitter_std)
+    jittered_padding_y = padding_y + random.gauss(0, jitter_std)
+
+    # Calculate padding
+    pad_x = int(jittered_padding_x * width)
+    pad_y = int(jittered_padding_y * height)
+
+    # Apply padding
+    if not asym:
+        padded_min_x = min_x - pad_x
+        padded_max_x = max_x + pad_x
+    else:
+        padded_min_x = min_x - pad_x
+        padded_max_x = max_x + int(pad_x // 3)  # Smaller padding on the right
+
+    padded_min_y = min_y - pad_y
+    padded_max_y = max_y + pad_y
+
+    # Return padded bounding box or polygon
+    if isinstance(data, list) and len(data) == 4 and all(isinstance(coord, (int, float)) for coord in data):
+        # Return as bounding box
+        return [padded_min_x, padded_min_y, padded_max_x, padded_max_y]
+    else:
+        # Return as polygon (expanded rectangle)
+        return [
+            [padded_min_x, padded_min_y],
+            [padded_max_x, padded_min_y],
+            [padded_max_x, padded_max_y],
+            [padded_min_x, padded_max_y]
+        ]
+    
 class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
     def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
-                  max_chars: int = 100, use_precomputed_craft=False):
+                  max_chars: int = 100, use_precomputed_craft=False, pad_x=.05, pad_y=.15):
         self.root_dir = root_dir
         self.char_size = char_size
         self.max_chars = max_chars
         self.use_precomputed_craft = use_precomputed_craft
         
-        mode = 'train' if train else 'test'
-        h5_file = os.path.join(root_dir, f'{mode}.h5')
+        self.mode = 'train' if train else 'test'
+        h5_file = os.path.join(root_dir, f'{self.mode}.h5')
         
         if os.path.exists(h5_file):
             print(f"Loading H5 dataset from {h5_file}")
@@ -224,8 +292,24 @@ class CharacterFontDataset(Dataset):
         self.craft_h5_file = None
         self.valid_indices = []
 
+        if train:
+            self.augmentations = A.Compose([
+                A.RandomBrightnessContrast(p=0.5),
+                # A.HueSaturationValue(p=0.5),                
+                # A.CLAHE(p=0.5),
+                A.RandomGamma(p=0.5),
+                # A.RandomRotate90(p=0.5),
+                # A.RandomScale(scale_limit=0.1, p=0.5),
+                # A.RandomCrop(height=self.char_size, width=self.char_size, p=0.5),
+                # A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
+                A.GaussianBlur(blur_limit=(3, 5), p=0.3),
+                ToTensorV2()  # Convert to PyTorch tensor
+            ])
+        else:
+            self.augmentations = None
+
         if self.use_precomputed_craft:
-            craft_h5_file = os.path.join(self.root_dir, f'{mode}_craft_boxes.h5')
+            craft_h5_file = os.path.join(self.root_dir, f'{self.mode}_craft_boxes.h5')
             if os.path.exists(craft_h5_file):
                 try:
                     # Load CRAFT boxes
@@ -291,53 +375,8 @@ class CharacterFontDataset(Dataset):
         except Exception as e:
             print(f"Error normalizing patch: {e}")
             return np.zeros((self.char_size, self.char_size), dtype=np.float32)
-    
-    def add_padding_to_polygons(self, box, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.02):
-        """
-        Add padding to a single polygon from CRAFT with optional jittering for data augmentation.
-
-        Args:
-            box: A single bounding box [x1, y1, x2, y2].
-            padding_x: Base horizontal padding.
-            padding_y: Base vertical padding.
-            asym: If True, only add padding to the left side.
-            jitter_std: Standard deviation for jittering the padding values.
-
-        Returns:
-            Padded bounding box as a list [x1, y1, x2, y2].
-        """
-        if len(box) != 4:
-            raise ValueError(f"Expected box format [x1, y1, x2, y2], but got: {box}")
-
-        # Extract box coordinates
-        x1, y1, x2, y2 = box
-
-        width = x2 - x1
-        height = y2 - y1
-
-        # Add random jitter to padding values
-        jittered_padding_x = padding_x + random.gauss(0, jitter_std)
-        jittered_padding_y = padding_y + random.gauss(0, jitter_std)
-
-        # pad in proportion to the patch size
-        pad_x = int(jittered_padding_x * width)
-        pad_y = int(jittered_padding_y * height)
-
-        # Apply padding
-        if not asym:
-            x1 -= pad_x
-            x2 += pad_x
-        else:
-            x1 -= pad_x
-            x2 += int(pad_x // 3)  # Smaller padding on the right
-
-        y1 -= pad_y
-        y2 += pad_y
-
-        # Return the padded bounding box
-        return [x1, y1, x2, y2]
-    
-    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx) -> tuple:
+        
+    def _extract_patches_from_boxes(self, image: np.ndarray, boxes: list, idx, mode, pad_x=.05, pad_y=.15) -> tuple:
         """Extract character patches from image using precomputed bounding boxes.
         Images HWC [0, 255]"""
 
@@ -361,8 +400,11 @@ class CharacterFontDataset(Dataset):
         
         for box in boxes:
             # print(f"\n\n\nProcessing box: {box}\n\n\n")
-            # TODO appears this is not getting applied to the visualized patches
-            box = self.add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=.05)
+            # Only add jittered padding for training mode
+            if mode == 'train':
+                box = add_padding_to_polygons(box, padding_x=pad_x, padding_y=pad_y, asym=True, jitter_std=0.05)
+            else:
+                box = add_padding_to_polygons(box, padding_x=pad_x, padding_y=pad_y, asym=True, jitter_std=0.0)
             try:
                 # Handle different box formats
                 if len(box) == 4:
@@ -478,8 +520,19 @@ class CharacterFontDataset(Dataset):
             
             assert boxes.ndim == 2 and boxes.shape[1] == 4, \
                 f"Invalid box shape {boxes.shape} at index {idx}"
-            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx) # HWC
+            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx, pad_x, pad_y, self.mode) # HWC
     
+            if self.mode == 'train':
+                augmented_patches = []
+                for patch in patches:
+                    patch_np = patch.squeeze(0).numpy()  # Convert to numpy for albumentations
+                    augmented = self.augmentations(image=patch_np)['image']
+                    augmented_patches.append(augmented)
+                
+                # Convert back to tensor and stack
+                patches = torch.stack(augmented_patches)
+                
+
             # Return patches directly
             return {
                 'patches': patches,
@@ -571,9 +624,11 @@ def char_collate_fn(batch):
 def get_char_dataloaders(
     data_dir: str,
     batch_size: int = 32,
-    num_workers: int = 4, 
+    num_workers: int = 16, 
     use_precomputed_craft: bool = False,
-    save_problematic_images: bool = False
+    save_problematic_images: bool = False,
+    pad_x: float = 0.05,
+    pad_y: float = 0.15
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
@@ -581,11 +636,13 @@ def get_char_dataloaders(
     train_dataset = CharacterFontDataset(
         data_dir, train=True, 
         use_precomputed_craft=use_precomputed_craft,
+        pad_x=pad_x, pad_y=pad_y
     )
     
     test_dataset = CharacterFontDataset(
         data_dir, train=False, 
         use_precomputed_craft=use_precomputed_craft,
+        pad_x=pad_x, pad_y=pad_y
     )
 
     num_classes = train_dataset.num_classes
@@ -595,36 +652,67 @@ def get_char_dataloaders(
         # For training set
         train_valid_indices = []
         train_invalid_indices = []
+        
         for idx in range(len(train_dataset)):
-            # Check if this sample has any boxes
-            has_boxes = False
+            # Check if this sample has any VALID boxes (with minimum size)
+            has_valid_boxes = False
             if train_dataset.craft_h5_file is not None:
                 if str(idx) in train_dataset.boxes_group:
                     boxes = train_dataset.boxes_group[str(idx)][()]
-                    has_boxes = boxes.size > 0
+                    if boxes.size > 0:
+                        # Check each box for minimum size
+                        for box in boxes:
+                            if box.shape[0] >= 4:  # Ensure box has enough values
+                                x1, y1, x2, y2 = box[:4]
+                                if x2-x1 >= 5 and y2-y1 >= 5:
+                                    has_valid_boxes = True
+                                    break
             else:
                 boxes = train_dataset.precomputed_boxes[idx]
-                has_boxes = len(boxes) > 0
-                
-            if has_boxes:
+                if len(boxes) > 0:
+                    # Check each box for minimum size
+                    for box in boxes:
+                        if len(box) >= 4:  # Ensure box has enough values
+                            x1, y1, x2, y2 = box[:4]
+                            if x2-x1 >= 5 and y2-y1 >= 5:
+                                has_valid_boxes = True
+                                break
+            
+            # Append to appropriate list 
+            if has_valid_boxes:
                 train_valid_indices.append(idx)
             else:
                 train_invalid_indices.append(idx)
         
-        # Same for test set
+        # Similar filtering for test set 
         test_valid_indices = []
         test_invalid_indices = []
+        
         for idx in range(len(test_dataset)):
-            has_boxes = False
+            has_valid_boxes = False
             if test_dataset.craft_h5_file is not None:
                 if str(idx) in test_dataset.boxes_group:
                     boxes = test_dataset.boxes_group[str(idx)][()]
-                    has_boxes = boxes.size > 0
+                    if boxes.size > 0:
+                        # Check each box for minimum size
+                        for box in boxes:
+                            if box.shape[0] >= 4:
+                                x1, y1, x2, y2 = box[:4]
+                                if x2-x1 >= 5 and y2-y1 >= 5:
+                                    has_valid_boxes = True
+                                    break
             else:
                 boxes = test_dataset.precomputed_boxes[idx]
-                has_boxes = len(boxes) > 0
-                
-            if has_boxes:
+                if len(boxes) > 0:
+                    # Check each box for minimum size
+                    for box in boxes:
+                        if len(box) >= 4:
+                            x1, y1, x2, y2 = box[:4]
+                            if x2-x1 >= 5 and y2-y1 >= 5:
+                                has_valid_boxes = True
+                                break
+            
+            if has_valid_boxes:
                 test_valid_indices.append(idx)
             else:
                 test_invalid_indices.append(idx)

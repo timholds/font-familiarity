@@ -87,12 +87,12 @@ python compare_models.py \
 
 ```
 python batch_compare_models.py \
-  --data_dir data/dataset-384-spc2000/ 
-  --model_a_path data/dataset-384-spc2000/fontCNN_BS128-ED1024-IC16-PS48.pt \
-  --model_b_path model/fontCNN_BS64-ED1024-IC16.pt \
-  --embeddings_a_path data/dataset-384-spc2000/class_embeddings_1024.npy \
-  --embeddings_b_path model/class_embeddings_1024.npy \
-  --port 8080 --image_dir test-images --serve
+  --data_dir /media/timholds/hd2/dataset-384-spc3000/  \
+  --model_a_path model/fontCNN-BS64-ED1024-IC16-PS64-NH16.pt \
+  --model_b_path /media/timholds/hd2/dataset-384-spc3000/fontCNN-BS64-ED1024-IC16-PS64-NH16.pt \
+  --embeddings_a_path model/class_embeddings-BS64-ED1024-IC16-PS64-NH16.npy \
+  --embeddings_b_path /media/timholds/hd2/dataset-384-spc3000/class_embeddings-BS64-ED1024-IC16-PS64-NH16.npy \
+  --port 8080 --image_dir test-images 
 ```
 
 
