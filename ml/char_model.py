@@ -476,7 +476,7 @@ class CRAFTFontClassifier(nn.Module):
                 # TODO turn this on with craft preextraction
                 # polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
                 # TODO get add padding to return polygon format not box format
-                polygon = add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
+                polygon = add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
                 # Convert polygon to bounding box
                 x_coords = [p[0] for p in polygon]
                 y_coords = [p[1] for p in polygon]

@@ -185,7 +185,7 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
               Expecting riginal to be >= 1"
         return images, labels
     
-def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.02):
+def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.0):
     """
     Add padding to a polygon or bounding box with optional jittering for data augmentation.
 
