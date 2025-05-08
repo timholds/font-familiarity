@@ -765,9 +765,9 @@ def main():
     parser.add_argument('--samples_per_class', type=int, default=10, help='Number of samples per font')
     parser.add_argument('--image_resolution', type=int, default=512, help='Image width and height')
     parser.add_argument('--backgrounds_dir', default=None, help='Directory containing background images')
-    parser.add_argument('--background_probability', type=float, default=0.5, 
+    parser.add_argument('--background_probability', type=float, default=0.2, 
                       help='Probability of using a background (0-1)')
-    parser.add_argument('--color_probability', type=float, default=0.25,
+    parser.add_argument('--color_probability', type=float, default=0.2,
                       help='Probability of using custom text and background colors (0-1)')
     parser.add_argument('--transform_probability', type=float, default=0.15,
                       help='Probability of using custom text and background colors (0-1)')
