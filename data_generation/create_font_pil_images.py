@@ -98,11 +98,11 @@ class TextAugmentation:
     """Generates continuous text augmentation parameters for dataset diversity."""
     
     def __init__(self, 
-                 font_size_range=(20, 60),
+                 font_size_range=(18, 60),
                  weight_primary_modes=[400, 700],
                  weight_primary_prob=0.3,
                  letter_spacing_range=(-0.1, 0.6),
-                 line_height_range=(.7, 1.4),
+                 line_height_range=(.8, 1.2),
                  color_probability=0.3):
         
         self.font_size_range = font_size_range
@@ -497,9 +497,9 @@ class TextRenderer:
             ascent, descent = font.getmetrics()
             text_height = ascent + descent
         
-        # Calculate text position (centered horizontally, near the top vertically)
+        # Calculate text position (centered horizontally, adjusted vertically with padding)
         start_x = (config.image_width - text_width) // 2
-        # start_y = config.image_height // 8  # Positioned at 1/4 down from the top
+        # start_y = config.image_height // 8  # Positioned at 1/8 down from the top
         padding_bottom= int(config.image_height * 0.2)
         start_y = (config.image_height - text_height - padding_bottom) // 8
         # Check if text is too wide for the image
