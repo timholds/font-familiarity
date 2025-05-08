@@ -402,9 +402,9 @@ class CharacterFontDataset(Dataset):
             # print(f"\n\n\nProcessing box: {box}\n\n\n")
             # Only add jittered padding for training mode
             if mode == 'train':
-                box = add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=.05)
+                box = add_padding_to_polygons(box, padding_x=pad_x, padding_y=pad_y, asym=True, jitter_std=0.05)
             else:
-                box = add_padding_to_polygons(box, padding_x=.05, padding_y=0.15, asym=True, jitter_std=0.0)
+                box = add_padding_to_polygons(box, padding_x=pad_x, padding_y=pad_y, asym=True, jitter_std=0.0)
             try:
                 # Handle different box formats
                 if len(box) == 4:
