@@ -98,7 +98,7 @@ class TextAugmentation:
     """Generates continuous text augmentation parameters for dataset diversity."""
     
     def __init__(self, 
-                 font_size_range=(24, 70),
+                 font_size_range=(20, 60),
                  weight_primary_modes=[400, 700],
                  weight_primary_prob=0.3,
                  letter_spacing_range=(-0.1, 0.6),
@@ -412,27 +412,27 @@ class TextRenderer:
         image = Image.fromarray(img_array)
         # Slight rotation
         # if "2d_rotation" in transform_type or transform_type == "combined":
-        if random.random() < .3:  # 30% chance of rotation
-            rotation_angle = random.uniform(-4, 4)
-            image = image.rotate(rotation_angle, resample=Image.BICUBIC, expand=False)
+        # if random.random() < .3:  # 30% chance of rotation
+        #     rotation_angle = random.uniform(-4, 4)
+        #     image = image.rotate(rotation_angle, resample=Image.BICUBIC, expand=False)
         
         # Add slight noise
-        if random.random() < 0.2:  # 20% chance of noise
-            noise_level = random.uniform(5, 15)
-            img_array = np.array(image)
-            noise = np.random.normal(0, noise_level, img_array.shape)
-            noisy_array = np.clip(img_array + noise, 0, 255).astype(np.uint8)
-            image = Image.fromarray(noisy_array)
+        # if random.random() < 0.2:  # 20% chance of noise
+        #     noise_level = random.uniform(5, 15)
+        #     img_array = np.array(image)
+        #     noise = np.random.normal(0, noise_level, img_array.shape)
+        #     noisy_array = np.clip(img_array + noise, 0, 255).astype(np.uint8)
+        #     image = Image.fromarray(noisy_array)
         
         # Adjust brightness/contrast slightly
-        if random.random() < 0.3:  # 30% chance of brightness/contrast adjustment
-            enhancer = ImageEnhance.Brightness(image)
-            factor = random.uniform(0.8, 1.2)
-            image = enhancer.enhance(factor)
+        # if random.random() < 0.3:  # 30% chance of brightness/contrast adjustment
+        #     enhancer = ImageEnhance.Brightness(image)
+        #     factor = random.uniform(0.8, 1.2)
+        #     image = enhancer.enhance(factor)
             
-            enhancer = ImageEnhance.Contrast(image)
-            factor = random.uniform(0.8, 1.2)
-            image = enhancer.enhance(factor)
+        #     enhancer = ImageEnhance.Contrast(image)
+        #     factor = random.uniform(0.8, 1.2)
+        #     image = enhancer.enhance(factor)
         
         return image
     
@@ -499,8 +499,9 @@ class TextRenderer:
         
         # Calculate text position (centered horizontally, near the top vertically)
         start_x = (config.image_width - text_width) // 2
-        start_y = config.image_height // 4  # Positioned at 1/4 down from the top
-        
+        # start_y = config.image_height // 8  # Positioned at 1/4 down from the top
+        padding_bottom= int(config.image_height * 0.2)
+        start_y = (config.image_height - text_height - padding_bottom) // 8
         # Check if text is too wide for the image
         if text_width > config.image_width * 0.9:
             # Break the text into multiple lines
@@ -777,7 +778,7 @@ def main():
         text_file=args.text_file,
         output_dir=args.output_dir,
         num_samples_per_font=args.samples_per_class,
-        image_size=(args.image_resolution, args.image_resolution),
+        image_size=(args.image_resolution, args.image_resolution//2),
         backgrounds_dir=args.backgrounds_dir,
         background_probability=args.background_probability,
         color_probability=args.color_probability,
