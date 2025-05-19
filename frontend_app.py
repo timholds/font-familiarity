@@ -197,8 +197,8 @@ def load_char_model_and_embeddings(model_path: str,
             n_attn_heads=hparams["n_attn_heads"],
             craft_fp16=False,
             use_precomputed_craft=False,
-            pad_x=.15,
-            pad_y=.2,
+            pad_x=hparams["pad_x"],
+            pad_y=hparams["pad_y"],
         )
         
         

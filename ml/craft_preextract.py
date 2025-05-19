@@ -58,10 +58,8 @@ def convert_polygons_to_boxes(polygons, pad=False, asym=False):
                     y1 -= pad_y
                     y2 += pad_y
                     # x2 is unchaned - only adding padding on left
-               
-
-                
             boxes.append([int(x1), int(y1), int(x2), int(y2)])
+            
     except Exception as e:
         print(f"Error converting polygons to boxes: {e}")
     return boxes
@@ -274,7 +272,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
             
             # Convert to torch tensor
             # NOTE that switching from convert_polygons_to_boxes to convert_polygons_to_boxes_parallel doubles the time!
-            batch_boxes = [convert_polygons_to_boxes(polygons, pad=True, asym=True) for polygons in batch_polys]
+            batch_boxes = [convert_polygons_to_boxes(polygons, pad=False, asym=True) for polygons in batch_polys]
             #batch_boxes = convert_polygons_to_boxes_parallel(batch_polys, num_workers)    
             
             for j, boxes in enumerate(batch_boxes):

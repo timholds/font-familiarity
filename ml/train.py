@@ -111,6 +111,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         # Compute loss and backward
         loss = criterion(logits, targets)
         loss.backward()
+        # TODO log loss every batch instead of once per epoch
+        # wandb.log({'train/batch_loss': loss.item()}, commit=False)  # Log batch loss
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
@@ -368,6 +370,9 @@ def main():
     parser.add_argument("--use_precomputed_craft", action="store_true", help="Use precomputed CRAFT results")
     parser.add_argument("--patch_size", type=int, default=32, help="Size of character patches")
     parser.add_argument("--n_attn_heads", type=int, default=16, help="Number of attention heads")
+    parser.add_argument("--pad_x", type=int, default=0, help="Padding in x direction")
+    parser.add_argument("--pad_y", type=int, default=0, help="Padding in y direction")
+
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
 
@@ -376,7 +381,7 @@ def main():
     # Set up metrics logging
     wandb.init(
         project="Font-Familiarity",
-        name=f"experiment_{time.strftime('%Y-%m-%d_%H-%M-%S')}",
+        name=f"{time.strftime('%Y-%m-%d_%H-%M')}-BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channel}-PS{args.patch_size}",
         config={
             **vars(args),
             "architecture": "CNN",
@@ -413,6 +418,8 @@ def main():
             batch_size=args.batch_size,
             num_workers=os.cpu_count(),
             use_precomputed_craft=args.use_precomputed_craft,
+            pad_x=args.pad_x,
+            pad_y=args.pad_y,
         )
     else:
         train_loader, test_loader, num_classes = get_dataloaders(
@@ -461,6 +468,8 @@ def main():
                 n_attn_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
+                padding_x=args.pad_x,
+                padding_y=args.pad_y,
             ).to(device)
             
             # print("\nTesting batch independence...")
@@ -668,6 +677,17 @@ def main():
             print(f'Test Top-5 Acc: {test_metrics["test/top5_acc"]:.2f}%')
         
         print(f'Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
+
+        checkpoint_path = os.path.join(args.data_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        torch.save({
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_metrics': train_metrics,
+            'test_metrics': test_metrics,
+            'num_classes': num_classes
+        }, checkpoint_path)
+        print(f"Saved checkpoint for epoch {epoch+1} at {checkpoint_path}")
         
         # Save best model based on test accuracy
         if test_acc > best_test_acc:
@@ -718,6 +738,7 @@ def main():
                 
                 print(f"WARNING: Could not verify classifier shape for {num_classes} classes")
             
+
             torch.save(best_model_state, model_path)
             print(f"Saved checkpoint with classifier shape: {classifier_shape}")
 

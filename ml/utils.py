@@ -3,8 +3,12 @@ import os
 from pathlib import Path
 
 def get_model_path(base_dir, prefix, batch_size, embedding_dim, initial_channels,
-                   patch_size=32, n_attn_heads=4):
-    model_name = f"{prefix}-BS{batch_size}-ED{embedding_dim}-IC{initial_channels}-PS{patch_size}-NH{n_attn_heads}.pt"
+                   patch_size=32, n_attn_heads=4, pad_x=.05, pad_y=.15):
+    
+    model_name = (
+        f"{prefix}-BS{batch_size}-ED{embedding_dim}-IC{initial_channels}-"
+        f"PS{patch_size}-NH{n_attn_heads}-PX{pad_x}-PY{pad_y}.pt"
+    )
     model_path = Path(os.path.join(base_dir, model_name))
     return model_path
 
@@ -28,7 +32,11 @@ def get_embedding_path(base_dir, model_path):
     
     """
     hparams = get_params_from_model_path(model_path)
-    embedding_file = f"class_embeddings-BS{hparams['batch_size']}-ED{hparams['embedding_dim']}-IC{hparams['initial_channels']}-PS{hparams['patch_size']}-NH{hparams['n_attn_heads']}.npy"
+    embedding_file = (
+        f"class_embeddings-BS{hparams['batch_size']}-ED{hparams['embedding_dim']}-"
+        f"IC{hparams['initial_channels']}-PS{hparams['patch_size']}-"
+        f"NH{hparams['n_attn_heads']}.npy"
+    )
     embedding_path = Path(os.path.join(base_dir, embedding_file))
     # Check if the embedding file already exists
     if embedding_path.exists():
@@ -62,7 +70,9 @@ def get_params_from_model_path(model_path):
         "patch_size": 32,
         "n_attn_heads": 4,
         "learning_rate": 0.00005,
-        "weight_decay": 0.001
+        "weight_decay": 0.001,
+        "pad_x": .05,
+        "pad_y": .15,
     }
 
     model_name = os.path.basename(model_path)
@@ -84,6 +94,10 @@ def get_params_from_model_path(model_path):
             params["learning_rate"] = float(part[2:])
         elif part.startswith("WD"):
             params["weight_decay"] = float(part[2:])
+        elif part.startswith("PX"):
+            params["pad_x"] = float(part[2:])
+        elif part.startswith("PY"):
+            params["pad_y"] = float(part[2:])
 
     return params
 
