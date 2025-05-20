@@ -131,7 +131,7 @@ I also tried a "Font Identifier AI" in the ChatGPT store that failed to recogniz
 
 The Font Finder Chrome plugin seems quite promising since it uses the information from the browser's elements / CSS. However the format it returns in isn't all that helpful: font-family (stack)
 
-![Font Plugin Example](font-plugin.png)
+![Font Plugin Example](assets/font-plugin.png)
 https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekalahgha
 
 
