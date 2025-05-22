@@ -134,8 +134,14 @@ The Font Finder Chrome plugin seems quite promising since it uses the informatio
 ![Font Plugin Example](assets/font-plugin.png)
 https://chromewebstore.google.com/detail/font-finder/bhiichidigehdgphoambhjbekalahgha
 
+# Known Issues
+- Some font names are not getting parsed correctly and as a result the links to the Google Fonts page are broken. This is a bit sloppy on my part but I intend to fix this when I have a worthy model.
+- Current model (5/15/25) currently works poorly on images with:
+    - tiny or huge font sizes
+    - cursive like fonts 
+    - complex backgrouunds
+    - multiple different fonts (gives an average of the two)
+    - non-english characters (e.g. cyrillic, arabic, etc)
+    - real world images (e.g. street signs, restaurants, etc). We do a little bit of perspective augmentation but not enough to make it robust to real world images.
+    - fonts that are unlike anything in the Google Fonts dataset, since we don't currently have a way for the model to say "I don't know what font this is" except for looking at the entropy of the output distribution
 
-# Misc
-dr_sugiyama seems to be the classification answer for all sorts of out-of-distribution images. The font itself is highly stylized with lots of curves and dramatic bends that probably cover a wide range of the feature space. I suspect when we switch training from whole image inputs to segmented characters, maybe this is less likely to be the case. 
-
-![Dr Sugiyama font sample](<assets/dr_sugiyama_sample.png>)
