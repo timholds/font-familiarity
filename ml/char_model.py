@@ -9,12 +9,11 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from .dataset import add_padding_to_polygons
+from dataset import add_padding_to_polygons
 
-from CRAFT import CRAFTModel, draw_polygons
+from CRAFT import CRAFTModel
 import numpy as np
 from PIL import Image
-from tqdm import tqdm
 
 
 class CharSimpleCNN(nn.Module):
@@ -70,6 +69,7 @@ class CharSimpleCNN(nn.Module):
 
         self.embedding_layer = nn.Sequential(
             nn.Linear(self.flatten_dim, embedding_dim),
+            nn.Linear(embedding_dim, embedding_dim),
             nn.ReLU(inplace=True),
             #nn.Dropout(0.25)
         )

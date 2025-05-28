@@ -199,15 +199,24 @@ def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitt
     Returns:
         Padded polygon (list of lists) or bounding box (list).
     """
-    if isinstance(data, list) and len(data) == 4 and all(isinstance(coord, (int, float)) for coord in data):
+    if isinstance(data, list) and len(data) == 4:
         # Input is a bounding box [x1, y1, x2, y2]
         x_coords = [data[0], data[2]]
         y_coords = [data[1], data[3]]
+    elif isinstance(data, np.ndarray) and len(data) == 4:
+        x1, y1, x2, y2 = data
+        x_coords = [x1, x2]
+        y_coords = [y1, y2]
     elif isinstance(data, list) and all(isinstance(point, list) and len(point) == 2 for point in data):
         # Input is a polygon [[x1, y1], [x2, y2], ...]
         x_coords = [p[0] for p in data]
         y_coords = [p[1] for p in data]
+   
     else:
+        print(f"padding_x = {padding_x}, padding_y = {padding_y}, asym = {asym}, jitter_std = {jitter_std}")
+        print(f"Unsupported input format for add_padding_to_polygons: {data}")
+        print("Expected format: bounding box [x1, y1, x2, y2] or polygon [[x1, y1], [x2, y2], ...]")
+        print("received:", type(data), type(data[0]) if isinstance(data, list) else None)
         raise ValueError(f"Unsupported input format for add_padding_to_polygons: {data}")
 
     # Calculate min and max coordinates
@@ -219,8 +228,8 @@ def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitt
     height = max_y - min_y
 
     # Add random jitter to padding values
-    jittered_padding_x = padding_x + random.gauss(0, jitter_std)
-    jittered_padding_y = padding_y + random.gauss(0, jitter_std)
+    jittered_padding_x = float(padding_x) + random.gauss(0, jitter_std)
+    jittered_padding_y = float(padding_y) + random.gauss(0, jitter_std)
 
     # Calculate padding
     pad_x = int(jittered_padding_x * width)
@@ -238,7 +247,7 @@ def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitt
     padded_max_y = max_y + pad_y
 
     # Return padded bounding box or polygon
-    if isinstance(data, list) and len(data) == 4 and all(isinstance(coord, (int, float)) for coord in data):
+    if isinstance(data, list) and len(data) == 4 or isinstance(data, np.ndarray) and len(data) == 4:
         # Return as bounding box
         return [padded_min_x, padded_min_y, padded_max_x, padded_max_y]
     else:
@@ -259,6 +268,8 @@ class CharacterFontDataset(Dataset):
         self.char_size = char_size
         self.max_chars = max_chars
         self.use_precomputed_craft = use_precomputed_craft
+        self.pad_x = pad_x
+        self.pad_y = pad_y
         
         self.mode = 'train' if train else 'test'
         h5_file = os.path.join(root_dir, f'{self.mode}.h5')
@@ -520,7 +531,7 @@ class CharacterFontDataset(Dataset):
             
             assert boxes.ndim == 2 and boxes.shape[1] == 4, \
                 f"Invalid box shape {boxes.shape} at index {idx}"
-            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx, pad_x, pad_y, self.mode) # HWC
+            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx, self.mode, self.pad_x, self.pad_y) # HWC
     
             if self.mode == 'train':
                 augmented_patches = []

@@ -197,7 +197,7 @@ def load_char_model_and_embeddings(model_path: str,
             n_attn_heads=hparams["n_attn_heads"],
             craft_fp16=False,
             use_precomputed_craft=False,
-            pad_x=hparams["pad_x"],
+            pad_x=hparams["pad_x"], # add the same padding as the model was trained with
             pad_y=hparams["pad_y"],
         )
         

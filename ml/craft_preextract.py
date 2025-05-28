@@ -209,7 +209,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
         output_file = os.path.join(data_dir, f'{mode}_craft_boxes.h5')
 
         start_idx = 0
-        if resume:
+        if resume and os.path.exists(output_file):
             try:
                 # Test if file can be opened and read
                 with h5py.File(output_file, 'r') as h5f:
@@ -223,7 +223,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                     os.remove(backup_file)
                 os.rename(output_file, backup_file)
                 resume = False  # Force starting fresh
-
+                
             # First check the checkpoint file (most reliable)
             checkpoint_idx = read_checkpoint_file(data_dir, mode)
             if checkpoint_idx >= 0:

@@ -381,7 +381,7 @@ def main():
     # Set up metrics logging
     wandb.init(
         project="Font-Familiarity",
-        name=f"{time.strftime('%Y-%m-%d_%H-%M')}-BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channel}-PS{args.patch_size}",
+        name=f"{time.strftime('%Y-%m-%d_%H-%M')}-BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channels}-PS{args.patch_size}",
         config={
             **vars(args),
             "architecture": "CNN",
@@ -468,8 +468,8 @@ def main():
                 n_attn_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
-                padding_x=args.pad_x,
-                padding_y=args.pad_y,
+                pad_x=args.pad_x,
+                pad_y=args.pad_y,
             ).to(device)
             
             # print("\nTesting batch independence...")

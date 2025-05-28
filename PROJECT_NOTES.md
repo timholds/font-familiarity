@@ -589,3 +589,5 @@ Let people search whether a given font they want is in the dataset
 dr_sugiyama seems to be the classification answer for all sorts of out-of-distribution images. The font itself is highly stylized with lots of curves and dramatic bends that probably cover a wide range of the feature space. I suspect when we switch training from whole image inputs to segmented characters, maybe this is less likely to be the case. 
 
 ![Dr Sugiyama font sample](<assets/dr_sugiyama_sample.png>)
+
+contrastive loss shapes the embedding space geometry while classification loss learns decision boundaries.
