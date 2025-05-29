@@ -520,8 +520,16 @@ def main():
         print(f"Model number of classes: {model.classifier.weight.shape[0]}")
 
     if args.pretrained_model:
-        model.load_state_dict(checkpoint['model_state_dict'])
-        print("Model state loaded from checkpoint")
+        # Load the full model from checkpoint
+        if hasattr(checkpoint['model'], 'state_dict'):
+            # If checkpoint contains full model, extract its architecture
+            loaded_model = checkpoint['model']
+            model = loaded_model
+            print("Full model loaded from checkpoint")
+        else:
+            # Fallback to state dict loading (for backwards compatibility)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            print("Model state loaded from checkpoint")
     total_params     = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'Total params {total_params}')
@@ -681,7 +689,7 @@ def main():
         checkpoint_path = os.path.join(args.data_dir, f"checkpoint_epoch_{epoch+1}.pt")
         torch.save({
             'epoch': epoch + 1,
-            'model_state_dict': model.state_dict(),
+            'model': model,
             'optimizer_state_dict': optimizer.state_dict(),
             'train_metrics': train_metrics,
             'test_metrics': test_metrics,
@@ -695,7 +703,7 @@ def main():
             print(f"New best model! (Test Acc: {test_acc:.2f}%)")
             best_model_state = {
                 'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
+                'model': model,
                 'optimizer_state_dict': optimizer.state_dict(),
                 'train_metrics': train_metrics,
                 'test_metrics': test_metrics,
@@ -719,9 +727,10 @@ def main():
                 # For simple CNN, classifier is directly at classifier
                 classifier_key = 'classifier.weight'
 
-            # Try to get the classifier shape
-            if classifier_key in best_model_state['model_state_dict']:
-                classifier_shape = best_model_state['model_state_dict'][classifier_key].shape
+            # Try to get the classifier shape from the model's state dict
+            model_state_dict = best_model_state['model'].state_dict()
+            if classifier_key in model_state_dict:
+                classifier_shape = model_state_dict[classifier_key].shape
                 print(f"Found classifier at {classifier_key} with shape {classifier_shape}")
                 
                 # Verify number of classes
@@ -732,9 +741,9 @@ def main():
             else:
                 # If key not found, print available keys for debugging
                 print("Classifier key not found. Available keys in state_dict:")
-                for key in best_model_state['model_state_dict'].keys():
+                for key in model_state_dict.keys():
                     if 'weight' in key and key.endswith('weight'):
-                        print(f"  {key}: {best_model_state['model_state_dict'][key].shape}")
+                        print(f"  {key}: {model_state_dict[key].shape}")
                 
                 print(f"WARNING: Could not verify classifier shape for {num_classes} classes")
             
