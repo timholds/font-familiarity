@@ -33,7 +33,7 @@ device = None
 label_mapping_a = None
 label_mapping_b = None
 
-def load_model(model_path, embeddings_path, label_mapping_path):
+def load_model(model_path, embeddings_path, label_mapping_path, device):
     """Load a single model and return the model, embeddings, and label mapping."""
     try:
         # Load label mapping
@@ -42,49 +42,23 @@ def load_model(model_path, embeddings_path, label_mapping_path):
         
         # Load model state
         state = torch.load(model_path, map_location=device)
-        state_dict = state['model_state_dict']
         
-
-        # Character-based model logic
-        classifier_key = 'font_classifier.font_classifier.weight'
-        if classifier_key in state_dict:
-            num_fonts = state_dict[classifier_key].shape[0]
+        # Check if we have the full model object (new format)
+        if 'model' in state and hasattr(state['model'], 'eval'):
+            # New format: full model object
+            model = state['model']
+            model = model.to(device)
+            model.eval()
+            
+            # For inference with raw images, ensure precomputed CRAFT is disabled
+            if hasattr(model, 'use_precomputed_craft'):
+                model.use_precomputed_craft = False
+                
+            logger.info("Loaded full model object from checkpoint")
         else:
-            classifier_keys = [k for k in state_dict.keys() if 'classifier' in k and 'weight' in k]
-            if classifier_keys:
-                classifier_key = classifier_keys[0]
-                num_fonts = state_dict[classifier_key].shape[0]
-            else:
-                raise ValueError("Could not determine font classes")
+            # This should not happen with the new format, but keeping for safety
+            raise ValueError("Expected full model object in checkpoint, but found old format. Please retrain your model.")
         
-        embedding_dim = 512  # Default
-        for key in state_dict.keys():
-            if 'projection' in key and 'weight' in key:
-                embedding_dim = state_dict[key].shape[0]
-                break
-        
-        # Extract parameters from filename
-        patch_size = 32  # Default
-        ps_match = re.search(r'PS(\d+)', os.path.basename(model_path))
-        if ps_match:
-            patch_size = int(ps_match.group(1))
-        
-        # Initialize model
-        model = CRAFTFontClassifier(
-            num_fonts=num_fonts,
-            device=device,
-            patch_size=patch_size, 
-            embedding_dim=embedding_dim,
-            craft_fp16=False,
-            use_precomputed_craft=False,
-            pad_x=.15,
-            pad_y=.2,
-        )
-        
-        
-        model.load_state_dict(state_dict)
-        model = model.to(device)
-        model.eval()
         
         # Load embeddings
         class_embeddings = torch.from_numpy(np.load(embeddings_path)).to(device)
@@ -189,12 +163,12 @@ def create_app(model_path_a, model_path_b, data_dir,
     # Load models
     logger.info(f"Loading model A: {model_a_name}")
     model_a, class_embeddings_a, label_mapping_a = load_model(
-        model_path_a, embeddings_path_a, label_mapping_path_a,
+        model_path_a, embeddings_path_a, label_mapping_path_a, device,
     )
     
     logger.info(f"Loading model B: {model_b_name}")
     model_b, class_embeddings_b, label_mapping_b = load_model(
-        model_path_b, embeddings_path_b, label_mapping_path_b,
+        model_path_b, embeddings_path_b, label_mapping_path_b, device,
     )
     
     # Define routes

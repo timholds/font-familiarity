@@ -185,49 +185,41 @@ def load_char_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
               Expecting riginal to be >= 1"
         return images, labels
     
-def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.0):
+def polygon_to_box(polygon):
     """
-    Add padding to a polygon or bounding box with optional jittering for data augmentation.
+    Convert polygon [[x1,y1], [x2,y2], ...] to bounding box [x1, y1, x2, y2]
+    
+    Args:
+        polygon: List of [x, y] coordinate pairs
+    
+    Returns:
+        Bounding box as [x1, y1, x2, y2]
+    """
+    x_coords = [p[0] for p in polygon]
+    y_coords = [p[1] for p in polygon]
+    return [min(x_coords), min(y_coords), max(x_coords), max(y_coords)]
+
+
+def add_padding_to_box(box, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.0):
+    """
+    Add padding to a bounding box with optional jittering for data augmentation.
 
     Args:
-        data: A polygon (list of lists [[x1, y1], [x2, y2], ...]) or a bounding box ([x1, y1, x2, y2]).
+        box: A bounding box [x1, y1, x2, y2]
         padding_x: Base horizontal padding as a fraction of width.
         padding_y: Base vertical padding as a fraction of height.
         asym: If True, add more padding to the left side to correct for bias.
         jitter_std: Standard deviation for jittering the padding values.
 
     Returns:
-        Padded polygon (list of lists) or bounding box (list).
+        Padded bounding box [x1, y1, x2, y2]
     """
-    if isinstance(data, list) and len(data) == 4:
-        # Input is a bounding box [x1, y1, x2, y2]
-        x_coords = [data[0], data[2]]
-        y_coords = [data[1], data[3]]
-    elif isinstance(data, np.ndarray) and len(data) == 4:
-        x1, y1, x2, y2 = data
-        x_coords = [x1, x2]
-        y_coords = [y1, y2]
-    elif isinstance(data, list) and all(isinstance(point, list) and len(point) == 2 for point in data):
-        # Input is a polygon [[x1, y1], [x2, y2], ...]
-        x_coords = [p[0] for p in data]
-        y_coords = [p[1] for p in data]
-   
-    else:
-        print(f"padding_x = {padding_x}, padding_y = {padding_y}, asym = {asym}, jitter_std = {jitter_std}")
-        print(f"Unsupported input format for add_padding_to_polygons: {data}")
-        print("Expected format: bounding box [x1, y1, x2, y2] or polygon [[x1, y1], [x2, y2], ...]")
-        print("received:", type(data), type(data[0]) if isinstance(data, list) else None)
-        raise ValueError(f"Unsupported input format for add_padding_to_polygons: {data}")
-
-    # Calculate min and max coordinates
-    min_x, max_x = min(x_coords), max(x_coords)
-    min_y, max_y = min(y_coords), max(y_coords)
+    x1, y1, x2, y2 = box
 
     # Calculate width and height
-    width = max_x - min_x
-    height = max_y - min_y
+    width = x2 - x1
+    height = y2 - y1
 
-    # Add random jitter to padding values
     jittered_padding_x = float(padding_x) + random.gauss(0, jitter_std)
     jittered_padding_y = float(padding_y) + random.gauss(0, jitter_std)
 
@@ -237,27 +229,46 @@ def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitt
 
     # Apply padding
     if not asym:
-        padded_min_x = min_x - pad_x
-        padded_max_x = max_x + pad_x
+        padded_x1 = x1 - pad_x
+        padded_x2 = x2 + pad_x
     else:
-        padded_min_x = min_x - pad_x
-        padded_max_x = max_x + int(pad_x // 3)  # Smaller padding on the right
+        padded_x1 = x1 - pad_x
+        padded_x2 = x2 + int(pad_x // 3)  # Smaller padding on the right
 
-    padded_min_y = min_y - pad_y
-    padded_max_y = max_y + pad_y
+    padded_y1 = y1 - pad_y
+    padded_y2 = y2 + pad_y
 
-    # Return padded bounding box or polygon
-    if isinstance(data, list) and len(data) == 4 or isinstance(data, np.ndarray) and len(data) == 4:
-        # Return as bounding box
-        return [padded_min_x, padded_min_y, padded_max_x, padded_max_y]
+    # Return padded bounding box
+    return [padded_x1, padded_y1, padded_x2, padded_y2]
+
+
+# Backward compatibility wrapper
+def add_padding_to_polygons(data, padding_x=0.1, padding_y=0.2, asym=False, jitter_std=0.0):
+    """
+    Backward compatibility wrapper - converts polygon to box and adds padding.
+    
+    Args:
+        data: A polygon [[x1, y1], [x2, y2], ...] or bounding box [x1, y1, x2, y2]
+        padding_x: Base horizontal padding as a fraction of width.
+        padding_y: Base vertical padding as a fraction of height.
+        asym: If True, add more padding to the left side to correct for bias.
+        jitter_std: Standard deviation for jittering the padding values.
+
+    Returns:
+        Padded bounding box [x1, y1, x2, y2]
+    """
+    # Convert polygon to box if needed
+    if isinstance(data, list) and len(data) == 4:
+        # Already a bounding box
+        box = data
+    elif isinstance(data, np.ndarray) and len(data) == 4:
+        # Numpy array bounding box
+        box = data.tolist()
     else:
-        # Return as polygon (expanded rectangle)
-        return [
-            [padded_min_x, padded_min_y],
-            [padded_max_x, padded_min_y],
-            [padded_max_x, padded_max_y],
-            [padded_min_x, padded_max_y]
-        ]
+        # Assume it's a polygon - convert to box
+        box = polygon_to_box(data)
+    
+    return add_padding_to_box(box, padding_x, padding_y, asym, jitter_std)
     
 class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
@@ -739,6 +750,11 @@ def get_char_dataloaders(
         from torch.utils.data import Subset
         train_dataset = Subset(train_dataset, train_valid_indices)
         test_dataset = Subset(test_dataset, test_valid_indices)
+
+        # uncomment to limit dataset size for debugging
+        # train_dataset = Subset(train_dataset, range(10000))
+        # test_dataset = Subset(train_dataset, range(10000))
+
         train_dataset.num_classes = num_classes
         train_dataset.label_mapping = label_mapping
         test_dataset.num_classes = num_classes

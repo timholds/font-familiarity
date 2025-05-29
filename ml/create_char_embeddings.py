@@ -25,43 +25,22 @@ def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tup
     # Load the saved state
     print(f"Loading model from {model_path}")
     state = torch.load(model_path, map_location=device)
-    state_dict = state['model_state_dict']
     
-    # Get classifier shape to determine number of classes
-    classifier_key = 'font_classifier.font_classifier.weight'
-    if classifier_key in state_dict:
-        num_fonts = state_dict[classifier_key].shape[0]
-        print(f"Model has {num_fonts} font classes")
+    # Check if we have the full model object (new format)
+    if 'model' in state and hasattr(state['model'], 'eval'):
+        # New format: full model object
+        model = state['model']
+        model = model.to(device)
+        model.eval()
+        print("Loaded full model object from checkpoint")
+        
+        # Update use_precomputed_craft setting if specified
+        if hasattr(model, 'use_precomputed_craft'):
+            model.use_precomputed_craft = use_precomputed_craft
+            print(f"Set use_precomputed_craft to {use_precomputed_craft}")
     else:
-        # Debug info if key not found
-        print("Available keys containing 'classifier':")
-        for key in [k for k in state_dict.keys() if 'classifier' in k and 'weight' in k]:
-            print(f"- {key}: {state_dict[key].shape}")
-        raise ValueError(f"Could not find classifier weights at {classifier_key}")
-    
-    # Initialize model with correct parameters
-    model = CRAFTFontClassifier(
-        num_fonts=num_fonts,
-        device=device,  # Pass device but also explicitly move model to device below
-        patch_size=hparams["patch_size"],
-        embedding_dim=hparams["embedding_dim"],
-        initial_channels=hparams["initial_channels"],
-        n_attn_heads=hparams["n_attn_heads"],
-        craft_fp16=False,
-        use_precomputed_craft=use_precomputed_craft,
-    )
-    
-    # Load the trained weights
-    model.load_state_dict(state_dict)
-    
-    # Explicitly move model to device AFTER loading state dict
-    model = model.to(device)
-    
-    # Make sure all sub-components are on the correct device
-    for module in model.modules():
-        module.to(device)
-    
-    model.eval()
+        # This should not happen with the new format, but keeping for safety
+        raise ValueError("Expected full model object in checkpoint, but found old format. Please retrain your model.")
     
     return model, device
 

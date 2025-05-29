@@ -9,7 +9,7 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from dataset import add_padding_to_polygons
+from dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
 
 from CRAFT import CRAFTModel
 import numpy as np
@@ -69,7 +69,6 @@ class CharSimpleCNN(nn.Module):
 
         self.embedding_layer = nn.Sequential(
             nn.Linear(self.flatten_dim, embedding_dim),
-            nn.Linear(embedding_dim, embedding_dim),
             nn.ReLU(inplace=True),
             #nn.Dropout(0.25)
         )
@@ -384,13 +383,15 @@ class CRAFTFontClassifier(nn.Module):
 
             draw = ImageDraw.Draw(pil_img)
 
-            # Draw polygons
+            # Draw bounding boxes
             for poly in polygons:
-                # Add padding to the polygon
-                poly = add_padding_to_polygons(poly, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
-                # Convert to tuple format for PIL
-                poly_tuple = [tuple(p) for p in poly]
-                draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
+                # Convert polygon to box and add padding  
+                box = polygon_to_box(poly)
+                padded_box = add_padding_to_box(box, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
+                
+                x1, y1, x2, y2 = padded_box
+                # Draw rectangle
+                draw.rectangle([x1, y1, x2, y2], outline=(255, 0, 0), width=2)
 
             # Add text at the top if needed
             try:
@@ -473,16 +474,11 @@ class CRAFTFontClassifier(nn.Module):
             img_patches = []
             print(f"Extracting patches from {len(polygons)} polygons")
             for polygon in polygons:
-                # TODO turn this on with craft preextraction
-                # polygon = self.add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True)
-                # TODO get add padding to return polygon format not box format
-                polygon = add_padding_to_polygons(polygon, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
-                # Convert polygon to bounding box
-                x_coords = [p[0] for p in polygon]
-                y_coords = [p[1] for p in polygon]
+                # Convert polygon to box and add padding
+                box = polygon_to_box(polygon)
+                padded_box = add_padding_to_box(box, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
                 
-                x1, y1 = min(x_coords), min(y_coords)
-                x2, y2 = max(x_coords), max(y_coords)
+                x1, y1, x2, y2 = padded_box
                 
                 # Ensure integer coordinates and minimum size
                 x1, y1 = max(0, int(x1)), max(0, int(y1))
@@ -503,7 +499,7 @@ class CRAFTFontClassifier(nn.Module):
                 normalized_patch = self._normalize_patch(patch)
                 
                 # Convert to tensor with channel dimension [1, H, W] - PyTorch format
-                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
+                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0).to(self.device)  
                 img_patches.append(patch_tensor)
 
                         

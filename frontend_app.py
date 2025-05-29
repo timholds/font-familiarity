@@ -165,47 +165,17 @@ def load_char_model_and_embeddings(model_path: str,
         # Load model state
         logger.info(f"\nLoading character model from {model_path}")
         state = torch.load(model_path, map_location=device)
-        state_dict = state['model_state_dict']
         
-        # Determine number of classes from classifier
-        classifier_key = 'font_classifier.font_classifier.weight'
-        if classifier_key in state_dict:
-            num_fonts = state_dict[classifier_key].shape[0]
-            logger.info(f"Model has {num_fonts} font classes")
+        # Check if we have the full model object (new format)
+        if 'model' in state and hasattr(state['model'], 'eval'):
+            # New format: full model object
+            model = state['model']
+            model = model.to(device)
+            model.eval()
+            logger.info("Loaded full model object from checkpoint")
         else:
-            # Try to find classifier key
-            classifier_keys = [k for k in state_dict.keys() if 'classifier' in k and 'weight' in k]
-            if classifier_keys:
-                classifier_key = classifier_keys[0]
-                num_fonts = state_dict[classifier_key].shape[0]
-                logger.info(f"Found alternative classifier at {classifier_key} with {num_fonts} classes")
-            else:
-                raise ValueError("Could not determine number of font classes from model")
-        
-
-                
-        # Extract parameters from model filename
-        hparams = get_params_from_model_path(model_path)
-        
-        
-        model = CRAFTFontClassifier(
-            num_fonts=num_fonts,
-            device=device,  # Pass device but also explicitly move model to device below
-            patch_size=hparams["patch_size"],
-            embedding_dim=hparams["embedding_dim"],
-            initial_channels=hparams["initial_channels"],
-            n_attn_heads=hparams["n_attn_heads"],
-            craft_fp16=False,
-            use_precomputed_craft=False,
-            pad_x=hparams["pad_x"], # add the same padding as the model was trained with
-            pad_y=hparams["pad_y"],
-        )
-        
-        
-        # Load the weights
-        model.load_state_dict(state_dict)
-        model = model.to(device)
-        model.eval()
+            # This should not happen with the new format, but keeping for safety
+            raise ValueError("Expected full model object in checkpoint, but found old format. Please retrain your model.")
         
         # Load embeddings
         logger.info(f"\nLoading embeddings from {embeddings_path}")

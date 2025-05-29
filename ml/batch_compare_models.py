@@ -640,12 +640,12 @@ def main():
     # Load models (reusing code from compare_models.py)
     logger.info(f"Loading model A: {os.path.basename(args.model_a_path)}")
     model_a, class_embeddings_a, label_mapping_a = compare_models.load_model(
-        args.model_a_path, args.embeddings_a_path, label_mapping_path_a
+        args.model_a_path, args.embeddings_a_path, label_mapping_path_a, device
     )
     
     logger.info(f"Loading model B: {os.path.basename(args.model_b_path)}")
     model_b, class_embeddings_b, label_mapping_b = compare_models.load_model(
-        args.model_b_path, args.embeddings_b_path, label_mapping_path_b
+        args.model_b_path, args.embeddings_b_path, label_mapping_path_b, device
     )
     
     model_a_name = os.path.basename(args.model_a_path)
