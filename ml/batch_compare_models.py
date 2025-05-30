@@ -613,7 +613,7 @@ def main():
 
     # Load font capitalization mapping
     font_mapping = {}
-    font_mapping_path = os.path.join(os.path.dirname(__file__), 'static', 'available_fonts.txt')
+    font_mapping_path = os.path.join(os.getcwd(), 'available_fonts.txt')
     
     try:
         if os.path.exists(font_mapping_path):

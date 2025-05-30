@@ -52,6 +52,18 @@ def load_model(model_path, embeddings_path, label_mapping_path, device):
             
             # For inference with raw images, ensure precomputed CRAFT is disabled
             if hasattr(model, 'use_precomputed_craft'):
+                if model.use_precomputed_craft and model.craft is None:
+                    # Need to initialize CRAFT model for inference
+                    from CRAFT import CRAFTModel
+                    model.craft = CRAFTModel(
+                        cache_dir='weights/',
+                        device=device,
+                        use_refiner=True,
+                        fp16=False, 
+                        link_threshold=1.,
+                        text_threshold=.8,
+                        low_text=.4,
+                    )
                 model.use_precomputed_craft = False
                 
             logger.info("Loaded full model object from checkpoint")
