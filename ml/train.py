@@ -35,7 +35,7 @@ def count_parameters(model):
 # TODO update this to work with character patches
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, 
                 warmup_epochs, warmup_scheduler, main_scheduler,
-                metrics_calculator, char_model=False, model_name=None):
+                metrics_calculator, char_model=False, model_name=None, use_contrastive_loss=False, contrastive_weight=0.1):
     """Train for one epoch, supporting both character-based and whole-image models."""
     model.train()
     running_loss = 0.0
@@ -48,74 +48,60 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         
         if char_model:
             # For character-based model (with CRAFT)
-            # Batch data is a dictionary with images, labels, and patches
-            # First, get the labels which should always be present
             targets = batch_data['labels'].to(device)
             batch_size = targets.size(0)
 
             # Check if we're using precomputed patches
             if 'patches' in batch_data and 'attention_mask' in batch_data:
-                # We have precomputed patches - just ensure they're on the right device
-                batch_data['patches'] = batch_data['patches'].to(device)
-                batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
-                
-                # Forward pass with the batch data directly
-                optimizer.zero_grad()
-
-                outputs = model(batch_data)
-            else:
-                # Traditional path with images
-                images = batch_data['images'].to(device)
-                
-                # Forward pass with separate arguments
-                optimizer.zero_grad()
-                
-                outputs = model(images, targets)
-
-            # Handle different output formats from model
-            if isinstance(outputs, tuple):
-                # Model returns logits and attention weights
-                logits, _ = outputs
-            elif isinstance(outputs, dict):
-                # Model returns a dict with different outputs
-                logits = outputs['logits']
-            else:
-                # Model directly returns logits
-                logits = outputs
-        if char_model:
-            # For character-based model (with CRAFT)
-            # Batch data could contain either images or precomputed patches
-            targets = batch_data['labels'].to(device)
-            batch_size = targets.size(0)
-
-            # Check if we're using precomputed patches
-            if 'patches' in batch_data and 'attention_mask' in batch_data:
-                # We have precomputed patches - just ensure they're on the right device
+                # We have precomputed patches - move to device
                 batch_data['patches'] = batch_data['patches'].to(device)
                 batch_data['attention_mask'] = batch_data['attention_mask'].to(device)
             elif 'images' in batch_data:
-                # We have images - move them to the device
+                # Traditional path with images
                 batch_data['images'] = batch_data['images'].to(device)
-            else:
-                raise ValueError("Batch data missing both 'images' and 'patches' keys")
 
+            optimizer.zero_grad()
+
+            # Forward pass
+            outputs = model(batch_data)
+            
+            # Handle different output formats from model
+            if isinstance(outputs, tuple):
+                logits, _ = outputs
+            elif isinstance(outputs, dict):
+                logits = outputs['logits']
+            else:
+                logits = outputs
+
+            # Handle loss calculation
+            if use_contrastive_loss:
+                # Contrastive loss with character models
+                categories = batch_data['category'].to(device)
+                embeddings = model.get_embedding(batch_data)
+                
+                cce_loss = nn.CrossEntropyLoss()(logits, targets)
+                contrastive_loss = criterion(embeddings, categories, targets)
+                loss = cce_loss + contrastive_weight * contrastive_loss
+            else:
+                # Regular cross-entropy loss
+                loss = criterion(logits, targets)
+
+            # Backward pass and optimization
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
         else:
+            # Non-character model (simplified - not the main focus)
             data, targets = batch_data
             data, targets = data.to(device), targets.to(device)
             batch_size = targets.size(0)
             
-            # Forward pass
             optimizer.zero_grad()
-            logits =    (data)
-        
-        # Compute loss and backward
-        loss = criterion(logits, targets)
-        loss.backward()
-        # TODO log loss every batch instead of once per epoch
-        # wandb.log({'train/batch_loss': loss.item()}, commit=False)  # Log batch loss
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
-        
+            logits = model(data)
+            loss = criterion(logits, targets)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
         
         # Update schedulers
         if epoch < warmup_epochs:
@@ -129,7 +115,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
         total_correct += (pred == targets).sum().item()
         total_samples += batch_size
         current_acc = 100. * total_correct / total_samples
-        
+            
         # just do a couple batches
         if batch_idx == 1 or batch_idx == 10:
             # Visualize a few samples from the batch
@@ -177,24 +163,34 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                     save_path=vis_path3
                 )
 
-        # Compute and log batch metrics
-        if batch_idx % 50 == 0:
-            batch_metrics = {
-                'train/batch_loss': loss.item(),
-                'train/running_loss': running_loss,
-                'train/running_acc': current_acc,
-                'train/learning_rate': optimizer.param_groups[0]['lr'],
-                'global_step': batch_idx + epoch * len(train_loader)
-            }
-            wandb.log(batch_metrics)
-        
-        # Update progress bar with basic metrics
-        pbar.set_postfix({
-            'loss': f'{loss.item():.3f}',
-            'avg_loss': f'{running_loss:.3f}',
-            'acc': f'{current_acc:.2f}%',
-            'lr': f'{optimizer.param_groups[0]["lr"]:.6f}'
-        })
+            # Compute and log batch metrics
+            if batch_idx % 50 == 0:
+                batch_metrics = {
+                    'train/batch_loss': loss.item(),
+                    'train/running_loss': running_loss,
+                    'train/running_acc': current_acc,
+                    'train/learning_rate': optimizer.param_groups[0]['lr'],
+                    'global_step': batch_idx + epoch * len(train_loader)
+                }
+                wandb.log(batch_metrics)
+            
+            # Log both losses separately to monitor (only if using contrastive loss)
+            if use_contrastive_loss:
+                wandb.log({
+                    'train/font_class_loss': cce_loss.item(),
+                    'train/category_contrastive_loss': contrastive_loss.item(),
+                    'train/total_loss': loss.item(),
+                    'train/learning_rate': optimizer.param_groups[0]['lr'],
+                    'global_step': batch_idx + epoch * len(train_loader)
+                })
+
+            # Update progress bar with basic metrics
+            pbar.set_postfix({
+                'loss': f'{loss.item():.3f}',
+                'avg_loss': f'{running_loss:.3f}',
+                'acc': f'{current_acc:.2f}%',
+                'lr': f'{optimizer.param_groups[0]["lr"]:.6f}'
+            })
     
     # Compute final training metrics
     train_metrics = {
@@ -372,6 +368,8 @@ def main():
     parser.add_argument("--n_attn_heads", type=int, default=16, help="Number of attention heads")
     parser.add_argument("--pad_x", type=int, default=0, help="Padding in x direction")
     parser.add_argument("--pad_y", type=int, default=0, help="Padding in y direction")
+    parser.add_argument("--use_contrastive_loss", action="store_true", help="Enable category-aware contrastive loss instead of cross-entropy.")
+    parser.add_argument("--contrastive_weight", type=float, default=0.1, help="Weight for contrastive loss when blending with CCE.")
 
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
@@ -420,12 +418,22 @@ def main():
             use_precomputed_craft=args.use_precomputed_craft,
             pad_x=args.pad_x,
             pad_y=args.pad_y,
+            return_category=args.use_contrastive_loss
         )
     else:
-        train_loader, test_loader, num_classes = get_dataloaders(
-            data_dir=args.data_dir,
-            batch_size=args.batch_size
-        )
+        if args.use_contrastive_loss:
+            # Use return_category=True in dataloader
+            train_loader, test_loader, num_classes = get_dataloaders(
+                data_dir=args.data_dir,
+                batch_size=args.batch_size,
+                num_workers=os.cpu_count(),
+                return_category=True
+            )
+        else:
+            train_loader, test_loader, num_classes = get_dataloaders(
+                data_dir=args.data_dir,
+                batch_size=args.batch_size
+            )
 
     print("\nStep 2: Validating label mapping...")
     label_mapping_path = os.path.join(args.data_dir, 'label_mapping.npy')
@@ -542,7 +550,11 @@ def main():
     
     # Set up training
     wandb.watch(model, log_freq=100)
-    criterion = nn.CrossEntropyLoss()
+    if args.use_contrastive_loss:
+        from contrastive_loss import RobustCategoryContrastiveLoss
+        criterion = RobustCategoryContrastiveLoss()
+    else:
+        criterion = nn.CrossEntropyLoss()
     optimizer = AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -643,12 +655,13 @@ def main():
     for epoch in range(start_epoch, args.epochs):
         print(f'\nEpoch: {epoch+1}/{args.epochs}')
         epoch_start_time = time.time()
-        
         # Train
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, device, epoch,
             warmup_epochs, warmup_scheduler, main_scheduler, 
-            metrics_calculator, args.char_model, os.path.basename(model_path)
+            metrics_calculator, args.char_model, os.path.basename(model_path),
+            use_contrastive_loss=args.use_contrastive_loss,
+            contrastive_weight=args.contrastive_weight
         )
         
         # Evaluate

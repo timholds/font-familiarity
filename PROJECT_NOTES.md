@@ -590,4 +590,3 @@ dr_sugiyama seems to be the classification answer for all sorts of out-of-distri
 
 ![Dr Sugiyama font sample](<assets/dr_sugiyama_sample.png>)
 
-contrastive loss shapes the embedding space geometry while classification loss learns decision boundaries.

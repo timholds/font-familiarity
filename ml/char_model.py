@@ -282,6 +282,24 @@ class CRAFTFontClassifier(nn.Module):
         self.device = device
         self.patch_size = patch_size
 
+    def get_embedding(self, inputs):
+        """
+        Get font embeddings for contrastive loss
+        
+        Args:
+            inputs: Dictionary containing batch data with 'patches' and 'attention_mask'
+            
+        Returns:
+            Font embeddings tensor
+        """
+        if isinstance(inputs, dict) and 'patches' in inputs and 'attention_mask' in inputs:
+            output = self.font_classifier(
+                inputs['patches'].to(self.device),
+                inputs['attention_mask'].to(self.device)
+            )
+            return output['font_embedding']
+        else:
+            raise ValueError("get_embedding expects dictionary with 'patches' and 'attention_mask' keys")
 
     def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
         """

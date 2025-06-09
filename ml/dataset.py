@@ -9,6 +9,11 @@ import h5py
 import random
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import json
+
+CATEGORY_MAPPING_PATH = os.path.join(os.path.dirname(__file__), '../data/font_class_to_category.json')
+CATEGORY_LIST = ["DISPLAY", "SANS_SERIF", "SERIF", "HANDWRITING", "MONOSPACE"]
+CATEGORY_TO_IDX = {cat: i for i, cat in enumerate(CATEGORY_LIST)}
 
 
 def load_npz_mmap(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -32,8 +37,9 @@ class FontDataset(Dataset):
     """
     Dataset for loading font images from NPZ files.
     """
-    def __init__(self, root_dir: str, train: bool = True):
+    def __init__(self, root_dir: str, train: bool = True, return_category: bool = False):
         self.root_dir = root_dir
+        self.return_category = return_category
         mode = 'train' if train else 'test'
         h5_file = os.path.join(root_dir, f'{mode}.h5')
         npz_file = os.path.join(root_dir, f'{mode}.npz')
@@ -58,6 +64,19 @@ class FontDataset(Dataset):
         print(f"Number of classes: {self.num_classes}")
         print(f"Label mapping loaded from {label_map_path}")
 
+        # Load font name to category mapping
+        if self.return_category:
+            with open(CATEGORY_MAPPING_PATH, 'r') as f:
+                self.font_to_category = json.load(f)
+            # Build label idx to category idx mapping
+            self.labelidx_to_catidx = {}
+            for font_name, idx in self.label_mapping.items():
+                cat = self.font_to_category.get(font_name, None)
+                if cat is not None:
+                    self.labelidx_to_catidx[idx] = CATEGORY_TO_IDX[cat]
+                else:
+                    self.labelidx_to_catidx[idx] = -1  # Unknown
+
     def _validate_targets(self):
         """Validate that all targets are within the correct range."""
         min_target = self.targets.min()
@@ -81,26 +100,37 @@ class FontDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int):
         img = self.data[idx].astype(np.float32) / 255.0  # Normalize to [0, 1]
-        img = torch.from_numpy(img).unsqueeze(0)  # Add channel dimension
+        
+        # Handle both grayscale and color images
+        if len(img.shape) == 2:  # Grayscale image (H, W)
+            img = torch.from_numpy(img).unsqueeze(0)  # Add channel dimension -> (1, H, W)
+        elif len(img.shape) == 3:  # Color image (H, W, C)
+            img = torch.from_numpy(img).permute(2, 0, 1)  # Convert HWC to CHW
+        else:
+            raise ValueError(f"Unexpected image shape: {img.shape}")
+            
         target = self.targets[idx]
-
         if not (0 <= target < self.num_classes):
             raise ValueError(f"Invalid target {target} at index {idx}")
-            
-        return img, target
+        if self.return_category:
+            cat_idx = self.labelidx_to_catidx.get(target, -1)
+            return img, target, torch.tensor(cat_idx, dtype=torch.long)
+        # Always return three items for consistency
+        return img, target, torch.tensor(-1, dtype=torch.long)
 
 def get_dataloaders(
     data_dir: str,
     batch_size: int = 32,
-    num_workers: int = 4
-) -> Tuple[DataLoader, DataLoader]:
+    num_workers: int = 4,
+    return_category: bool = False
+) -> Tuple[DataLoader, DataLoader, int]:
     """
     Creates train and test DataLoaders.
     """
-    train_dataset = FontDataset(data_dir, train=True)
-    test_dataset = FontDataset(data_dir, train=False)
+    train_dataset = FontDataset(data_dir, train=True, return_category=return_category)
+    test_dataset = FontDataset(data_dir, train=False, return_category=return_category)
 
     assert train_dataset.num_classes == test_dataset.num_classes, (
         f"Mismatch between train ({train_dataset.num_classes}) and "
@@ -274,13 +304,15 @@ class CharacterFontDataset(Dataset):
     """Dataset for font classification using character patches."""
     
     def __init__(self, root_dir: str, train: bool = True, char_size: int = 32,
-                  max_chars: int = 100, use_precomputed_craft=False, pad_x=.05, pad_y=.15):
+                  max_chars: int = 100, use_precomputed_craft=False, pad_x=.05, pad_y=.15,
+                  return_category: bool = False):
         self.root_dir = root_dir
         self.char_size = char_size
         self.max_chars = max_chars
         self.use_precomputed_craft = use_precomputed_craft
         self.pad_x = pad_x
         self.pad_y = pad_y
+        self.return_category = return_category
         
         self.mode = 'train' if train else 'test'
         h5_file = os.path.join(root_dir, f'{self.mode}.h5')
@@ -307,6 +339,19 @@ class CharacterFontDataset(Dataset):
         classes_path = os.path.join(root_dir, 'classes.txt')
         if os.path.exists(classes_path):
             self.char_mapping = self._load_char_mapping(classes_path)
+
+        # Load font name to category mapping
+        if self.return_category:
+            with open(CATEGORY_MAPPING_PATH, 'r') as f:
+                self.font_to_category = json.load(f)
+            # Build label idx to category idx mapping
+            self.labelidx_to_catidx = {}
+            for font_name, idx in self.label_mapping.items():
+                cat = self.font_to_category.get(font_name, None)
+                if cat is not None:
+                    self.labelidx_to_catidx[idx] = CATEGORY_TO_IDX[cat]
+                else:
+                    self.labelidx_to_catidx[idx] = -1  # Unknown
 
         print(f"Initialized CharacterFontDataset with {len(self.data)} samples, {self.num_classes} fonts")
 
@@ -516,67 +561,53 @@ class CharacterFontDataset(Dataset):
             self.boxes_file.close()
     
     def __getitem__(self, idx: int):
-        img = self.data[idx].astype(np.float32)  # HWC
-        target = int(self.targets[idx])
-        target = torch.tensor(target, dtype=torch.long)
+        target = self.targets[idx]
+        if not (0 <= target < self.num_classes):
+            raise ValueError(f"Invalid target {target} at index {idx}")
         
-        # Check if we should use precomputed CRAFT boxes
-        if self.use_precomputed_craft and self.precomputed_boxes is not None:
-            # Extract boxes for this image
-            if isinstance(self.precomputed_boxes, bool) and self.craft_h5_file is not None:
-                # Boxes are in an HDF5 file
+        if self.use_precomputed_craft:
+            # Get the image for CRAFT processing
+            image = self.data[idx]  # Keep as uint8 for CRAFT
+            
+            # Get boxes for this index
+            if self.craft_h5_file is not None:
+                # Using HDF5 storage
                 if str(idx) in self.boxes_group:
                     boxes = self.boxes_group[str(idx)][()]
-                    if boxes.ndim == 1:
-                        if boxes.size == 0:
-                            boxes = np.empty((0, 4), dtype=np.int32)
-                        else:
-                            # If we have a 1D array with values, reshape it
-                            boxes = boxes.reshape(-1, 4)
                 else:
-                    # No boxes for this image, create empty array with correct shape
-                    boxes = np.empty((0, 4), dtype=np.int32)
+                    boxes = []
             else:
-                # Boxes are already loaded in memory (legacy NPZ format)
-                boxes = self.precomputed_boxes[idx]
+                # Using in-memory storage
+                boxes = self.precomputed_boxes.get(idx, [])
             
-            assert boxes.ndim == 2 and boxes.shape[1] == 4, \
-                f"Invalid box shape {boxes.shape} at index {idx}"
-            patches, attention_mask = self._extract_patches_from_boxes(img, boxes, idx, self.mode, self.pad_x, self.pad_y) # HWC
-    
-            if self.mode == 'train':
-                augmented_patches = []
-                for patch in patches:
-                    patch_np = patch.squeeze(0).numpy()  # Convert to numpy for albumentations
-                    augmented = self.augmentations(image=patch_np)['image']
-                    augmented_patches.append(augmented)
-                
-                # Convert back to tensor and stack
-                patches = torch.stack(augmented_patches)
-                
-
-            # Return patches directly
-            return {
+            # Extract patches from boxes
+            patches, attention_mask = self._extract_patches_from_boxes(
+                image, boxes, idx, self.mode, self.pad_x, self.pad_y
+            )
+            
+            # Build the return dictionary
+            result = {
                 'patches': patches,
                 'attention_mask': attention_mask,
-                'labels': target
+                'labels': torch.tensor(target, dtype=torch.long)
             }
-        
-        else:
-            # print(f"WARNING: No precomputed CRAFT boxes for image {idx}, using full image")
-            # print(f"WARNING: Using full image for index {idx}")
-            # print(f"WARNING: Image shape: {img.shape}")
-            # Convert the full image to tensor
-            img_tensor = torch.from_numpy(img).float()
-
-            # Add channel dimension if needed
-            if img_tensor.dim() == 2:  # If grayscale without channel
-                img_tensor = img_tensor.unsqueeze(0)
             
-            return {
-                'images': img_tensor,
-                'labels': target
-            }
+            # Add category label if using contrastive loss
+            if self.return_category:
+                cat_idx = self.labelidx_to_catidx.get(target, -1)
+                result['category'] = torch.tensor(cat_idx, dtype=torch.long)
+            
+            return result
+        else:
+            # Original behavior - return raw image
+            img = self.data[idx].astype(np.float32) / 255.0  # Normalize to [0, 1]
+            img = torch.from_numpy(img).unsqueeze(0)  # Add channel dimension
+            
+            if self.return_category:
+                cat_idx = self.labelidx_to_catidx.get(target, -1)
+                return img, target, torch.tensor(cat_idx, dtype=torch.long)
+            # Always return three items for consistency
+            return img, target, torch.tensor(-1, dtype=torch.long)
 
 def char_collate_fn(batch):
     """
@@ -627,11 +658,18 @@ def char_collate_fn(batch):
         attention_batch = torch.stack(padded_masks)
         targets_batch = torch.stack(targets)
         
-        return {
+        result = {
             'patches': patches_batch,
             'attention_mask': attention_batch,
             'labels': targets_batch
         }
+        
+        # Add category labels if present
+        if 'category' in batch[0]:
+            categories = [item['category'] for item in batch]
+            result['category'] = torch.stack(categories)
+        
+        return result
     elif 'images' in batch[0]:
         # Handle raw images
         images = torch.stack([item['images'] for item in batch])
@@ -650,7 +688,8 @@ def get_char_dataloaders(
     use_precomputed_craft: bool = False,
     save_problematic_images: bool = False,
     pad_x: float = 0.05,
-    pad_y: float = 0.15
+    pad_y: float = 0.15,
+    return_category: bool = False
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
@@ -658,13 +697,15 @@ def get_char_dataloaders(
     train_dataset = CharacterFontDataset(
         data_dir, train=True, 
         use_precomputed_craft=use_precomputed_craft,
-        pad_x=pad_x, pad_y=pad_y
+        pad_x=pad_x, pad_y=pad_y,
+        return_category=return_category
     )
     
     test_dataset = CharacterFontDataset(
         data_dir, train=False, 
         use_precomputed_craft=use_precomputed_craft,
-        pad_x=pad_x, pad_y=pad_y
+        pad_x=pad_x, pad_y=pad_y,
+        return_category=return_category
     )
 
     num_classes = train_dataset.num_classes
