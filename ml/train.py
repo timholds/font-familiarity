@@ -35,7 +35,8 @@ def count_parameters(model):
 # TODO update this to work with character patches
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, 
                 warmup_epochs, warmup_scheduler, main_scheduler,
-                metrics_calculator, char_model=False, model_name=None, use_contrastive_loss=False, contrastive_weight=0.1):
+                metrics_calculator, char_model=False, model_name=None, 
+                contrastive_weight=None, auxiliary_weight=None, total_samples_seen=0):
     """Train for one epoch, supporting both character-based and whole-image models."""
     model.train()
     running_loss = 0.0
@@ -74,7 +75,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                 logits = outputs
 
             # Handle loss calculation
-            if use_contrastive_loss:
+            if contrastive_weight is not None:
                 # Contrastive loss with character models
                 categories = batch_data['category'].to(device)
                 embeddings = model.get_embedding(batch_data)
@@ -82,13 +83,29 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                 cce_loss = nn.CrossEntropyLoss()(logits, targets)
                 contrastive_loss = criterion(embeddings, categories, targets)
                 loss = cce_loss + contrastive_weight * contrastive_loss
+                
+                # DEBUG: Check if categories are being loaded properly
+                if batch_idx == 0:
+                    print(f"\nDEBUG - Batch {batch_idx}:")
+                    print(f"  Categories shape: {categories.shape}, unique values: {categories.unique().tolist()}")
+                    print(f"  Targets (font labels) shape: {targets.shape}, sample values: {targets[:5].tolist()}")
+                    print(f"  Embeddings shape: {embeddings.shape}")
+                    print(f"  Contrastive loss value: {contrastive_loss.item()}")
+            elif auxiliary_weight is not None:
+                # Auxiliary category loss with character models
+                categories = batch_data['category'].to(device)
+                embeddings = model.get_embedding(batch_data)
+                
+                cce_loss = nn.CrossEntropyLoss()(logits, targets)
+                auxiliary_loss = criterion(embeddings, categories, targets)
+                loss = cce_loss + auxiliary_weight * auxiliary_loss
             else:
                 # Regular cross-entropy loss
                 loss = criterion(logits, targets)
 
             # Backward pass and optimization
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
         else:
             # Non-character model (simplified - not the main focus)
@@ -100,7 +117,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             logits = model(data)
             loss = criterion(logits, targets)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
         
         # Update schedulers
@@ -170,18 +187,31 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                     'train/running_loss': running_loss,
                     'train/running_acc': current_acc,
                     'train/learning_rate': optimizer.param_groups[0]['lr'],
-                    'global_step': batch_idx + epoch * len(train_loader)
+                    'train/grad_norm': grad_norm.item(),
+                    'total_samples': total_samples_seen + total_samples
                 }
                 wandb.log(batch_metrics)
             
-            # Log both losses separately to monitor (only if using contrastive loss)
-            if use_contrastive_loss:
+            # Log both losses separately to monitor
+            if contrastive_weight is not None:
+                contrastive_to_class_ratio = contrastive_loss.item() / (cce_loss.item() + 1e-8)
                 wandb.log({
                     'train/font_class_loss': cce_loss.item(),
                     'train/category_contrastive_loss': contrastive_loss.item(),
+                    'train/contrastive_to_class_ratio': contrastive_to_class_ratio,
                     'train/total_loss': loss.item(),
                     'train/learning_rate': optimizer.param_groups[0]['lr'],
-                    'global_step': batch_idx + epoch * len(train_loader)
+                    'train/grad_norm': grad_norm.item(),
+                    'total_samples': total_samples_seen + total_samples
+                })
+            elif auxiliary_weight is not None:
+                wandb.log({
+                    'train/font_class_loss': cce_loss.item(),
+                    'train/category_auxiliary_loss': auxiliary_loss.item(),
+                    'train/total_loss': loss.item(),
+                    'train/learning_rate': optimizer.param_groups[0]['lr'],
+                    'train/grad_norm': grad_norm.item(),
+                    'total_samples': total_samples_seen + total_samples
                 })
 
             # Update progress bar with basic metrics
@@ -196,12 +226,11 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
     train_metrics = {
         'train/loss': running_loss,
         'train/top1_acc': current_acc,
-        'train/samples': total_samples,
     }
     
-    return train_metrics
+    return train_metrics, total_samples
 
-def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=None, char_model=False):
+def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=None, char_model=False, contrastive_weight=None):
     """Evaluate the model, supporting both character-based and whole-image models."""
     model.eval()
     test_loss = 0
@@ -210,6 +239,7 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
     
     # Basic accuracy tracking
     correct = 0
+    top3_correct = 0
     top5_correct = 0
     total = 0
     
@@ -251,12 +281,18 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
             all_logits.append(logits)
             all_targets.append(targets)
             
-            # Compute basic metrics on the fly
-            test_loss += criterion(logits, targets).item()
+            # Compute loss for logging - evaluation should only use cross-entropy
+            test_loss += nn.CrossEntropyLoss()(logits, targets).item()
             
             # Top-1 accuracy
             pred = logits.argmax(dim=1)
             correct += (pred == targets).sum().item()
+            
+            # Top-3 accuracy
+            _, pred3 = logits.topk(3, 1, True, True)
+            target_expanded3 = targets.view(-1, 1).expand_as(pred3)
+            correct3 = pred3.eq(target_expanded3).any(dim=1).sum().item()
+            top3_correct += correct3
             
             # Top-5 accuracy
             _, pred5 = logits.topk(5, 1, True, True)
@@ -269,14 +305,15 @@ def evaluate(model, test_loader, criterion, device, metrics_calculator, epoch=No
     # Compute basic metrics
     avg_loss = test_loss / len(test_loader)
     top1_acc = 100. * correct / total
+    top3_acc = 100. * top3_correct / total
     top5_acc = 100. * top5_correct / total
     
     # Initialize metrics dictionary with basic metrics
     test_metrics = {
         'test/loss': avg_loss,
         'test/top1_acc': top1_acc,
+        'test/top3_acc': top3_acc,
         'test/top5_acc': top5_acc,
-        'test/samples': total,
     }
     
     # Compute advanced metrics on the entire test set
@@ -368,8 +405,10 @@ def main():
     parser.add_argument("--n_attn_heads", type=int, default=16, help="Number of attention heads")
     parser.add_argument("--pad_x", type=int, default=0, help="Padding in x direction")
     parser.add_argument("--pad_y", type=int, default=0, help="Padding in y direction")
-    parser.add_argument("--use_contrastive_loss", action="store_true", help="Enable category-aware contrastive loss instead of cross-entropy.")
-    parser.add_argument("--contrastive_weight", type=float, default=0.1, help="Weight for contrastive loss when blending with CCE.")
+    parser.add_argument("--contrastive_weight", type=float, default=None, help="Weight for contrastive loss when blending with CCE. If provided, enables contrastive loss.")
+    parser.add_argument("--auxiliary_weight", type=float, default=None, help="Weight for auxiliary category loss when blending with CCE. If provided, enables auxiliary loss.")
+    parser.add_argument("--max_datapts", type=int, default=None, help="Maximum number of training/test datapoints to use (for quick testing)")
+    parser.add_argument("--max_chars", type=int, default=100, help="Maximum number of character patches per image")
 
     args = parser.parse_args()
     warmup_epochs = max(args.epochs // 5, 1)
@@ -388,9 +427,10 @@ def main():
         }
     )
     
-    wandb.define_metric("batch_loss", step_metric="global_step")
-    wandb.define_metric("batch_acc", step_metric="global_step")
-    wandb.define_metric("*", step_metric="epoch")
+    # Define all metrics to use total_samples as x-axis
+    wandb.define_metric("total_samples")
+    wandb.define_metric("train/*", step_metric="total_samples")
+    wandb.define_metric("test/*", step_metric="total_samples")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -418,10 +458,12 @@ def main():
             use_precomputed_craft=args.use_precomputed_craft,
             pad_x=args.pad_x,
             pad_y=args.pad_y,
-            return_category=args.use_contrastive_loss
+            return_category=args.contrastive_weight is not None or args.auxiliary_weight is not None,
+            max_datapts=args.max_datapts,
+            max_chars=args.max_chars
         )
     else:
-        if args.use_contrastive_loss:
+        if args.contrastive_weight is not None or args.auxiliary_weight is not None:
             # Use return_category=True in dataloader
             train_loader, test_loader, num_classes = get_dataloaders(
                 data_dir=args.data_dir,
@@ -543,16 +585,18 @@ def main():
     print(f'Total params {total_params}')
     print(f'Trainable params {trainable_params}')
     count_parameters(model)
-
     
     # Initialize metrics calculator
     metrics_calculator = ClassificationMetrics(num_classes=num_classes, device=device)
     
     # Set up training
     wandb.watch(model, log_freq=100)
-    if args.use_contrastive_loss:
-        from contrastive_loss import RobustCategoryContrastiveLoss
-        criterion = RobustCategoryContrastiveLoss()
+    if args.contrastive_weight is not None:
+        from contrastive_loss import OptimizedCategoryContrastiveLoss
+        criterion = OptimizedCategoryContrastiveLoss()
+    elif args.auxiliary_weight is not None:
+        from contrastive_loss import SimpleCategoryLoss
+        criterion = SimpleCategoryLoss(embedding_dim=args.embedding_dim, num_categories=5)
     else:
         criterion = nn.CrossEntropyLoss()
     optimizer = AdamW(
@@ -641,6 +685,7 @@ def main():
     print("Starting training...")
     best_test_acc = 0.0
     metrics_calculator.reset_timing()
+    total_samples_seen = 0  # Track total samples across all epochs
 
     model_path = get_model_path(
                 base_dir=args.data_dir,
@@ -652,27 +697,37 @@ def main():
                 n_attn_heads=args.n_attn_heads,
             )
     
+    # Create model-specific directory for checkpoints
+    model_name_without_ext = os.path.splitext(os.path.basename(model_path))[0]
+    checkpoint_dir = os.path.join(args.data_dir, model_name_without_ext)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    print(f"Checkpoints and best model will be saved to: {checkpoint_dir}")
+    
     for epoch in range(start_epoch, args.epochs):
         print(f'\nEpoch: {epoch+1}/{args.epochs}')
         epoch_start_time = time.time()
         # Train
-        train_metrics = train_epoch(
+        train_metrics, epoch_samples = train_epoch(
             model, train_loader, criterion, optimizer, device, epoch,
             warmup_epochs, warmup_scheduler, main_scheduler, 
             metrics_calculator, args.char_model, os.path.basename(model_path),
-            use_contrastive_loss=args.use_contrastive_loss,
-            contrastive_weight=args.contrastive_weight
+            contrastive_weight=args.contrastive_weight,
+            auxiliary_weight=args.auxiliary_weight,
+            total_samples_seen=total_samples_seen
         )
+        total_samples_seen += epoch_samples
         
         # Evaluate
         test_metrics = evaluate(
-            model, test_loader, criterion, device, metrics_calculator, epoch, args.char_model
+            model, test_loader, criterion, device, metrics_calculator, epoch, args.char_model,
+            contrastive_weight=args.contrastive_weight
         )
         
         # Combine metrics and add epoch info
         combined_metrics = {
             'epoch': epoch + 1,
             'epoch_time': time.time() - epoch_start_time,
+            'total_samples': total_samples_seen,
             **train_metrics,
             **test_metrics
         }
@@ -699,7 +754,7 @@ def main():
         
         print(f'Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
 
-        checkpoint_path = os.path.join(args.data_dir, f"checkpoint_epoch_{epoch+1}.pt")
+        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch+1}.pt")
         torch.save({
             'epoch': epoch + 1,
             'model': model,
@@ -761,8 +816,10 @@ def main():
                 print(f"WARNING: Could not verify classifier shape for {num_classes} classes")
             
 
-            torch.save(best_model_state, model_path)
-            print(f"Saved checkpoint with classifier shape: {classifier_shape}")
+            # Save best model in the same model-specific directory
+            best_model_path = os.path.join(checkpoint_dir, os.path.basename(model_path))
+            torch.save(best_model_state, best_model_path)
+            print(f"Saved best model at {best_model_path}")
 
             
         # Update wandb summary periodically

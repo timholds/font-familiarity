@@ -68,9 +68,10 @@ class CharSimpleCNN(nn.Module):
         #self.flatten_dim = 128 * 4 * 4 
 
         self.embedding_layer = nn.Sequential(
-            nn.Linear(self.flatten_dim, embedding_dim),
+            nn.Linear(self.flatten_dim, 512),        # 4096 -> H (reduce bottleneck)
             nn.ReLU(inplace=True),
-            #nn.Dropout(0.25)
+            nn.Linear(512, embedding_dim),           # H -> 128 (final embedding)
+            nn.ReLU(inplace=True),
         )
     
         

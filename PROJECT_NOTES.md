@@ -590,3 +590,38 @@ dr_sugiyama seems to be the classification answer for all sorts of out-of-distri
 
 ![Dr Sugiyama font sample](<assets/dr_sugiyama_sample.png>)
 
+# 
+The challenge in finding the right dimension is maintaining good category separation while getting smooth interpolation between similar fonts. Especially since most of the data will be out of distribution, we Will want to compress the embedding space to be able to interpolate between similar fonts.
+
+1. Current Coverage: With max_chars=100, we're only covering 85.9% of images, meaning 14.1% of images have more 
+  than 100 characters that get truncated.
+  2. Distribution Statistics:
+    - Mean: 52.1 patches per image
+    - Median: 41 patches per image
+    - 90th percentile: 111 patches
+    - 95th percentile: 120 patches
+    - 99th percentile: 129 patches
+    - Maximum: 147 patches
+  3. Distribution Shape: The distribution shows:
+    - A peak around 20-30 characters (most common)
+    - A long tail extending beyond 100 characters
+    - 29,474 images (14.1%) have more than 100 patches
+
+  Your Training Idea Analysis:
+
+  Your idea of starting with a higher max_chars and gradually decreasing it is quite interesting! Based on this
+  distribution, here's how it could work:
+
+  1. Epoch 1: Start with max_chars=130 (covers 99% of images)
+  2. Epoch 2: Reduce to max_chars=120 (covers 95% of images)
+  3. Epoch 3: Reduce to max_chars=110 (covers ~90% of images)
+  4. Epoch 4+: Reduce to max_chars=100 or even lower
+
+  This curriculum-style approach could:
+  - Initially train the model to handle the full character diversity
+  - Gradually force the model to focus on the most informative characters
+  - Act as a form of regularization by progressively limiting the input information
+  - Potentially improve computational efficiency in later epochs
+
+
+non-square, rectangular image inputs end up with more charcters per image on every because we add padding to the side of the images so as to not have cut off characters._

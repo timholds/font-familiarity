@@ -10,8 +10,12 @@ import random
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import json
+try:
+    from .font_utils import FontNameNormalizer, get_normalizer
+except ImportError:
+    # Handle case when run from project root
+    from font_utils import FontNameNormalizer, get_normalizer
 
-CATEGORY_MAPPING_PATH = os.path.join(os.path.dirname(__file__), '../data/font_class_to_category.json')
 CATEGORY_LIST = ["DISPLAY", "SANS_SERIF", "SERIF", "HANDWRITING", "MONOSPACE"]
 CATEGORY_TO_IDX = {cat: i for i, cat in enumerate(CATEGORY_LIST)}
 
@@ -64,18 +68,33 @@ class FontDataset(Dataset):
         print(f"Number of classes: {self.num_classes}")
         print(f"Label mapping loaded from {label_map_path}")
 
-        # Load font name to category mapping
+        # Load font name to category mapping using FontNameNormalizer
         if self.return_category:
-            with open(CATEGORY_MAPPING_PATH, 'r') as f:
-                self.font_to_category = json.load(f)
+            normalizer = get_normalizer()
+            
             # Build label idx to category idx mapping
             self.labelidx_to_catidx = {}
             for font_name, idx in self.label_mapping.items():
-                cat = self.font_to_category.get(font_name, None)
+                # Get category using the normalizer (handles all format conversions)
+                cat = normalizer.get_category(font_name)
+                
+                # Debug first few lookups only
+                if idx < 3:
+                    print(f"DEBUG lookup: '{font_name}' -> category: {cat}")
+                
                 if cat is not None:
                     self.labelidx_to_catidx[idx] = CATEGORY_TO_IDX[cat]
                 else:
                     self.labelidx_to_catidx[idx] = -1  # Unknown
+                    if self.return_category:  # Only warn when categories are needed
+                        print(f"WARNING: No category for font '{font_name}'")
+                    
+            # Debug output
+            matched = sum(1 for v in self.labelidx_to_catidx.values() if v != -1)
+            print(f"DEBUG: Matched {matched}/{len(self.labelidx_to_catidx)} fonts to categories")
+            if matched > 0:
+                print(f"DEBUG: Sample mappings: {list(self.labelidx_to_catidx.items())[:5]}")
+                print(f"DEBUG: Categories found: {set(self.labelidx_to_catidx.values())}")
 
     def _validate_targets(self):
         """Validate that all targets are within the correct range."""
@@ -340,14 +359,15 @@ class CharacterFontDataset(Dataset):
         if os.path.exists(classes_path):
             self.char_mapping = self._load_char_mapping(classes_path)
 
-        # Load font name to category mapping
+        # Load font name to category mapping using FontNameNormalizer
         if self.return_category:
-            with open(CATEGORY_MAPPING_PATH, 'r') as f:
-                self.font_to_category = json.load(f)
+            normalizer = get_normalizer()
+            
             # Build label idx to category idx mapping
             self.labelidx_to_catidx = {}
             for font_name, idx in self.label_mapping.items():
-                cat = self.font_to_category.get(font_name, None)
+                # Get category using the normalizer (handles all format conversions)
+                cat = normalizer.get_category(font_name)
                 if cat is not None:
                     self.labelidx_to_catidx[idx] = CATEGORY_TO_IDX[cat]
                 else:
@@ -689,7 +709,9 @@ def get_char_dataloaders(
     save_problematic_images: bool = False,
     pad_x: float = 0.05,
     pad_y: float = 0.15,
-    return_category: bool = False
+    return_category: bool = False,
+    max_datapts: int = None,
+    max_chars: int = 100
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Creates train and test DataLoaders.
@@ -698,14 +720,16 @@ def get_char_dataloaders(
         data_dir, train=True, 
         use_precomputed_craft=use_precomputed_craft,
         pad_x=pad_x, pad_y=pad_y,
-        return_category=return_category
+        return_category=return_category,
+        max_chars=max_chars
     )
     
     test_dataset = CharacterFontDataset(
         data_dir, train=False, 
         use_precomputed_craft=use_precomputed_craft,
         pad_x=pad_x, pad_y=pad_y,
-        return_category=return_category
+        return_category=return_category,
+        max_chars=max_chars
     )
 
     num_classes = train_dataset.num_classes
@@ -716,7 +740,10 @@ def get_char_dataloaders(
         train_valid_indices = []
         train_invalid_indices = []
         
-        for idx in range(len(train_dataset)):
+        # Limit how many samples we check if max_datapts is specified
+        train_limit = min(len(train_dataset), max_datapts) if max_datapts else len(train_dataset)
+        
+        for idx in range(train_limit):
             # Check if this sample has any VALID boxes (with minimum size)
             has_valid_boxes = False
             if train_dataset.craft_h5_file is not None:
@@ -751,7 +778,10 @@ def get_char_dataloaders(
         test_valid_indices = []
         test_invalid_indices = []
         
-        for idx in range(len(test_dataset)):
+        # Limit how many test samples we check if max_datapts is specified
+        test_limit = min(len(test_dataset), max_datapts) if max_datapts else len(test_dataset)
+        
+        for idx in range(test_limit):
             has_valid_boxes = False
             if test_dataset.craft_h5_file is not None:
                 if str(idx) in test_dataset.boxes_group:
@@ -792,9 +822,14 @@ def get_char_dataloaders(
         train_dataset = Subset(train_dataset, train_valid_indices)
         test_dataset = Subset(test_dataset, test_valid_indices)
 
-        # uncomment to limit dataset size for debugging
-        # train_dataset = Subset(train_dataset, range(10000))
-        # test_dataset = Subset(train_dataset, range(10000))
+        # Limit dataset size if max_datapts specified
+        if max_datapts is not None:
+            from torch.utils.data import Subset
+            train_indices = list(range(min(max_datapts, len(train_dataset))))
+            test_indices = list(range(min(max_datapts, len(test_dataset))))
+            train_dataset = Subset(train_dataset, train_indices)
+            test_dataset = Subset(test_dataset, test_indices)
+            print(f"Limited dataset to {len(train_dataset)} train and {len(test_dataset)} test samples")
 
         train_dataset.num_classes = num_classes
         train_dataset.label_mapping = label_mapping
