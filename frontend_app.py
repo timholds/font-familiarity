@@ -26,6 +26,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Register additional image format support
+HEIC_SUPPORT = False
+AVIF_SUPPORT = False
+
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIC_SUPPORT = True
+    logger.info("HEIC/HEIF support enabled")
+except ImportError:
+    logger.warning("HEIC/HEIF support not available - install pillow-heif")
+
+try:
+    import pillow_avif
+    AVIF_SUPPORT = True
+    logger.info("AVIF support enabled") 
+except ImportError:
+    logger.warning("AVIF support not available - install pillow-avif-plugin")
+
 # Global variables for model state
 model = None
 class_embeddings = None
@@ -62,10 +81,31 @@ def save_uploaded_image(image_bytes, save_dir, ip_address=None, prediction_data=
     # Create directory if it doesn't exist
     os.makedirs(save_dir, exist_ok=True)
     
+    # Detect actual image format
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        format_name = img.format.lower() if img.format else 'png'
+        # Map PIL format names to file extensions
+        format_extensions = {
+            'jpeg': 'jpg',
+            'jpg': 'jpg', 
+            'png': 'png',
+            'webp': 'webp',
+            'heif': 'heic',
+            'heic': 'heic',
+            'avif': 'avif',
+            'bmp': 'bmp',
+            'gif': 'gif'
+        }
+        extension = format_extensions.get(format_name, 'png')
+    except Exception as e:
+        logger.warning(f"Could not detect image format: {e}, defaulting to .png")
+        extension = 'png'
+    
     # Generate unique filename with timestamp and UUID
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID
-    filename = f"{timestamp}_{unique_id}.png"
+    filename = f"{timestamp}_{unique_id}.{extension}"
 
     image_path = os.path.join(save_dir, filename)
     metadata_path = os.path.join(save_dir, f"{timestamp}_{unique_id}_metadata.json")
@@ -77,7 +117,8 @@ def save_uploaded_image(image_bytes, save_dir, ip_address=None, prediction_data=
     metadata = {
         'timestamp': datetime.now().isoformat(),
         'filename': filename,
-        'ip_address': ip_address
+        'ip_address': ip_address,
+        'detected_format': extension
     }
     
     # Add prediction data if provided
@@ -317,10 +358,29 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
             
             # Convert uploaded image bytes to tensor 
             # Todo this needs to match the dataloader
-            original_image = Image.open(io.BytesIO(image_bytes))
-            logger.info(f"Original image mode: {original_image.mode}, size: {original_image.size}")
-            image = original_image.convert('RGB')
-            logger.info(f"Converted image mode: {image.mode}, size: {image.size}")
+            try:
+                original_image = Image.open(io.BytesIO(image_bytes))
+                logger.info(f"Original image mode: {original_image.mode}, size: {original_image.size}")
+                image = original_image.convert('RGB')
+                logger.info(f"Converted image mode: {image.mode}, size: {image.size}")
+            except Exception as e:
+                if "cannot identify image file" in str(e):
+                    supported_formats = ['JPEG', 'PNG', 'WebP', 'BMP', 'GIF']
+                    if HEIC_SUPPORT:
+                        supported_formats.append('HEIC')
+                    if AVIF_SUPPORT:
+                        supported_formats.append('AVIF')
+                    
+                    error_msg = f'Unsupported image format. Please use: {", ".join(supported_formats)}.'
+                    if not HEIC_SUPPORT:
+                        error_msg += ' If you have an iPhone image (HEIC), please convert it to JPEG first.'
+                    
+                    return jsonify({
+                        'error': error_msg,
+                        'supported_formats': supported_formats
+                    }), 400
+                else:
+                    raise
             
             # do i need to creat a numpy tensor or can torch take in pil iamge 
 

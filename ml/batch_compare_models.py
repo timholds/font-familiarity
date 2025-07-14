@@ -22,6 +22,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Register additional image format support
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    logger.info("HEIC/HEIF support enabled")
+except ImportError:
+    logger.warning("HEIC/HEIF support not available - install pillow-heif")
+
+try:
+    import pillow_avif
+    logger.info("AVIF support enabled") 
+except ImportError:
+    logger.warning("AVIF support not available - install pillow-avif-plugin")
+
 # HTML template for the batch report
 REPORT_TEMPLATE = """
 <!DOCTYPE html>
@@ -492,7 +506,7 @@ def process_image_directory(directory_path, model_a, model_b, class_embeddings_a
     results = []
     
     # List all image files in the directory
-    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp']
+    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp', '.heic', '.heif', '.avif']
     image_files = [f for f in os.listdir(directory_path) 
                   if os.path.isfile(os.path.join(directory_path, f)) and 
                   os.path.splitext(f.lower())[1] in image_extensions]
@@ -600,11 +614,10 @@ def main():
     parser.add_argument("--image_dir", required=True, help="Directory containing images to process")
     parser.add_argument("--model_a_path", required=True, help="Path to model A .pt file")
     parser.add_argument("--model_b_path", required=True, help="Path to model B .pt file")
-    parser.add_argument("--data_dir", required=True, help="Directory containing embeddings and label mappings")
     parser.add_argument("--embeddings_a_path", required=True, help="Path to embeddings for model A")
     parser.add_argument("--embeddings_b_path", required=True, help="Path to embeddings for model B")
-    parser.add_argument("--label_mapping_a", default="label_mapping.npy", help="Label mapping file for model A")
-    parser.add_argument("--label_mapping_b", default="label_mapping.npy", help="Label mapping file for model B")
+    parser.add_argument("--labels_a_path", required=True, help="Path to label mapping file for model A")
+    parser.add_argument("--labels_b_path", required=True, help="Path to label mapping file for model B")
     parser.add_argument("--output_html", default="compare_models.html", help="Path to save the HTML report")
     parser.add_argument("--serve", action="store_true", help="Start a webserver to view the report")
     parser.add_argument("--port", type=int, default=8080, help="Port for the webserver")
@@ -634,8 +647,8 @@ def main():
     logger.info(f"Using device: {device}")
     
     # Prepare paths
-    label_mapping_path_a = os.path.join(args.data_dir, args.label_mapping_a)
-    label_mapping_path_b = os.path.join(args.data_dir, args.label_mapping_b)
+    label_mapping_path_a = args.labels_a_path
+    label_mapping_path_b = args.labels_b_path
     
     # Load models (reusing code from compare_models.py)
     logger.info(f"Loading model A: {os.path.basename(args.model_a_path)}")

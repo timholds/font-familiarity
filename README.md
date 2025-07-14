@@ -68,6 +68,8 @@ So if Font_A with n images, we get one 1024-dim vector representing the "average
 
 # Train Model and Generate Embeddings
 **Note**: `output_dir` from the `prep_train_test_data.py` should be the same as the `data_dir` in the `train.py` and `create_embeddings.py` script.
+### Parse font metadata (required for contrastive loss training)
+`python ml/parse_font_metadata.py`
 ### Train the model
 `python ml/train.py --data_dir data/font-dataset-npz --epochs 30 --batch_size 64 --learning_rate 0.0001 --weight_decay 0.01 --embedding_dim 128 --resolution 64 --initial_channels 16`
 

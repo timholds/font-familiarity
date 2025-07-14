@@ -3,11 +3,11 @@ import os
 from pathlib import Path
 
 def get_model_path(base_dir, prefix, batch_size, embedding_dim, initial_channels,
-                   patch_size=32, n_attn_heads=4, pad_x=.05, pad_y=.15):
+                   patch_size=32, n_attn_heads=4, pad_x=.05, pad_y=.15, contrastive_weight=0):
     
     model_name = (
         f"{prefix}-BS{batch_size}-ED{embedding_dim}-IC{initial_channels}-"
-        f"PS{patch_size}-NH{n_attn_heads}-PX{pad_x}-PY{pad_y}.pt"
+        f"PS{patch_size}-NH{n_attn_heads}-PX{pad_x}-PY{pad_y}-C{contrastive_weight}.pt"
     )
     model_path = Path(os.path.join(base_dir, model_name))
     return model_path
@@ -35,7 +35,8 @@ def get_embedding_path(base_dir, model_path):
     embedding_file = (
         f"class_embeddings-BS{hparams['batch_size']}-ED{hparams['embedding_dim']}-"
         f"IC{hparams['initial_channels']}-PS{hparams['patch_size']}-"
-        f"NH{hparams['n_attn_heads']}.npy"
+        f"NH{hparams['n_attn_heads']}-PX{hparams['pad_x']}-PY{hparams['pad_y']}-"
+        f"C{hparams.get('contrastive_weight', 0)}.npy"
     )
     embedding_path = Path(os.path.join(base_dir, embedding_file))
     # Check if the embedding file already exists
@@ -73,6 +74,7 @@ def get_params_from_model_path(model_path):
         "weight_decay": 0.001,
         "pad_x": .05,
         "pad_y": .15,
+        "contrastive_weight": 0,
     }
 
     model_name = os.path.basename(model_path)
@@ -98,6 +100,8 @@ def get_params_from_model_path(model_path):
             params["pad_x"] = float(part[2:])
         elif part.startswith("PY"):
             params["pad_y"] = float(part[2:])
+        elif part.startswith("C") and not part.startswith("CNN"):
+            params["contrastive_weight"] = float(part[1:])
 
     return params
 
