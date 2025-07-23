@@ -7,6 +7,7 @@ import io
 import torchvision.transforms as transforms
 from ml.font_model import SimpleCNN
 from ml.char_model import CRAFTFontClassifier
+from ml.char_model_v4 import CRAFTFontClassifier as CRAFTFontClassifierV4
 import torch.nn.functional as F
 import traceback
 import logging
@@ -213,10 +214,70 @@ def load_char_model_and_embeddings(model_path: str,
             model = state['model']
             model = model.to(device)
             model.eval()
+            
+            # For inference with raw images, ensure precomputed CRAFT is disabled
+            if hasattr(model, 'use_precomputed_craft'):
+                if model.use_precomputed_craft and model.craft is None:
+                    # Need to initialize CRAFT model for inference
+                    from CRAFT import CRAFTModel
+                    model.craft = CRAFTModel(
+                        cache_dir='weights/',
+                        device=device,
+                        use_refiner=True,
+                        fp16=False, 
+                        link_threshold=1.,
+                        text_threshold=.8,
+                        low_text=.4,
+                    )
+                model.use_precomputed_craft = False
+                
             logger.info("Loaded full model object from checkpoint")
+        elif 'model_state_dict' in state:
+            # Old format: always use V4 architecture
+            logger.info("Detected old checkpoint format (v4model), using V4 architecture...")
+            
+            # Extract model configuration from the checkpoint
+            num_classes = state.get('num_classes', 699)  # Default to 699 if not specified
+            
+            # Parse model configuration from filename if available
+            model_name = os.path.basename(model_path).replace('.pt', '')
+            config = get_params_from_model_path(model_name)
+            
+            # Create V4 model
+            model = CRAFTFontClassifierV4(
+                num_fonts=num_classes,
+                patch_size=config.get('patch_size', 64),
+                embedding_dim=config.get('embedding_dim', 1024),
+                initial_channels=config.get('initial_channels', 16),
+                n_attn_heads=config.get('num_heads', 16),
+                device=device,
+                use_precomputed_craft=False,  # Always False for inference
+                craft_weights_dir='weights/'
+            )
+            
+            # Load the state dict
+            model.load_state_dict(state['model_state_dict'])
+            model = model.to(device)
+            model.eval()
+            
+            # Initialize CRAFT model for inference
+            if not hasattr(model, 'craft') or model.craft is None:
+                from CRAFT import CRAFTModel
+                model.craft = CRAFTModel(
+                    cache_dir='weights/',
+                    device=device,
+                    use_refiner=True,
+                    fp16=False, 
+                    link_threshold=1.,
+                    text_threshold=.8,
+                    low_text=.4,
+                )
+            
+            logger.info(f"Loaded V4 model with config: embedding_dim={config.get('embedding_dim', 1024)}, "
+                       f"num_heads={config.get('num_heads', 16)}, initial_channels={config.get('initial_channels', 16)}, "
+                       f"patch_size={config.get('patch_size', 64)}")
         else:
-            # This should not happen with the new format, but keeping for safety
-            raise ValueError("Expected full model object in checkpoint, but found old format. Please retrain your model.")
+            raise ValueError("Unrecognized checkpoint format. Expected either 'model' or 'model_state_dict' key.")
         
         # Load embeddings
         logger.info(f"\nLoading embeddings from {embeddings_path}")
