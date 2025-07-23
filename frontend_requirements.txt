@@ -26,3 +26,6 @@ shapely  # For polygon operations
 # Modern image format support
 pillow-heif>=0.15.0  # For HEIC/HEIF support (iPhone images)
 pillow-avif-plugin>=1.4.0  # For AVIF support
+
+# Data handling
+h5py  # For HDF5 file support
