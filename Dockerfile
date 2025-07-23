@@ -11,7 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     libgl1-mesa-glx \  
-    libglib2.0-0 \      
+    libglib2.0-0 \
+    libheif-dev \
+    libavif-dev \      
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -37,7 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \  
     libsm6 \
     libxext6 \
-    libxrender1 \   
+    libxrender1 \
+    libheif1 \
+    libavif15 \   
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python packages from builder

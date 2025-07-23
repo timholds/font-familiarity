@@ -9,11 +9,15 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
+
 
 from CRAFT import CRAFTModel
+
+# This is the V4 version of char_model.py from April 29, 2025
+# Used for loading old v4model checkpoints, draw_polygons
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 
 class CharSimpleCNN(nn.Module):
@@ -68,10 +72,9 @@ class CharSimpleCNN(nn.Module):
         #self.flatten_dim = 128 * 4 * 4 
 
         self.embedding_layer = nn.Sequential(
-            nn.Linear(self.flatten_dim, 512),        # 4096 -> H (reduce bottleneck)
+            nn.Linear(self.flatten_dim, embedding_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(512, embedding_dim),           # H -> 128 (final embedding)
-            nn.ReLU(inplace=True),
+            #nn.Dropout(0.25)
         )
     
         
@@ -165,7 +168,7 @@ class SelfAttentionAggregator(nn.Module):
         return aggregated, attn_weights
     
 class CharacterBasedFontClassifier(nn.Module):
-    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16):
+    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=4):
         super().__init__()
         
         # Character feature extractor - reuse existing CNN architecture
@@ -173,14 +176,14 @@ class CharacterBasedFontClassifier(nn.Module):
             num_classes=embedding_dim,  # Use as feature extractor
             input_size=patch_size,
             embedding_dim=embedding_dim,
-            initial_channels=initial_channels,
+            initial_channels=initial_channels
         )
         
         # Replace classifier with identity to get embeddings only
         self.char_encoder.classifier = nn.Identity()
         
         # Self-attention aggregation
-        self.aggregator = SelfAttentionAggregator(embedding_dim, n_attn_heads)
+        self.aggregator = SelfAttentionAggregator(embedding_dim, num_heads=n_attn_heads)
         
         # Final font classifier
         self.font_classifier = nn.Linear(embedding_dim, num_fonts)
@@ -248,14 +251,11 @@ class CRAFTFontClassifier(nn.Module):
     During inference, uses CRAFT to extract character patches.
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
-                 patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16,
-                 craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2):
-
+                 patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=4,
+                 craft_fp16=False, use_precomputed_craft=False):
         super().__init__()
 
         self.use_precomputed_craft = use_precomputed_craft
-        self.pad_x = pad_x
-        self.pad_y = pad_y
 
         # Initialize CRAFT model for text detection
         if not use_precomputed_craft:
@@ -264,9 +264,9 @@ class CRAFTFontClassifier(nn.Module):
                 device=device,
                 use_refiner=True,
                 fp16=craft_fp16, 
-                link_threshold=1.,
-                text_threshold=.8,
-                low_text=.4,
+                link_threshold=1.9,
+                text_threshold=.5,
+                low_text=.5,
             )
         else:
             self.craft = None
@@ -275,7 +275,7 @@ class CRAFTFontClassifier(nn.Module):
         self.font_classifier = CharacterBasedFontClassifier(
             num_fonts=num_fonts,
             patch_size=patch_size,
-            embedding_dim=embedding_dim, 
+            embedding_dim=embedding_dim,
             initial_channels=initial_channels,
             n_attn_heads=n_attn_heads
         )
@@ -283,24 +283,38 @@ class CRAFTFontClassifier(nn.Module):
         self.device = device
         self.patch_size = patch_size
 
-    def get_embedding(self, inputs):
+
+    def get_embedding(self, images):
         """
-        Get font embeddings for contrastive loss
-        
+        Extract font embeddings from images for similarity comparisons.
+
         Args:
-            inputs: Dictionary containing batch data with 'patches' and 'attention_mask'
-            
+            images: Tensor of shape [batch_size, channels, height, width]
+
         Returns:
-            Font embeddings tensor
+            embeddings: Tensor of shape [batch_size, embedding_dim]
         """
-        if isinstance(inputs, dict) and 'patches' in inputs and 'attention_mask' in inputs:
-            output = self.font_classifier(
-                inputs['patches'].to(self.device),
-                inputs['attention_mask'].to(self.device)
-            )
-            return output['font_embedding']
-        else:
-            raise ValueError("get_embedding expects dictionary with 'patches' and 'attention_mask' keys")
+        # Make sure we're in eval mode
+        self.eval()
+
+        # Extract patches using CRAFT
+        with torch.no_grad():
+            # Process through CRAFT to get character patches
+            # if self.use_precomputed_craft:
+            #     # Use precomputed patches directly
+            #     patch_data = images
+            patch_data = self.extract_patches_with_craft(images)
+            
+            # Get patches and attention mask
+            patches = patch_data['patches']
+            attention_mask = patch_data['attention_mask']
+            
+            # Process through font classifier
+            outputs = self.font_classifier(patches, attention_mask)
+            
+            # Return font embeddings
+            return outputs['font_embedding']
+
 
     def visualize_char_preds(self, patches, attention_mask, predictions=None, targets=None, save_path=None):
         """
@@ -316,7 +330,7 @@ class CRAFTFontClassifier(nn.Module):
         import matplotlib.pyplot as plt
         import os
         
-        batch_size = min(10, patches.size(0))  # Visualize up to 10 samples
+        batch_size = min(4, patches.size(0))  # Visualize up to 4 samples
         
         for b in range(batch_size):
             # Create figure
@@ -373,6 +387,9 @@ class CRAFTFontClassifier(nn.Module):
             images: Tensor of shape [batch_size, height, width, channels] 0,255
             save_path: Path to save visualization
         """
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import os
         print(f"VISUALIZE CRAFT DETECTION Input tensor type: {type(images)}")
         print(f"VISUALIZE CRAFT DETECTION Input tensor shape: {images.shape}")
         batch_size = min(4, images.size(0))  # Visualize up to 4 samples
@@ -402,15 +419,11 @@ class CRAFTFontClassifier(nn.Module):
 
             draw = ImageDraw.Draw(pil_img)
 
-            # Draw bounding boxes
+            # Draw polygons
             for poly in polygons:
-                # Convert polygon to box and add padding  
-                box = polygon_to_box(poly)
-                padded_box = add_padding_to_box(box, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
-                
-                x1, y1, x2, y2 = padded_box
-                # Draw rectangle
-                draw.rectangle([x1, y1, x2, y2], outline=(255, 0, 0), width=2)
+                # Convert to tuple format for PIL
+                poly_tuple = [tuple(p) for p in poly]
+                draw.polygon(poly_tuple, outline=(255, 0, 0), width=2)
 
             # Add text at the top if needed
             try:
@@ -429,10 +442,38 @@ class CRAFTFontClassifier(nn.Module):
                 return pil_img
                 #pil_img.show()  # Display directly with PIL
 
+    def add_padding_to_polygons(polygons, padding_x=5, padding_y=8):
+        padded_polygons = []
+
+        for polygon in polygons:
+            # Convert to numpy array if it's not already
+            polygon = np.array(polygon)
+
+            # Find min and max coordinates
+            min_x = np.min(polygon[:, 0])
+            max_x = np.max(polygon[:, 0])
+            min_y = np.min(polygon[:, 1])
+            max_y = np.max(polygon[:, 1])
+
+            # Calculate width and height
+            width = max_x - min_x
+            height = max_y - min_y
+
+            # Create expanded rectangle
+            expanded_rect = np.array([
+                [min_x - padding_x, min_y - padding_y],
+                [max_x + padding_x, min_y - padding_y],
+                [max_x + padding_x, max_y + padding_y],
+                [min_x - padding_x, max_y + padding_y]
+            ])
+
+            padded_polygons.append(expanded_rect)
+
+        return padded_polygons
     
     def extract_patches_with_craft(self, images):
         # Add debug prints and more robust tensor handling
-        print(f"Input tensor extract_patches_with_craft shape: {images.shape}")
+        print(f"Input tensor shape: {images.shape}")
 
         # Ensure 4D tensor with batch dimension
         if len(images.shape) == 3:
@@ -493,11 +534,14 @@ class CRAFTFontClassifier(nn.Module):
             img_patches = []
             print(f"Extracting patches from {len(polygons)} polygons")
             for polygon in polygons:
-                # Convert polygon to box and add padding
-                box = polygon_to_box(polygon)
-                padded_box = add_padding_to_box(box, padding_x=self.pad_x, padding_y=self.pad_y, asym=True, jitter_std=0.0)
+                # polygon = self.add_padding_to_polygons(polygon)
+
+                # Convert polygon to bounding box
+                x_coords = [p[0] for p in polygon]
+                y_coords = [p[1] for p in polygon]
                 
-                x1, y1, x2, y2 = padded_box
+                x1, y1 = min(x_coords), min(y_coords)
+                x2, y2 = max(x_coords), max(y_coords)
                 
                 # Ensure integer coordinates and minimum size
                 x1, y1 = max(0, int(x1)), max(0, int(y1))
@@ -518,7 +562,7 @@ class CRAFTFontClassifier(nn.Module):
                 normalized_patch = self._normalize_patch(patch)
                 
                 # Convert to tensor with channel dimension [1, H, W] - PyTorch format
-                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0).to(self.device)  
+                patch_tensor = torch.from_numpy(normalized_patch).float().unsqueeze(0)
                 img_patches.append(patch_tensor)
 
                         

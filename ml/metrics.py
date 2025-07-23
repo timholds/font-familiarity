@@ -173,7 +173,7 @@ class ClassificationMetrics:
     def _compute_topk_accuracy(self, logits: torch.Tensor, targets: torch.Tensor) -> Dict[str, float]:
         """Compute top-k accuracy metrics."""
         metrics = {}
-        topk = (1, 5)
+        topk = (1, 3, 5)
         maxk = max(topk)
         
         _, pred = logits.topk(maxk, 1, True, True)

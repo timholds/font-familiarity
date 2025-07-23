@@ -22,6 +22,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Register additional image format support
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    logger.info("HEIC/HEIF support enabled")
+except ImportError:
+    logger.warning("HEIC/HEIF support not available - install pillow-heif")
+
+try:
+    import pillow_avif
+    logger.info("AVIF support enabled") 
+except ImportError:
+    logger.warning("AVIF support not available - install pillow-avif-plugin")
+
 class PipelineValidationError(Exception):
     """Custom exception for pipeline validation failures"""
     pass

@@ -111,6 +111,16 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
         
+        // Check for specific formats that might not be supported
+        const fileName = file.name.toLowerCase();
+        const unsupportedExtensions = ['.heic', '.heif', '.avif'];
+        const extension = fileName.substring(fileName.lastIndexOf('.'));
+        
+        if (unsupportedExtensions.includes(extension)) {
+            alert(`${extension.toUpperCase()} files may not be supported on all servers. If upload fails, please convert to JPEG or PNG format.`);
+            // Don't return false - still allow the upload attempt
+        }
+        
         return true;
     }
     
@@ -303,7 +313,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
+                // Try to get error message from response
+                try {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                } catch (e) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
             }
             
             const data = await response.json();
@@ -352,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error('Error:', error);
-            alert('Error processing image: ' + error.message);
+            alert(error.message || 'Error processing image');
         } finally {
             // Hide loading indicator
             loading.classList.add('hidden');

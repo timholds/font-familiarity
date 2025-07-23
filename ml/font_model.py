@@ -12,7 +12,7 @@ class SimpleCNN(nn.Module):
     Input: (batch_size, 1, 256, 256)
     """
     def __init__(self, num_classes: int, 
-                 in_channels: int = 1,
+                 in_channels: int = 3,
                  input_size: int = 64,
                  embedding_dim: int = 1024,
                  initial_channels: int = 16):
@@ -41,7 +41,7 @@ class SimpleCNN(nn.Module):
        
         # Calculate flattened dim dynamically
         with torch.no_grad():
-            dummy_input = torch.zeros(1, 1, self.input_size, self.input_size)
+            dummy_input = torch.zeros(1, in_channels, self.input_size, self.input_size)
             dummy_output = self.features(dummy_input)
             self.flatten_dim = self.flatten(dummy_output).shape[1]
         
