@@ -29,3 +29,6 @@ pillow-avif-plugin>=1.4.0  # For AVIF support
 
 # Data handling
 h5py  # For HDF5 file support
+
+# Image augmentation
+albumentations  # For image transformations
