@@ -85,10 +85,12 @@ REPORT_TEMPLATE = """
         .comparison-container {
             display: flex;
             gap: 20px;
+            flex-wrap: wrap;
         }
         
         .model-column {
             flex: 1;
+            min-width: 300px;
             background-color: #f8f9fa;
             border-radius: 8px;
             padding: 15px;
@@ -401,14 +403,15 @@ REPORT_TEMPLATE = """
         <img src="data:image/png;base64,{{ item.image_data }}" alt="{{ item.filename }}" class="image-preview">
         
         <div class="comparison-container">
-            <!-- Model A column -->
+            {% for model_idx in range(item.results|length) %}
+            <!-- Model column -->
             <div class="model-column">
-                <div class="model-header">{{ model_a_name }}</div>
+                <div class="model-header">{{ model_names[model_idx] }}</div>
                 <div class="section-header">
                     <h3>Classifier Predictions</h3>
                 </div>
                 <div>
-                    {% for result in item.results_a.classifier_predictions %}
+                    {% for result in item.results[model_idx].classifier_predictions %}
                     <div class="result-item">
                         <div class="result-header">
                             <span class="font-name">{{ result.font }}</span>
@@ -429,7 +432,7 @@ REPORT_TEMPLATE = """
                     <h3>Similar Fonts</h3>
                 </div>
                 <div>
-                    {% for result in item.results_a.embedding_similarity %}
+                    {% for result in item.results[model_idx].embedding_similarity %}
                     <div class="result-item">
                         <div class="result-header">
                             <span class="font-name">{{ result.font }}</span>
@@ -446,52 +449,7 @@ REPORT_TEMPLATE = """
                     {% endfor %}
                 </div>
             </div>
-            
-            <!-- Model B column -->
-            <div class="model-column">
-                <div class="model-header">{{ model_b_name }}</div>
-                <div class="section-header">
-                    <h3>Classifier Predictions</h3>
-                </div>
-                <div>
-                    {% for result in item.results_b.classifier_predictions %}
-                    <div class="result-item">
-                        <div class="result-header">
-                            <span class="font-name">{{ result.font }}</span>
-                            <span class="score">{{ "%.1f"|format(result.probability*100) }}%</span>
-                        </div>
-                        <div class="font-sample font-data" data-font="{{ result.font }}" style="font-family: '{{ result.font }}', sans-serif;">
-                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
-                        </div>
-                        <div class="font-actions">
-                            <button class="copy-btn" onclick="navigator.clipboard.writeText('{{ result.font }}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
-                            <a href="https://fonts.google.com/specimen/{{ result.font.replace(' ', '+') }}" target="_blank" class="font-link">View on Google Fonts</a>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-                
-                <div class="section-header">
-                    <h3>Similar Fonts</h3>
-                </div>
-                <div>
-                    {% for result in item.results_b.embedding_similarity %}
-                    <div class="result-item">
-                        <div class="result-header">
-                            <span class="font-name">{{ result.font }}</span>
-                            <span class="score">{{ "%.1f"|format(result.similarity*100) }}%</span>
-                        </div>
-                        <div class="font-sample font-data" data-font="{{ result.font }}" style="font-family: '{{ result.font }}', sans-serif;">
-                            The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 abcdefghijklmnopqrstuvwxyz !@$%^&*()_+-=[]|;:,.<>?/
-                        </div>
-                        <div class="font-actions">
-                            <button class="copy-btn" onclick="navigator.clipboard.writeText('{{ result.font }}').then(() => { this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy font name'; }, 1500); })">Copy font name</button>
-                            <a href="https://fonts.google.com/specimen/{{ result.font.replace(' ', '+') }}" target="_blank" class="font-link">View on Google Fonts</a>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
+            {% endfor %}
         </div>
     </div>
     {% endfor %}
@@ -499,10 +457,9 @@ REPORT_TEMPLATE = """
 </html>
 """
 
-def process_image_directory(directory_path, model_a, model_b, class_embeddings_a, 
-                            class_embeddings_b, label_mapping_a, label_mapping_b,
-                            device, model_a_name, model_b_name, font_mapping):
-    """Process all images in the given directory with both models."""
+def process_image_directory(directory_path, models, embeddings_list, label_mappings,
+                            device, model_names, font_mapping):
+    """Process all images in the given directory with all models."""
     results = []
     
     # List all image files in the directory
@@ -531,28 +488,26 @@ def process_image_directory(directory_path, model_a, model_b, class_embeddings_a
             image_np = np.array(image)
             image_tensor = torch.from_numpy(image_np).unsqueeze(0).to(device)
             
-            # Get predictions from both models
-            results_a = compare_models.predict_with_model(
-                model_a, class_embeddings_a, label_mapping_a, image_tensor, False
-            )
-            
-            results_b = compare_models.predict_with_model(
-                model_b, class_embeddings_b, label_mapping_b, image_tensor, False
-            )
-
-            for result in results_a['embedding_similarity'] + results_a['classifier_predictions']:
-                result['font'] = format_font_name(result['font'], font_mapping)
+            # Get predictions from all models
+            model_results = []
+            for model_idx, (model, embeddings, label_mapping) in enumerate(zip(models, embeddings_list, label_mappings)):
+                logger.debug(f"Running model {model_idx + 1}: {model_names[model_idx]}")
                 
-            for result in results_b['embedding_similarity'] + results_b['classifier_predictions']:
-                result['font'] = format_font_name(result['font'], font_mapping)
-            
+                model_output = compare_models.predict_with_model(
+                    model, embeddings, label_mapping, image_tensor, False
+                )
+                
+                # Format font names
+                for result in model_output['embedding_similarity'] + model_output['classifier_predictions']:
+                    result['font'] = format_font_name(result['font'], font_mapping)
+                
+                model_results.append(model_output)
             
             # Add to results list
             results.append({
                 'filename': image_file,
                 'image_data': image_base64,
-                'results_a': results_a,
-                'results_b': results_b
+                'results': model_results
             })
             
         except Exception as e:
@@ -561,7 +516,7 @@ def process_image_directory(directory_path, model_a, model_b, class_embeddings_a
     
     return results, total_images
 
-def generate_report(results, total_images, model_a_name, model_b_name, output_path, font_mapping):
+def generate_report(results, total_images, model_names, output_path, font_mapping):
     """Generate HTML report with all results."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -570,11 +525,10 @@ def generate_report(results, total_images, model_a_name, model_b_name, output_pa
 
     all_fonts = set()
     for item in results:
-        for result in (item['results_a']['embedding_similarity'] + 
-                      item['results_a']['classifier_predictions'] +
-                      item['results_b']['embedding_similarity'] + 
-                      item['results_b']['classifier_predictions']):
-            all_fonts.add(result['font'])
+        for model_results in item['results']:
+            for result in (model_results['embedding_similarity'] + 
+                          model_results['classifier_predictions']):
+                all_fonts.add(result['font'])
     
     # Use app context for rendering
     with app.app_context():
@@ -584,8 +538,7 @@ def generate_report(results, total_images, model_a_name, model_b_name, output_pa
             results=results,
             total_images=total_images,
             timestamp=timestamp,
-            model_a_name=model_a_name,
-            model_b_name=model_b_name,
+            model_names=model_names,
             all_fonts=list(all_fonts)
         )
     
@@ -595,6 +548,42 @@ def generate_report(results, total_images, model_a_name, model_b_name, output_pa
     
     logger.info(f"Report generated at: {output_path}")
     return output_path
+
+
+def detect_model_files(model_dir):
+    """Detect model, embeddings, and labels files in a model directory.
+    
+    Returns:
+        tuple: (model_path, embeddings_path, labels_path) or raises error if files not found
+    """
+    if not os.path.exists(model_dir):
+        raise FileNotFoundError(f"Model directory not found: {model_dir}")
+    
+    files = os.listdir(model_dir)
+    
+    # Find model file (.pt)
+    model_files = [f for f in files if f.endswith('.pt')]
+    if not model_files:
+        raise FileNotFoundError(f"No .pt model file found in {model_dir}")
+    model_path = os.path.join(model_dir, model_files[0])
+    
+    # Find embeddings file (class_embeddings*.npy)
+    embeddings_files = [f for f in files if f.startswith('class_embeddings') and f.endswith('.npy')]
+    if not embeddings_files:
+        raise FileNotFoundError(f"No class_embeddings*.npy file found in {model_dir}")
+    embeddings_path = os.path.join(model_dir, embeddings_files[0])
+    
+    # Find labels file (label_mapping.npy)
+    labels_path = os.path.join(model_dir, 'label_mapping.npy')
+    if not os.path.exists(labels_path):
+        raise FileNotFoundError(f"No label_mapping.npy file found in {model_dir}")
+    
+    logger.info(f"Found model files in {model_dir}:")
+    logger.info(f"  Model: {os.path.basename(model_path)}")
+    logger.info(f"  Embeddings: {os.path.basename(embeddings_path)}")
+    logger.info(f"  Labels: {os.path.basename(labels_path)}")
+    
+    return model_path, embeddings_path, labels_path
 
 
 def format_font_name(model_font_name, font_mapping):
@@ -610,14 +599,12 @@ def format_font_name(model_font_name, font_mapping):
 
 def main():
     """Run the batch processing script."""
-    parser = argparse.ArgumentParser(description="Process a directory of images with two font models")
+    parser = argparse.ArgumentParser(description="Process a directory of images with up to 4 font models")
     parser.add_argument("--image_dir", required=True, help="Directory containing images to process")
-    parser.add_argument("--model_a_path", required=True, help="Path to model A .pt file")
-    parser.add_argument("--model_b_path", required=True, help="Path to model B .pt file")
-    parser.add_argument("--embeddings_a_path", required=True, help="Path to embeddings for model A")
-    parser.add_argument("--embeddings_b_path", required=True, help="Path to embeddings for model B")
-    parser.add_argument("--labels_a_path", required=True, help="Path to label mapping file for model A")
-    parser.add_argument("--labels_b_path", required=True, help="Path to label mapping file for model B")
+    parser.add_argument("--model_dir_1", required=True, help="Path to first model directory (required)")
+    parser.add_argument("--model_dir_2", help="Path to second model directory (optional)")
+    parser.add_argument("--model_dir_3", help="Path to third model directory (optional)")
+    parser.add_argument("--model_dir_4", help="Path to fourth model directory (optional)")
     parser.add_argument("--output_html", default="compare_models.html", help="Path to save the HTML report")
     parser.add_argument("--serve", action="store_true", help="Start a webserver to view the report")
     parser.add_argument("--port", type=int, default=8080, help="Port for the webserver")
@@ -646,35 +633,63 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
     
-    # Prepare paths
-    label_mapping_path_a = args.labels_a_path
-    label_mapping_path_b = args.labels_b_path
+    # Collect model directories
+    model_dirs = []
+    for i in range(1, 5):
+        model_dir = getattr(args, f'model_dir_{i}')
+        if model_dir:
+            model_dirs.append(model_dir)
     
-    # Load models (reusing code from compare_models.py)
-    logger.info(f"Loading model A: {os.path.basename(args.model_a_path)}")
-    model_a, class_embeddings_a, label_mapping_a = compare_models.load_model(
-        args.model_a_path, args.embeddings_a_path, label_mapping_path_a, device
-    )
+    logger.info(f"Processing {len(model_dirs)} models")
     
-    logger.info(f"Loading model B: {os.path.basename(args.model_b_path)}")
-    model_b, class_embeddings_b, label_mapping_b = compare_models.load_model(
-        args.model_b_path, args.embeddings_b_path, label_mapping_path_b, device
-    )
+    # Load all models
+    models = []
+    embeddings_list = []
+    label_mappings = []
+    model_names = []
     
-    model_a_name = os.path.basename(args.model_a_path)
-    model_b_name = os.path.basename(args.model_b_path)
+    for i, model_dir in enumerate(model_dirs, 1):
+        try:
+            logger.info(f"Loading model {i} from {model_dir}")
+            
+            # Detect files in model directory
+            model_path, embeddings_path, labels_path = detect_model_files(model_dir)
+            
+            # Load the model
+            model, class_embeddings, label_mapping = compare_models.load_model(
+                model_path, embeddings_path, labels_path, device
+            )
+            
+            models.append(model)
+            embeddings_list.append(class_embeddings)
+            label_mappings.append(label_mapping)
+            
+            # Use directory name or model filename as model name
+            dir_name = os.path.basename(model_dir.rstrip('/'))
+            pt_name = os.path.basename(model_path)
+            # Prefer directory name unless it's generic (like v4model), then use .pt filename
+            if dir_name and not dir_name.startswith('v') and len(dir_name) > 7:
+                model_name = dir_name
+            else:
+                # Use the .pt filename for more descriptive name
+                model_name = pt_name if pt_name else dir_name
+            model_names.append(model_name)
+            
+            logger.info(f"Successfully loaded model {i}: {model_name}")
+            
+        except Exception as e:
+            logger.error(f"Error loading model from {model_dir}: {e}")
+            raise
     
     # Process all images in the directory
     results, total_images = process_image_directory(
-        args.image_dir, model_a, model_b, 
-        class_embeddings_a, class_embeddings_b,
-        label_mapping_a, label_mapping_b, 
-        device, model_a_name, model_b_name, font_mapping
+        args.image_dir, models, embeddings_list, label_mappings,
+        device, model_names, font_mapping
     )
     
     # Generate the HTML report
     report_path = generate_report(
-        results, total_images, model_a_name, model_b_name, 
+        results, total_images, model_names,
         args.output_html, font_mapping
     )
     
