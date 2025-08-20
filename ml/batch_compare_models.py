@@ -82,20 +82,7 @@ REPORT_TEMPLATE = """
             border: 1px solid #ddd;
         }
         
-        .comparison-container {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        
-        .model-column {
-            flex: 1;
-            min-width: 300px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            border: 1px solid #e1e4e8;
-        }
+        /* Removed duplicate - see below */
         
         .model-header {
             background-color: #e9ecef;
@@ -106,17 +93,20 @@ REPORT_TEMPLATE = """
             border-left: 4px solid #5b9504;
         }
         
+        .section-header {
+            height: 50px;
+            display: flex;
+            align-items: center;
+        }
+        
         .section-header h3 {
             margin: 0;
             padding: 10px 0;
             border-bottom: 1px solid #e1e4e8;
+            width: 100%;
         }
         
-        .result-item {
-            margin-bottom: 15px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #eee;
-        }
+        /* Removed duplicate - see below */
         
         .result-header {
             display: flex;
@@ -138,11 +128,19 @@ REPORT_TEMPLATE = """
         .comparison-container {
             display: flex;
             gap: 20px;
-            align-items: stretch;
+            align-items: flex-start;
+            flex-wrap: nowrap;
+            overflow-x: auto;
         }
 
         .model-column {
             flex: 1;
+            min-width: 250px;
+            max-width: 400px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #e1e4e8;
             display: flex;
             flex-direction: column;
         }
@@ -161,7 +159,8 @@ REPORT_TEMPLATE = """
             border-bottom: 1px solid #eee;
             display: flex;
             flex-direction: column;
-            height: 260px; /* same height for all result items */
+            height: 280px; /* fixed height for all result items */
+            overflow: hidden;
         }
 
         .font-sample {
@@ -174,7 +173,9 @@ REPORT_TEMPLATE = """
             line-height: 1.5;
             overflow-wrap: break-word;
             flex: 1; /* Let it grow to fill available space */
-            overflow: auto; /* Add scrollbar if text overflows */
+            overflow-y: auto; /* Add scrollbar if text overflows */
+            min-height: 120px;
+            max-height: 150px;
         }
 
         .font-actions {
