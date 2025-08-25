@@ -97,6 +97,18 @@ python batch_compare_models.py \
   --port 8080 --image_dir test-images 
 ```
 
+### Compare up to 4 models side-by-side
+```
+python ml/batch_compare_models.py \
+  --image_dir assets/test-images \
+  --model_dir_1 v4model \
+  --model_dir_2 v5model-ED128 \
+  --model_dir_3 v5model-ED256 \
+  --model_dir_4 v5model-ED512 \
+  --serve \
+  --port 8080
+```
+
 
 # Frontend
 **Note**: `data_dir` from the `train.py` and `create_embeddings.py` should be the same as the `data_dir` in the `frontend_app.py` script.

@@ -624,4 +624,4 @@ The challenge in finding the right dimension is maintaining good category separa
   - Potentially improve computational efficiency in later epochs
 
 
-non-square, rectangular image inputs end up with more charcters per image on every because we add padding to the side of the images so as to not have cut off characters._
+non-square, rectangular image inputs end up with more charcters per image on every because we add padding to the side of the images so as to not have cut off characters._  
