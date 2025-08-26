@@ -3,19 +3,19 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import time
-from dataset import get_dataloaders, get_char_dataloaders
-from font_model import SimpleCNN
-from char_model import CRAFTFontClassifier
+from ml.dataset import get_dataloaders, get_char_dataloaders
+from ml.font_model import SimpleCNN
+from ml.char_model import CRAFTFontClassifier
 
 import argparse
 import wandb
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 from torch.optim import AdamW
-from metrics import ClassificationMetrics
+from ml.metrics import ClassificationMetrics
 import os
 from prettytable import PrettyTable
 import numpy as np
-from utils import get_model_path, check_char_model_batch_independence
+from ml.utils import get_model_path, check_char_model_batch_independence
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])

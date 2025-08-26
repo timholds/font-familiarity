@@ -215,8 +215,38 @@ def load_char_model_and_embeddings(model_path: str,
             model.eval()
             logger.info("Loaded full model object from checkpoint")
         else:
-            # This should not happen with the new format, but keeping for safety
-            raise ValueError("Expected full model object in checkpoint, but found old format. Please retrain your model.")
+            # Old format with state_dict - need to instantiate model first
+            logger.info("Found old checkpoint format, instantiating CRAFTFontClassifier")
+            
+            # Check if this is a CRAFTFontClassifier checkpoint
+            if 'model_state_dict' in state and any('font_classifier' in k for k in state['model_state_dict'].keys()):
+                # It's a CRAFTFontClassifier checkpoint
+                num_fonts = state.get('num_classes', 699)  # Get num_classes from checkpoint, default to 699
+                logger.info(f"Instantiating CRAFTFontClassifier with {num_fonts} fonts")
+                
+                # Initialize the model with parameters matching the v4 model
+                # Parameters extracted from model filename: fontCNN-BS64-ED1024-IC16-PS64-NH16.pt
+                model = CRAFTFontClassifier(
+                    num_fonts=num_fonts,
+                    craft_weights_dir='/tmp/CRAFT',  # Docker location from Dockerfile
+                    device='cpu',  # Will move to correct device later
+                    patch_size=64,      # PS64 from filename
+                    embedding_dim=1024, # ED1024 from filename
+                    initial_channels=16,# IC16 from filename
+                    n_attn_heads=16,    # NH16 from filename
+                    craft_fp16=False,
+                    use_precomputed_craft=False,  # For inference with raw images
+                    pad_x=0.05,
+                    pad_y=0.15
+                )
+                model = model.to(device)
+                
+                # Load the state dict
+                model.load_state_dict(state['model_state_dict'])
+                model.eval()
+                logger.info("Successfully loaded CRAFTFontClassifier from state_dict")
+            else:
+                raise ValueError("Unknown checkpoint format. Please check your model file.")
         
         # Load embeddings
         logger.info(f"\nLoading embeddings from {embeddings_path}")

@@ -9,7 +9,7 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
+from ml.dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
 
 from CRAFT import CRAFTModel
 import numpy as np

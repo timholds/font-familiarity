@@ -5,9 +5,9 @@ from tqdm import tqdm
 import os
 from typing import Tuple
 
-from char_model import CRAFTFontClassifier
-from dataset import get_char_dataloaders
-from utils import get_params_from_model_path, get_embedding_path
+from ml.char_model import CRAFTFontClassifier
+from ml.dataset import get_char_dataloaders
+from ml.utils import get_params_from_model_path, get_embedding_path
 
 def load_char_model(model_path: str, use_precomputed_craft: bool = False) -> Tuple[CRAFTFontClassifier, torch.device]:
     """

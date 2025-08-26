@@ -6,7 +6,7 @@ from CRAFT.craft import init_CRAFT_model
 from CRAFT.refinenet import init_refiner_model
 from CRAFT.imgproc import resize_aspect_ratio, normalizeMeanVariance
 import cv2
-from dataset import load_npz_mmap, load_h5_dataset
+from ml.dataset import load_npz_mmap, load_h5_dataset
 import argparse
 from PIL import Image
 import argparse
