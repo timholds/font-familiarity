@@ -214,69 +214,70 @@ def load_char_model_and_embeddings(model_path: str,
             model = state['model']
             model = model.to(device)
             model.eval()
-            logger.info("Loaded full model object from checkpoint")
-        else:
-            # Old format with state_dict - need to instantiate model first
-            logger.info("Found old checkpoint format, instantiating CRAFTFontClassifier")
             
-            # Check if this is a CRAFTFontClassifier checkpoint
-            if 'model_state_dict' in state and any('font_classifier' in k for k in state['model_state_dict'].keys()):
-                # It's a CRAFTFontClassifier checkpoint
-                num_fonts = state.get('num_classes', 699)  # Get num_classes from checkpoint
+            # For inference with raw images, ensure precomputed CRAFT is disabled
+            if hasattr(model, 'use_precomputed_craft'):
+                if model.use_precomputed_craft and model.craft is None:
+                    # Need to initialize CRAFT model for inference
+                    from CRAFT import CRAFTModel
+                    model.craft = CRAFTModel(
+                        cache_dir='weights/',
+                        device=device,
+                        use_refiner=True,
+                        fp16=False, 
+                        link_threshold=1.,
+                        text_threshold=.8,
+                        low_text=.4,
+                    )
+                model.use_precomputed_craft = False
                 
-                # Extract hyperparameters from model filename
-                params = get_params_from_model_path(model_path)
-                
-                logger.info(f"Extracted parameters from filename: {params}")
-                
-                # Detect v4 vs v5 based on embedding layer structure
-                is_v4_model = (
-                    'font_classifier.char_encoder.embedding_layer.0.weight' in state['model_state_dict'] and
-                    'font_classifier.char_encoder.embedding_layer.2.weight' not in state['model_state_dict']
+            logger.info("Loaded full model object from checkpoint")
+        elif 'model_state_dict' in state:
+            # Old format: always use V4 architecture
+            logger.info("Detected old checkpoint format (v4model), using V4 architecture...")
+            
+            # Extract model configuration from the checkpoint
+            num_classes = state.get('num_classes', 699)  # Default to 699 if not specified
+            
+            # Parse model configuration from filename if available
+            model_name = os.path.basename(model_path).replace('.pt', '')
+            config = get_params_from_model_path(model_name)
+            
+            # Create V4 model
+            model = CRAFTFontClassifierV4(
+                num_fonts=num_classes,
+                patch_size=config.get('patch_size', 64),
+                embedding_dim=config.get('embedding_dim', 1024),
+                initial_channels=config.get('initial_channels', 16),
+                n_attn_heads=config.get('num_heads', 16),
+                device=device,
+                use_precomputed_craft=False,  # Always False for inference
+                craft_weights_dir='weights/'
+            )
+            
+            # Load the state dict
+            model.load_state_dict(state['model_state_dict'])
+            model = model.to(device)
+            model.eval()
+            
+            # Initialize CRAFT model for inference
+            if not hasattr(model, 'craft') or model.craft is None:
+                from CRAFT import CRAFTModel
+                model.craft = CRAFTModel(
+                    cache_dir='weights/',
+                    device=device,
+                    use_refiner=True,
+                    fp16=False, 
+                    link_threshold=1.,
+                    text_threshold=.8,
+                    low_text=.4,
                 )
-                
-                if is_v4_model:
-                    logger.info(f"Detected v4 model structure - using CRAFTFontClassifierV4")
-                    logger.info(f"Instantiating v4 CRAFTFontClassifier with {num_fonts} fonts")
-                    
-                    # Initialize v4 model with correct device from the start
-                    model = CRAFTFontClassifierV4(
-                        num_fonts=num_fonts,
-                        craft_weights_dir='/tmp/CRAFT',  # Docker location from Dockerfile
-                        device=str(device),  # Use the actual device
-                        patch_size=params['patch_size'],
-                        embedding_dim=params['embedding_dim'],
-                        initial_channels=params['initial_channels'],
-                        n_attn_heads=params['n_attn_heads'],
-                        craft_fp16=False,
-                        use_precomputed_craft=False  # For inference with raw images
-                    )
-                else:
-                    logger.info(f"Detected v5 model structure - using CRAFTFontClassifier")
-                    logger.info(f"Instantiating v5 CRAFTFontClassifier with {num_fonts} fonts")
-                    
-                    # Initialize v5 model with additional parameters
-                    model = CRAFTFontClassifier(
-                        num_fonts=num_fonts,
-                        craft_weights_dir='/tmp/CRAFT',  # Docker location from Dockerfile
-                        device=str(device),  # Use the actual device
-                        patch_size=params['patch_size'],
-                        embedding_dim=params['embedding_dim'],
-                        initial_channels=params['initial_channels'],
-                        n_attn_heads=params['n_attn_heads'],
-                        craft_fp16=False,
-                        use_precomputed_craft=False,  # For inference with raw images
-                        pad_x=params['pad_x'],
-                        pad_y=params['pad_y']
-                    )
-                model = model.to(device)
-                
-                # Load the state dict
-                model.load_state_dict(state['model_state_dict'])
-                model.eval()
-                logger.info("Successfully loaded CRAFTFontClassifier from state_dict")
-            else:
-                raise ValueError("Unknown checkpoint format. Please check your model file.")
+            
+            logger.info(f"Loaded V4 model with config: embedding_dim={config.get('embedding_dim', 1024)}, "
+                       f"num_heads={config.get('num_heads', 16)}, initial_channels={config.get('initial_channels', 16)}, "
+                       f"patch_size={config.get('patch_size', 64)}")
+        else:
+            raise ValueError("Unrecognized checkpoint format. Expected either 'model' or 'model_state_dict' key.")
         
         # Load embeddings
         logger.info(f"\nLoading embeddings from {embeddings_path}")
