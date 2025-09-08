@@ -7,6 +7,7 @@ import io
 import torchvision.transforms as transforms
 from ml.font_model import SimpleCNN
 from ml.char_model import CRAFTFontClassifier
+from ml.char_model_v4 import CRAFTFontClassifier as CRAFTFontClassifierV4
 import torch.nn.functional as F
 import traceback
 import logging
@@ -221,24 +222,53 @@ def load_char_model_and_embeddings(model_path: str,
             # Check if this is a CRAFTFontClassifier checkpoint
             if 'model_state_dict' in state and any('font_classifier' in k for k in state['model_state_dict'].keys()):
                 # It's a CRAFTFontClassifier checkpoint
-                num_fonts = state.get('num_classes', 699)  # Get num_classes from checkpoint, default to 699
-                logger.info(f"Instantiating CRAFTFontClassifier with {num_fonts} fonts")
+                num_fonts = state.get('num_classes', 699)  # Get num_classes from checkpoint
                 
-                # Initialize the model with parameters matching the v4 model
-                # Parameters extracted from model filename: fontCNN-BS64-ED1024-IC16-PS64-NH16.pt
-                model = CRAFTFontClassifier(
-                    num_fonts=num_fonts,
-                    craft_weights_dir='/tmp/CRAFT',  # Docker location from Dockerfile
-                    device='cpu',  # Will move to correct device later
-                    patch_size=64,      # PS64 from filename
-                    embedding_dim=1024, # ED1024 from filename
-                    initial_channels=16,# IC16 from filename
-                    n_attn_heads=16,    # NH16 from filename
-                    craft_fp16=False,
-                    use_precomputed_craft=False,  # For inference with raw images
-                    pad_x=0.05,
-                    pad_y=0.15
+                # Extract hyperparameters from model filename
+                params = get_params_from_model_path(model_path)
+                
+                logger.info(f"Extracted parameters from filename: {params}")
+                
+                # Detect v4 vs v5 based on embedding layer structure
+                is_v4_model = (
+                    'font_classifier.char_encoder.embedding_layer.0.weight' in state['model_state_dict'] and
+                    'font_classifier.char_encoder.embedding_layer.2.weight' not in state['model_state_dict']
                 )
+                
+                if is_v4_model:
+                    logger.info(f"Detected v4 model structure - using CRAFTFontClassifierV4")
+                    logger.info(f"Instantiating v4 CRAFTFontClassifier with {num_fonts} fonts")
+                    
+                    # Initialize v4 model with correct device from the start
+                    model = CRAFTFontClassifierV4(
+                        num_fonts=num_fonts,
+                        craft_weights_dir='/tmp/CRAFT',  # Docker location from Dockerfile
+                        device=str(device),  # Use the actual device
+                        patch_size=params['patch_size'],
+                        embedding_dim=params['embedding_dim'],
+                        initial_channels=params['initial_channels'],
+                        n_attn_heads=params['n_attn_heads'],
+                        craft_fp16=False,
+                        use_precomputed_craft=False  # For inference with raw images
+                    )
+                else:
+                    logger.info(f"Detected v5 model structure - using CRAFTFontClassifier")
+                    logger.info(f"Instantiating v5 CRAFTFontClassifier with {num_fonts} fonts")
+                    
+                    # Initialize v5 model with additional parameters
+                    model = CRAFTFontClassifier(
+                        num_fonts=num_fonts,
+                        craft_weights_dir='/tmp/CRAFT',  # Docker location from Dockerfile
+                        device=str(device),  # Use the actual device
+                        patch_size=params['patch_size'],
+                        embedding_dim=params['embedding_dim'],
+                        initial_channels=params['initial_channels'],
+                        n_attn_heads=params['n_attn_heads'],
+                        craft_fp16=False,
+                        use_precomputed_craft=False,  # For inference with raw images
+                        pad_x=params['pad_x'],
+                        pad_y=params['pad_y']
+                    )
                 model = model.to(device)
                 
                 # Load the state dict
@@ -460,14 +490,14 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
             
             
             with torch.no_grad():
-                if isinstance(model, CRAFTFontClassifier):
+                if isinstance(model, (CRAFTFontClassifier, CRAFTFontClassifierV4)):
                     # Character model - get embedding and logits
                     # TODO make sure model is expecting HWC 0, 255 input
                     outputs = model(image_tensor)
                     embedding = outputs['font_embedding']
                     logits = outputs['logits']
                 else:
-                    # Original model approach
+                    # Original model approach (SimpleCNN)
                     embedding = model.get_embedding(image_tensor)
                     logits = model.classifier(embedding)
                 
