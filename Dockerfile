@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     libheif1 \
-    libavif15 \   
+    libavif16 \   
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python packages from builder
