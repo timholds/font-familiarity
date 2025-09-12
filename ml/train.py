@@ -395,6 +395,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--learning_rate", type=float, default=0.001)
     parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--dropout_rate", type=float, default=0.2, help="Dropout rate for regularization")
     parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--initial_channels", type=int, default=16)
@@ -416,15 +417,37 @@ def main():
     torch.manual_seed(1)
     
     # Set up metrics logging
+    # Build run name with key parameters
+    run_name_parts = [
+        f"{time.strftime('%Y-%m-%d_%H-%M')}",
+        f"BS{args.batch_size}",
+        f"ED{args.embedding_dim}",
+        f"IC{args.initial_channels}",
+        f"PS{args.patch_size}"
+    ]
+    
+    # Add contrastive loss info to run name if enabled
+    if args.contrastive_weight is not None:
+        run_name_parts.append(f"CW{args.contrastive_weight}")
+    elif args.auxiliary_weight is not None:
+        run_name_parts.append(f"AW{args.auxiliary_weight}")
+    
+    # Initialize config with all args
+    config = {
+        **vars(args),
+        "architecture": "CNN",
+        "warmup_epochs": warmup_epochs,
+        "optimizer": "AdamW"
+    }
+    
+    # Add contrastive loss temperature to config (default 0.7 based on the loss classes)
+    if args.contrastive_weight is not None or args.auxiliary_weight is not None:
+        config["contrastive_temperature"] = 0.7  # Default temperature from ContrastiveLoss classes
+    
     wandb.init(
         project="Font-Familiarity",
-        name=f"{time.strftime('%Y-%m-%d_%H-%M')}-BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channels}-PS{args.patch_size}",
-        config={
-            **vars(args),
-            "architecture": "CNN",
-            "warmup_epochs": warmup_epochs,
-            "optimizer": "AdamW"
-        }
+        name="-".join(run_name_parts),
+        config=config
     )
     
     # Define all metrics to use total_samples as x-axis
@@ -518,6 +541,7 @@ def main():
                 n_attn_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
+                dropout_rate=args.dropout_rate,
                 pad_x=args.pad_x,
                 pad_y=args.pad_y,
             ).to(device)
@@ -540,7 +564,8 @@ def main():
                     embedding_dim=args.embedding_dim,
                     initial_channels=args.initial_channels,
                     n_heads=args.n_attn_heads,
-                    craft_fp16=False
+                    craft_fp16=False,
+                    dropout_rate=args.dropout_rate
                 )
                 # Only move classifier to GPU
                 if device.type == 'cuda':
@@ -747,6 +772,27 @@ def main():
         print(f'Test Loss:  {test_loss:.3f} | Test Acc:  {test_acc:.2f}%')
         print(f'Test Top-5 Acc: {test_metrics["test/top5_acc"]:.2f}%')
         print(f'Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
+        
+        # Check for training/validation loss crossover (early stopping)
+        if test_loss < train_loss:
+            print(f"\nEarly stopping: Validation loss ({test_loss:.3f}) < Training loss ({train_loss:.3f})")
+            print("Model is beginning to overfit, stopping training.")
+            # Save best model before breaking if this epoch was the best
+            if test_acc > best_test_acc:
+                best_test_acc = test_acc
+                print(f"New best model! (Test Acc: {test_acc:.2f}%)")
+                best_model_state = {
+                    'epoch': epoch + 1,
+                    'model': model,
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'train_metrics': train_metrics,
+                    'test_metrics': test_metrics,
+                    'num_classes': num_classes
+                }
+                best_model_path = os.path.join(checkpoint_dir, os.path.basename(model_path))
+                torch.save(best_model_state, best_model_path)
+                print(f"Saved best model at {best_model_path}")
+            break
         
         # Only print top-5 acc if available
         if 'test/top5_acc' in test_metrics:

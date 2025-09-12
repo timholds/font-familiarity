@@ -177,8 +177,9 @@ class SelfAttentionAggregator(nn.Module):
         return aggregated, attn_weights
     
 class CharacterBasedFontClassifier(nn.Module):
-    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16):
+    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16, dropout_rate=0.2):
         super().__init__()
+        self.dropout_rate = dropout_rate
         
         # Character feature extractor - reuse existing CNN architecture
         self.char_encoder = CharSimpleCNN(
@@ -186,16 +187,18 @@ class CharacterBasedFontClassifier(nn.Module):
             input_size=patch_size,
             embedding_dim=embedding_dim,
             initial_channels=initial_channels,
+            dropout_rate=dropout_rate,
         )
         
         # Replace classifier with identity to get embeddings only
         self.char_encoder.classifier = nn.Identity()
         
         # Self-attention aggregation
-        self.aggregator = SelfAttentionAggregator(embedding_dim, n_attn_heads)
+        self.aggregator = SelfAttentionAggregator(embedding_dim, n_attn_heads, dropout_rate=dropout_rate*0.5)  # Use lighter dropout in attention
         
         # Final font classifier
         self.font_classifier = nn.Linear(embedding_dim, num_fonts)
+        self.classifier_dropout = nn.Dropout(dropout_rate)  # Dropout before classifier
         
     def forward(self, char_patches, attention_mask=None):
         """
@@ -242,8 +245,10 @@ class CharacterBasedFontClassifier(nn.Module):
         # Aggregate character embeddings with attention
         font_embedding, attention_weights = self.aggregator(char_embeddings, attention_mask)
         # print(f"Font embedding shape: {font_embedding.shape}, attention_weights shape: {attention_weights.shape}")
+        # Apply dropout before classification
+        font_embedding_dropout = self.classifier_dropout(font_embedding)
         # Classify font
-        logits = self.font_classifier(font_embedding)
+        logits = self.font_classifier(font_embedding_dropout)
         # print(f"Logits shape: {logits.shape}")
         
         return {
@@ -261,7 +266,7 @@ class CRAFTFontClassifier(nn.Module):
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
                  patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16,
-                 craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2):
+                 craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2, dropout_rate=0.2):
 
         super().__init__()
 
@@ -289,7 +294,8 @@ class CRAFTFontClassifier(nn.Module):
             patch_size=patch_size,
             embedding_dim=embedding_dim, 
             initial_channels=initial_channels,
-            n_attn_heads=n_attn_heads
+            n_attn_heads=n_attn_heads,
+            dropout_rate=dropout_rate
         )
         
         self.device = device
