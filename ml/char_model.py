@@ -28,10 +28,12 @@ class CharSimpleCNN(nn.Module):
                  in_channels: int = 1,
                  input_size: int = 32,
                  embedding_dim: int = 256,
-                 initial_channels: int = 16):
+                 initial_channels: int = 16,
+                 dropout_rate: float = 0.2):
 
         super().__init__() 
-        self.input_size = input_size   
+        self.input_size = input_size
+        self.dropout_rate = dropout_rate
         self.transform = transforms.Compose([
             #transforms.Resize((self.input_size, self.input_size)),
             transforms.Normalize(mean=[0.5], std=[0.5])  # Example normalization for grayscale images
@@ -73,8 +75,10 @@ class CharSimpleCNN(nn.Module):
         self.embedding_layer = nn.Sequential(
             nn.Linear(self.flatten_dim, 512),        # 4096 -> H (reduce bottleneck)
             nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),                # Dropout after first linear
             nn.Linear(512, embedding_dim),           # H -> 128 (final embedding)
             nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate * 0.5),          # Lighter dropout after final embedding
         )
     
         
@@ -111,15 +115,18 @@ class CharSimpleCNN(nn.Module):
         return x
     
 class SelfAttentionAggregator(nn.Module):
-    def __init__(self, embedding_dim, num_heads=4):
+    def __init__(self, embedding_dim, num_heads=4, dropout_rate=0.1):
         super().__init__()
+        self.dropout_rate = dropout_rate
         self.multihead_attn = nn.MultiheadAttention(
             embed_dim=embedding_dim, 
             num_heads=num_heads,
-            batch_first=True
+            batch_first=True,
+            dropout=dropout_rate  # Add dropout to attention mechanism
         )
         self.norm = nn.LayerNorm(embedding_dim)
         self.projection = nn.Linear(embedding_dim, embedding_dim)
+        self.dropout = nn.Dropout(dropout_rate)
         
     def forward(self, x, attention_mask=None):
         """
@@ -147,8 +154,9 @@ class SelfAttentionAggregator(nn.Module):
             key_padding_mask=key_padding_mask
         )
         
-        # Normalize
+        # Normalize and apply dropout
         attn_output = self.norm(attn_output + x)  # Add residual connection
+        attn_output = self.dropout(attn_output)  # Apply dropout after normalization
         
         # Aggregate sequence - take mean of unmasked elements
         if attention_mask is not None:
@@ -162,8 +170,9 @@ class SelfAttentionAggregator(nn.Module):
             # Simple mean if no mask
             aggregated = attn_output.mean(dim=1)
             
-        # Final projection
+        # Final projection with dropout
         aggregated = self.projection(aggregated)
+        aggregated = self.dropout(aggregated)  # Apply dropout after projection
         
         return aggregated, attn_weights
     
