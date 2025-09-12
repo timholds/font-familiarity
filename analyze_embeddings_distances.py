@@ -2,6 +2,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import argparse
+import os
+from pathlib import Path
 
 def load_embeddings(filepath):
     """Load embeddings from numpy file"""
@@ -25,65 +28,154 @@ def calculate_cosine_similarities(embeddings):
     
     return pairwise_similarities, cosine_sim
 
-def plot_histogram(similarities, title="Pairwise Cosine Similarities", bins=50):
-    """Create histogram of pairwise similarities"""
-    fig, ax = plt.subplots(figsize=(10, 6))
+def plot_multiple_histograms(all_similarities, labels, title="Pairwise Cosine Similarities Comparison", bins=50):
+    """Create overlaid histograms for multiple embedding files using line plots with markers"""
+    fig, ax = plt.subplots(figsize=(12, 7))
     
-    # Create histogram
-    counts, bins, patches = ax.hist(similarities, bins=bins, edgecolor='black', alpha=0.7)
+    # Color and marker styles for up to 4 distributions
+    colors = ['blue', 'red', 'green', 'purple']
+    markers = ['o', 's', '^', 'D']  # circle, square, triangle, diamond
+    linestyles = ['-', '--', '-.', ':']
     
-    # Add statistics
-    mean_sim = np.mean(similarities)
-    median_sim = np.median(similarities)
-    std_sim = np.std(similarities)
+    # Statistics storage for legend
+    stats_info = []
     
-    # Add vertical lines for mean and median
-    ax.axvline(mean_sim, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_sim:.3f}')
-    ax.axvline(median_sim, color='green', linestyle='--', linewidth=2, label=f'Median: {median_sim:.3f}')
+    for i, (similarities, label) in enumerate(zip(all_similarities, labels)):
+        # Calculate histogram
+        counts, bin_edges = np.histogram(similarities, bins=bins)
+        # Use bin centers for plotting
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # Plot as line with markers
+        ax.plot(bin_centers, counts, 
+               color=colors[i], 
+               marker=markers[i],
+               linestyle=linestyles[i],
+               linewidth=1.5,
+               markersize=4,
+               markevery=max(1, len(bin_centers) // 15),  # Show markers at intervals
+               label=label,
+               alpha=0.8)
+        
+        # Calculate statistics for info box
+        mean_sim = np.mean(similarities)
+        std_sim = np.std(similarities)
+        
+        # Store statistics for display
+        stats_info.append({
+            'label': label,
+            'pairs': len(similarities),
+            'mean': mean_sim,
+            'std': std_sim,
+            'min': np.min(similarities),
+            'max': np.max(similarities)
+        })
     
     ax.set_xlabel('Cosine Similarity', fontsize=12)
     ax.set_ylabel('Frequency', fontsize=12)
     ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.legend()
+    ax.legend(loc='upper left', fontsize=10)
     ax.grid(True, alpha=0.3)
     
-    # Add text box with statistics
-    stats_text = f'Total pairs: {len(similarities):,}\nMean: {mean_sim:.3f}\nMedian: {median_sim:.3f}\nStd: {std_sim:.3f}\nMin: {np.min(similarities):.3f}\nMax: {np.max(similarities):.3f}'
-    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    # Create simplified statistics text box
+    stats_lines = []
+    for info in stats_info:
+        stats_lines.append(f"{info['label']}:")
+        stats_lines.append(f"  N={info['pairs']:,}")
+        stats_lines.append(f"  μ={info['mean']:.3f}, σ={info['std']:.3f}")
+        stats_lines.append(f"  Range: [{info['min']:.3f}, {info['max']:.3f}]")
+        stats_lines.append("")  # Empty line between files
+    
+    stats_text = '\n'.join(stats_lines[:-1])  # Remove last empty line
+    ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, fontsize=8,
+            verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray'))
     
     plt.tight_layout()
     return fig
 
 def main():
-    # Load embeddings
-    embedding_file = '/home/timholds/code/Font-Familiarity/v5-ED512-epoch10/class_embeddings-BS32-ED512-IC16-PS64-NH8-PX0.05-PY0.15-epoch10-C.3.npy'
+    parser = argparse.ArgumentParser(description='Analyze and compare cosine similarities of multiple embedding files')
+    parser.add_argument('embedding_files', nargs='+', type=str, 
+                       help='Paths to embedding numpy files (up to 4 files)')
+    parser.add_argument('--labels', nargs='*', type=str, 
+                       help='Custom labels for each embedding file (defaults to filenames)')
+    parser.add_argument('--output', type=str, default='cosine_similarities_comparison.png',
+                       help='Output filename for the histogram (default: cosine_similarities_comparison.png)')
+    parser.add_argument('--bins', type=int, default=50,
+                       help='Number of histogram bins (default: 50)')
+    parser.add_argument('--title', type=str, default='Pairwise Cosine Similarities Comparison',
+                       help='Plot title')
+    parser.add_argument('--no-show', action='store_true',
+                       help='Do not display the plot (only save)')
     
-    print(f"Loading embeddings from: {embedding_file}")
-    embeddings = load_embeddings(embedding_file)
+    args = parser.parse_args()
     
-    # Calculate pairwise cosine similarities
-    print("\nCalculating pairwise cosine similarities...")
-    pairwise_similarities, similarity_matrix = calculate_cosine_similarities(embeddings)
+    # Validate number of files
+    if len(args.embedding_files) > 4:
+        print("Warning: Maximum of 4 embedding files supported. Using first 4 files.")
+        args.embedding_files = args.embedding_files[:4]
     
-    print(f"\nNumber of pairwise similarities: {len(pairwise_similarities):,}")
-    print(f"Similarity statistics:")
-    print(f"  Mean: {np.mean(pairwise_similarities):.3f}")
-    print(f"  Median: {np.median(pairwise_similarities):.3f}")
-    print(f"  Std: {np.std(pairwise_similarities):.3f}")
-    print(f"  Min: {np.min(pairwise_similarities):.3f}")
-    print(f"  Max: {np.max(pairwise_similarities):.3f}")
+    # Prepare labels
+    if args.labels:
+        if len(args.labels) != len(args.embedding_files):
+            print("Warning: Number of labels doesn't match number of files. Using filenames.")
+            labels = [Path(f).stem for f in args.embedding_files]
+        else:
+            labels = args.labels
+    else:
+        labels = [Path(f).stem for f in args.embedding_files]
     
-    # Create histogram
-    fig = plot_histogram(pairwise_similarities, 
-                        title="Pairwise Cosine Similarities - 512D Embeddings (700 Font Classes)")
+    # Process each embedding file
+    all_similarities = []
+    
+    for i, (filepath, label) in enumerate(zip(args.embedding_files, labels)):
+        print(f"\n[{i+1}/{len(args.embedding_files)}] Processing: {filepath}")
+        print(f"Label: {label}")
+        
+        # Check if file exists
+        if not os.path.exists(filepath):
+            print(f"Error: File not found: {filepath}")
+            continue
+            
+        try:
+            # Load embeddings
+            embeddings = load_embeddings(filepath)
+            
+            # Calculate pairwise cosine similarities
+            print("Calculating pairwise cosine similarities...")
+            pairwise_similarities, similarity_matrix = calculate_cosine_similarities(embeddings)
+            
+            # Print statistics
+            print(f"Number of pairwise similarities: {len(pairwise_similarities):,}")
+            print(f"Statistics:")
+            print(f"  Mean: {np.mean(pairwise_similarities):.3f}")
+            print(f"  Median: {np.median(pairwise_similarities):.3f}")
+            print(f"  Std: {np.std(pairwise_similarities):.3f}")
+            print(f"  Min: {np.min(pairwise_similarities):.3f}")
+            print(f"  Max: {np.max(pairwise_similarities):.3f}")
+            
+            all_similarities.append(pairwise_similarities)
+            
+        except Exception as e:
+            print(f"Error processing {filepath}: {e}")
+            continue
+    
+    if not all_similarities:
+        print("Error: No valid embedding files were processed.")
+        return
+    
+    # Create comparison plot
+    print(f"\nCreating comparison histogram with {len(all_similarities)} embedding files...")
+    fig = plot_multiple_histograms(all_similarities, labels[:len(all_similarities)], 
+                                   title=args.title, bins=args.bins)
     
     # Save figure
-    output_file = 'cosine_similarities_histogram_512d.png'
-    fig.savefig(output_file, dpi=300, bbox_inches='tight')
-    print(f"\nHistogram saved to: {output_file}")
+    fig.savefig(args.output, dpi=300, bbox_inches='tight')
+    print(f"\nHistogram saved to: {args.output}")
     
-    plt.show()
+    if not args.no_show:
+        plt.show()
 
 if __name__ == "__main__":
     main()
