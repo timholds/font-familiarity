@@ -9,7 +9,10 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from ml.dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
+try:
+    from ml.dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
+except ImportError:
+    from dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
 
 from CRAFT import CRAFTModel
 import numpy as np
@@ -25,10 +28,12 @@ class CharSimpleCNN(nn.Module):
                  in_channels: int = 1,
                  input_size: int = 32,
                  embedding_dim: int = 256,
-                 initial_channels: int = 16):
+                 initial_channels: int = 16,
+                 dropout_rate: float = 0.2):
 
         super().__init__() 
-        self.input_size = input_size   
+        self.input_size = input_size
+        self.dropout_rate = dropout_rate
         self.transform = transforms.Compose([
             #transforms.Resize((self.input_size, self.input_size)),
             transforms.Normalize(mean=[0.5], std=[0.5])  # Example normalization for grayscale images
@@ -70,8 +75,10 @@ class CharSimpleCNN(nn.Module):
         self.embedding_layer = nn.Sequential(
             nn.Linear(self.flatten_dim, 512),        # 4096 -> H (reduce bottleneck)
             nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),                # Dropout after first linear
             nn.Linear(512, embedding_dim),           # H -> 128 (final embedding)
             nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate * 0.5),          # Lighter dropout after final embedding
         )
     
         
@@ -108,15 +115,18 @@ class CharSimpleCNN(nn.Module):
         return x
     
 class SelfAttentionAggregator(nn.Module):
-    def __init__(self, embedding_dim, num_heads=4):
+    def __init__(self, embedding_dim, num_heads=4, dropout_rate=0.1):
         super().__init__()
+        self.dropout_rate = dropout_rate
         self.multihead_attn = nn.MultiheadAttention(
             embed_dim=embedding_dim, 
             num_heads=num_heads,
-            batch_first=True
+            batch_first=True,
+            dropout=dropout_rate  # Add dropout to attention mechanism
         )
         self.norm = nn.LayerNorm(embedding_dim)
         self.projection = nn.Linear(embedding_dim, embedding_dim)
+        self.dropout = nn.Dropout(dropout_rate)
         
     def forward(self, x, attention_mask=None):
         """
@@ -144,8 +154,9 @@ class SelfAttentionAggregator(nn.Module):
             key_padding_mask=key_padding_mask
         )
         
-        # Normalize
+        # Normalize and apply dropout
         attn_output = self.norm(attn_output + x)  # Add residual connection
+        attn_output = self.dropout(attn_output)  # Apply dropout after normalization
         
         # Aggregate sequence - take mean of unmasked elements
         if attention_mask is not None:
@@ -159,14 +170,16 @@ class SelfAttentionAggregator(nn.Module):
             # Simple mean if no mask
             aggregated = attn_output.mean(dim=1)
             
-        # Final projection
+        # Final projection with dropout
         aggregated = self.projection(aggregated)
+        aggregated = self.dropout(aggregated)  # Apply dropout after projection
         
         return aggregated, attn_weights
     
 class CharacterBasedFontClassifier(nn.Module):
-    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16):
+    def __init__(self, num_fonts, patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16, dropout_rate=0.2):
         super().__init__()
+        self.dropout_rate = dropout_rate
         
         # Character feature extractor - reuse existing CNN architecture
         self.char_encoder = CharSimpleCNN(
@@ -174,16 +187,18 @@ class CharacterBasedFontClassifier(nn.Module):
             input_size=patch_size,
             embedding_dim=embedding_dim,
             initial_channels=initial_channels,
+            dropout_rate=dropout_rate,
         )
         
         # Replace classifier with identity to get embeddings only
         self.char_encoder.classifier = nn.Identity()
         
         # Self-attention aggregation
-        self.aggregator = SelfAttentionAggregator(embedding_dim, n_attn_heads)
+        self.aggregator = SelfAttentionAggregator(embedding_dim, n_attn_heads, dropout_rate=dropout_rate*0.5)  # Use lighter dropout in attention
         
         # Final font classifier
         self.font_classifier = nn.Linear(embedding_dim, num_fonts)
+        self.classifier_dropout = nn.Dropout(dropout_rate)  # Dropout before classifier
         
     def forward(self, char_patches, attention_mask=None):
         """
@@ -230,8 +245,10 @@ class CharacterBasedFontClassifier(nn.Module):
         # Aggregate character embeddings with attention
         font_embedding, attention_weights = self.aggregator(char_embeddings, attention_mask)
         # print(f"Font embedding shape: {font_embedding.shape}, attention_weights shape: {attention_weights.shape}")
+        # Apply dropout before classification
+        font_embedding_dropout = self.classifier_dropout(font_embedding)
         # Classify font
-        logits = self.font_classifier(font_embedding)
+        logits = self.font_classifier(font_embedding_dropout)
         # print(f"Logits shape: {logits.shape}")
         
         return {
@@ -249,7 +266,7 @@ class CRAFTFontClassifier(nn.Module):
     """
     def __init__(self, num_fonts, craft_weights_dir='weights/', device='cuda', 
                  patch_size=32, embedding_dim=256, initial_channels=16, n_attn_heads=16,
-                 craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2):
+                 craft_fp16=False, use_precomputed_craft=False, pad_x=.1, pad_y=.2, dropout_rate=0.2):
 
         super().__init__()
 
@@ -277,7 +294,8 @@ class CRAFTFontClassifier(nn.Module):
             patch_size=patch_size,
             embedding_dim=embedding_dim, 
             initial_channels=initial_channels,
-            n_attn_heads=n_attn_heads
+            n_attn_heads=n_attn_heads,
+            dropout_rate=dropout_rate
         )
         
         self.device = device

@@ -1,21 +1,22 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from tqdm import tqdm
 import time
-from dataset import get_dataloaders, get_char_dataloaders
-from font_model import SimpleCNN
-from char_model import CRAFTFontClassifier
+from ml.dataset import get_dataloaders, get_char_dataloaders
+from ml.font_model import SimpleCNN
+from ml.char_model import CRAFTFontClassifier
 
 import argparse
 import wandb
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 from torch.optim import AdamW
-from metrics import ClassificationMetrics
+from ml.metrics import ClassificationMetrics
 import os
 from prettytable import PrettyTable
 import numpy as np
-from utils import get_model_path, check_char_model_batch_independence
+from ml.utils import get_model_path, check_char_model_batch_independence
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -31,12 +32,93 @@ def count_parameters(model):
     return total_params
 
 
+def compute_diversity_metrics(logits, embeddings, attention_weights=None, num_classes=None):
+    """
+    Compute metrics for monitoring embedding collapse and model diversity.
+    
+    Args:
+        logits: Model output logits [batch_size, num_classes]
+        embeddings: Font embeddings [batch_size, embedding_dim]
+        attention_weights: Optional attention weights from model
+        num_classes: Total number of classes for perplexity normalization
+    
+    Returns:
+        Dictionary of diversity metrics
+    """
+    metrics = {}
+    
+    with torch.no_grad():
+        # 1. Output perplexity - measures entropy of predictions
+        probs = F.softmax(logits, dim=-1)
+        # Add small epsilon to avoid log(0)
+        entropy = -(probs * (probs + 1e-8).log()).sum(dim=-1).mean()
+        perplexity = entropy.exp().item()
+        metrics['perplexity'] = perplexity
+        
+        # Normalized perplexity (as percentage of max possible)
+        if num_classes:
+            max_perplexity = num_classes  # Max when uniform distribution
+            metrics['perplexity_ratio'] = (perplexity / max_perplexity) * 100
+        
+        # 2. Embedding diversity metrics
+        if embeddings is not None and len(embeddings) > 1:
+            # Normalize embeddings for cosine similarity
+            embeddings_norm = F.normalize(embeddings, p=2, dim=1)
+            
+            # Pairwise cosine similarity
+            sim_matrix = embeddings_norm @ embeddings_norm.T
+            # Create mask to exclude diagonal (self-similarity)
+            mask = ~torch.eye(len(embeddings), dtype=bool, device=embeddings.device)
+            
+            # Average similarity between different samples
+            if mask.sum() > 0:
+                metrics['embedding_similarity'] = sim_matrix[mask].mean().item()
+                metrics['embedding_similarity_std'] = sim_matrix[mask].std().item()
+            
+            # Standard deviation of embeddings (spread in embedding space)
+            metrics['embedding_std'] = embeddings.std().item()
+            metrics['embedding_mean_norm'] = embeddings.norm(p=2, dim=1).mean().item()
+            
+            # 3. Effective rank approximation (measures dimensionality usage)
+            try:
+                # Use SVD to get singular values
+                U, S, V = torch.svd(embeddings_norm)
+                # Normalize singular values
+                S_normalized = S / (S.sum() + 1e-8)
+                # Compute entropy of singular values
+                S_entropy = -(S_normalized * (S_normalized + 1e-8).log()).sum()
+                # Effective rank is exp(entropy)
+                metrics['effective_rank'] = S_entropy.exp().item()
+                metrics['effective_rank_ratio'] = (metrics['effective_rank'] / embeddings.shape[1]) * 100
+            except:
+                # SVD might fail for some edge cases
+                pass
+        
+        # 4. Attention entropy (if using attention mechanism)
+        if attention_weights is not None:
+            # Handle different attention weight formats
+            if len(attention_weights.shape) == 4:
+                # [batch, heads, seq, seq] - average over heads
+                attention_weights = attention_weights.mean(dim=1)
+            
+            # Compute entropy of attention distribution
+            # Add epsilon to avoid log(0)
+            attn_entropy = -(attention_weights * (attention_weights + 1e-8).log()).sum(dim=-1).mean()
+            metrics['attention_entropy'] = attn_entropy.item()
+            
+            # Attention focus (how peaked is the attention)
+            metrics['attention_max_weight'] = attention_weights.max(dim=-1)[0].mean().item()
+    
+    return metrics
+
+
 
 # TODO update this to work with character patches
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, 
                 warmup_epochs, warmup_scheduler, main_scheduler,
                 metrics_calculator, char_model=False, model_name=None, 
-                contrastive_weight=None, auxiliary_weight=None, total_samples_seen=0):
+                contrastive_weight=None, auxiliary_weight=None, total_samples_seen=0,
+                num_classes=None):
     """Train for one epoch, supporting both character-based and whole-image models."""
     model.train()
     running_loss = 0.0
@@ -74,11 +156,21 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             else:
                 logits = outputs
 
+            # Extract embeddings and attention weights for diversity metrics
+            embeddings = None
+            attention_weights = None
+            
+            # Get embeddings and attention from model outputs
+            if isinstance(outputs, dict):
+                embeddings = outputs.get('font_embedding', None)
+                attention_weights = outputs.get('attention_weights', None)
+            
             # Handle loss calculation
             if contrastive_weight is not None:
                 # Contrastive loss with character models
                 categories = batch_data['category'].to(device)
-                embeddings = model.get_embedding(batch_data)
+                if embeddings is None:  # If not already extracted from outputs
+                    embeddings = model.get_embedding(batch_data)
                 
                 cce_loss = nn.CrossEntropyLoss()(logits, targets)
                 contrastive_loss = criterion(embeddings, categories, targets)
@@ -94,7 +186,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
             elif auxiliary_weight is not None:
                 # Auxiliary category loss with character models
                 categories = batch_data['category'].to(device)
-                embeddings = model.get_embedding(batch_data)
+                if embeddings is None:  # If not already extracted from outputs
+                    embeddings = model.get_embedding(batch_data)
                 
                 cce_loss = nn.CrossEntropyLoss()(logits, targets)
                 auxiliary_loss = criterion(embeddings, categories, targets)
@@ -190,6 +283,19 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch,
                     'train/grad_norm': grad_norm.item(),
                     'total_samples': total_samples_seen + total_samples
                 }
+                
+                # Compute diversity metrics to monitor for collapse
+                diversity_metrics = compute_diversity_metrics(
+                    logits=logits,
+                    embeddings=embeddings,
+                    attention_weights=attention_weights,
+                    num_classes=num_classes
+                )
+                
+                # Add diversity metrics to batch metrics with proper prefix
+                for key, value in diversity_metrics.items():
+                    batch_metrics[f'diversity/{key}'] = value
+                
                 wandb.log(batch_metrics)
             
             # Log both losses separately to monitor
@@ -395,6 +501,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--learning_rate", type=float, default=0.001)
     parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--dropout_rate", type=float, default=0.2, help="Dropout rate for regularization")
     parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--initial_channels", type=int, default=16)
@@ -416,21 +523,51 @@ def main():
     torch.manual_seed(1)
     
     # Set up metrics logging
+    # Build run name with key parameters
+    run_name_parts = [
+        f"{time.strftime('%Y-%m-%d_%H-%M')}",
+        f"BS{args.batch_size}",
+        f"ED{args.embedding_dim}",
+        f"IC{args.initial_channels}",
+        f"PS{args.patch_size}"
+    ]
+    
+    # Add contrastive loss info to run name if enabled
+    if args.contrastive_weight is not None:
+        run_name_parts.append(f"CW{args.contrastive_weight}")
+    elif args.auxiliary_weight is not None:
+        run_name_parts.append(f"AW{args.auxiliary_weight}")
+    
+    # Initialize config with all args
+    config = {
+        **vars(args),
+        "architecture": "CNN",
+        "warmup_epochs": warmup_epochs,
+        "optimizer": "AdamW"
+    }
+    
+    # Add contrastive loss temperature to config (default 0.7 based on the loss classes)
+    if args.contrastive_weight is not None or args.auxiliary_weight is not None:
+        config["contrastive_temperature"] = 0.7  # Default temperature from ContrastiveLoss classes
+    
+    # Add diversity monitoring thresholds to config
+    # These will be calculated based on num_classes after loading data
+    config["monitoring"] = {
+        "check_collapse": True,
+        "alert_on_collapse": False  # Can be enabled to get wandb alerts
+    }
+    
     wandb.init(
         project="Font-Familiarity",
-        name=f"{time.strftime('%Y-%m-%d_%H-%M')}-BS{args.batch_size}-ED{args.embedding_dim}-IC{args.initial_channels}-PS{args.patch_size}",
-        config={
-            **vars(args),
-            "architecture": "CNN",
-            "warmup_epochs": warmup_epochs,
-            "optimizer": "AdamW"
-        }
+        name="-".join(run_name_parts),
+        config=config
     )
     
     # Define all metrics to use total_samples as x-axis
     wandb.define_metric("total_samples")
     wandb.define_metric("train/*", step_metric="total_samples")
     wandb.define_metric("test/*", step_metric="total_samples")
+    wandb.define_metric("diversity/*", step_metric="total_samples")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -518,6 +655,7 @@ def main():
                 n_attn_heads=args.n_attn_heads,
                 craft_fp16=use_fp16,
                 use_precomputed_craft=args.use_precomputed_craft,
+                dropout_rate=args.dropout_rate,
                 pad_x=args.pad_x,
                 pad_y=args.pad_y,
             ).to(device)
@@ -540,7 +678,8 @@ def main():
                     embedding_dim=args.embedding_dim,
                     initial_channels=args.initial_channels,
                     n_heads=args.n_attn_heads,
-                    craft_fp16=False
+                    craft_fp16=False,
+                    dropout_rate=args.dropout_rate
                 )
                 # Only move classifier to GPU
                 if device.type == 'cuda':
@@ -713,7 +852,8 @@ def main():
             metrics_calculator, args.char_model, os.path.basename(model_path),
             contrastive_weight=args.contrastive_weight,
             auxiliary_weight=args.auxiliary_weight,
-            total_samples_seen=total_samples_seen
+            total_samples_seen=total_samples_seen,
+            num_classes=num_classes
         )
         total_samples_seen += epoch_samples
         
@@ -747,6 +887,27 @@ def main():
         print(f'Test Loss:  {test_loss:.3f} | Test Acc:  {test_acc:.2f}%')
         print(f'Test Top-5 Acc: {test_metrics["test/top5_acc"]:.2f}%')
         print(f'Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
+        
+        # Check for training/validation loss crossover (early stopping)
+        if test_loss < train_loss:
+            print(f"\nEarly stopping: Validation loss ({test_loss:.3f}) < Training loss ({train_loss:.3f})")
+            print("Model is beginning to overfit, stopping training.")
+            # Save best model before breaking if this epoch was the best
+            if test_acc > best_test_acc:
+                best_test_acc = test_acc
+                print(f"New best model! (Test Acc: {test_acc:.2f}%)")
+                best_model_state = {
+                    'epoch': epoch + 1,
+                    'model': model,
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'train_metrics': train_metrics,
+                    'test_metrics': test_metrics,
+                    'num_classes': num_classes
+                }
+                best_model_path = os.path.join(checkpoint_dir, os.path.basename(model_path))
+                torch.save(best_model_state, best_model_path)
+                print(f"Saved best model at {best_model_path}")
+            break
         
         # Only print top-5 acc if available
         if 'test/top5_acc' in test_metrics:

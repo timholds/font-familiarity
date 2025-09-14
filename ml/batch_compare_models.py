@@ -14,6 +14,9 @@ import uuid
 import torch.nn.functional as F
 from char_model import CRAFTFontClassifier
 import compare_models  # Import the existing compare_models module
+import sys
+import subprocess
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -609,6 +612,69 @@ def format_font_name(model_font_name, font_mapping):
     return ' '.join(word.capitalize() for word in lookup_name.split())
 
 
+def generate_embedding_comparison_plot(embeddings_paths, model_names, output_dir):
+    """Generate cosine similarity comparison plot for embedding files.
+    
+    Args:
+        embeddings_paths: List of paths to embedding files
+        model_names: List of model names for labels
+        output_dir: Directory to save the plot
+    
+    Returns:
+        Path to the generated plot file, or None if generation failed
+    """
+    try:
+        # Find the analyze_embeddings_distances.py script
+        script_path = Path(__file__).parent.parent / 'analyze_embeddings_distances.py'
+        
+        if not script_path.exists():
+            logger.warning(f"analyze_embeddings_distances.py not found at {script_path}")
+            return None
+        
+        # Prepare output filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"embedding_comparison_{timestamp}.png"
+        output_path = Path(output_dir) / output_filename
+        
+        # Build command
+        cmd = [sys.executable, str(script_path)]
+        
+        # Add embedding file paths
+        for path in embeddings_paths:
+            cmd.append(str(path))
+        
+        # Add labels
+        cmd.extend(['--labels'] + model_names)
+        
+        # Add output path
+        cmd.extend(['--output', str(output_path)])
+        
+        # Add other options
+        cmd.extend(['--no-show', '--title', 'Model Embedding Distributions Comparison'])
+        
+        logger.info(f"Generating embedding comparison plot...")
+        logger.debug(f"Command: {' '.join(cmd)}")
+        
+        # Run the script
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"Failed to generate embedding plot: {result.stderr}")
+            return None
+        
+        if output_path.exists():
+            logger.info(f"Embedding comparison plot saved to: {output_path}")
+            return str(output_path)
+        else:
+            logger.warning("Embedding plot generation completed but file not found")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error generating embedding comparison plot: {e}")
+        logger.error(traceback.format_exc())
+        return None
+
+
 def main():
     """Run the batch processing script."""
     parser = argparse.ArgumentParser(description="Process a directory of images with up to 4 font models")
@@ -657,6 +723,7 @@ def main():
     # Load all models
     models = []
     embeddings_list = []
+    embeddings_paths = []  # Track paths for plot generation
     label_mappings = []
     model_names = []
     
@@ -674,17 +741,12 @@ def main():
             
             models.append(model)
             embeddings_list.append(class_embeddings)
+            embeddings_paths.append(embeddings_path)  # Store path for plot generation
             label_mappings.append(label_mapping)
             
-            # Use directory name or model filename as model name
+            # Use directory name as model name for consistency
             dir_name = os.path.basename(model_dir.rstrip('/'))
-            pt_name = os.path.basename(model_path)
-            # Prefer directory name unless it's generic (like v4model), then use .pt filename
-            if dir_name and not dir_name.startswith('v') and len(dir_name) > 7:
-                model_name = dir_name
-            else:
-                # Use the .pt filename for more descriptive name
-                model_name = pt_name if pt_name else dir_name
+            model_name = dir_name
             model_names.append(model_name)
             
             logger.info(f"Successfully loaded model {i}: {model_name}")
@@ -692,6 +754,19 @@ def main():
         except Exception as e:
             logger.error(f"Error loading model from {model_dir}: {e}")
             raise
+    
+    # Generate embedding comparison plot for all models (even single model)
+    embedding_plot_path = None
+    if len(embeddings_paths) >= 1:
+        # Use same directory as HTML output for the plot
+        output_dir = os.path.dirname(args.output_html) if os.path.dirname(args.output_html) else '.'
+        embedding_plot_path = generate_embedding_comparison_plot(
+            embeddings_paths, model_names, output_dir
+        )
+        if embedding_plot_path:
+            logger.info(f"Embedding comparison plot generated: {embedding_plot_path}")
+        else:
+            logger.warning("Failed to generate embedding comparison plot, continuing without it")
     
     # Process all images in the directory
     results, total_images = process_image_directory(
@@ -706,6 +781,8 @@ def main():
     )
     
     print(f"Report generated: {report_path}")
+    if embedding_plot_path:
+        print(f"Embedding comparison plot: {embedding_plot_path}")
     
     # Optionally serve the report
     if args.serve:
