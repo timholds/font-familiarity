@@ -407,7 +407,14 @@ REPORT_TEMPLATE = """
             {% for model_idx in range(item.results|length) %}
             <!-- Model column -->
             <div class="model-column">
-                <div class="model-header">{{ model_names[model_idx] }}</div>
+                <div class="model-header">
+                    {{ model_names[model_idx] }}
+                    {% if item.results[model_idx].num_chars_extracted %}
+                    <span style="font-size: 12px; font-weight: normal; margin-left: 10px;">
+                        ({{ item.results[model_idx].num_chars_extracted }} chars detected)
+                    </span>
+                    {% endif %}
+                </div>
                 <div class="section-header">
                     <h3>Classifier Predictions</h3>
                 </div>
@@ -493,15 +500,19 @@ def process_image_directory(directory_path, models, embeddings_list, label_mappi
             model_results = []
             for model_idx, (model, embeddings, label_mapping) in enumerate(zip(models, embeddings_list, label_mappings)):
                 logger.debug(f"Running model {model_idx + 1}: {model_names[model_idx]}")
-                
+
                 model_output = compare_models.predict_with_model(
                     model, embeddings, label_mapping, image_tensor, False
                 )
-                
+
+                # Log number of characters extracted
+                num_chars = model_output.get('num_chars_extracted', 0)
+                logger.info(f"Model {model_names[model_idx]}: CRAFT extracted {num_chars} characters from {image_file}")
+
                 # Format font names
                 for result in model_output['embedding_similarity'] + model_output['classifier_predictions']:
                     result['font'] = format_font_name(result['font'], font_mapping)
-                
+
                 model_results.append(model_output)
             
             # Add to results list

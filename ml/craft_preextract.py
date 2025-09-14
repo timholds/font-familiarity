@@ -185,7 +185,7 @@ def preprocess_craft(data_dir, device="cuda", batch_size=32, resume=True, num_wo
                 device=device,
                 use_refiner=False,
                 fp16=(device == "cuda"),  # Use fp16 only on CUDA
-                link_threshold=1.,
+                link_threshold=1.9,
                 text_threshold=.8,
                 low_text=.4,
             )

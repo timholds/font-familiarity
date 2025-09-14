@@ -11,6 +11,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const researchModeToggle = document.getElementById('researchModeToggle');
     const visualizationContainer = document.getElementById('visualizationContainer');
     const fontCapitalizationMap = {};
+    
+    // Crop modal elements
+    const cropModal = document.getElementById('cropModal');
+    const imageToCrop = document.getElementById('imageToCrop');
+    const skipCropBtn = document.getElementById('skipCropBtn');
+    const applyCropBtn = document.getElementById('applyCropBtn');
+    let cropper = null;
+    let currentFile = null;
 
     fetch('/static/available_fonts.txt')
         .then(response => response.text())
@@ -126,8 +134,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Process the selected file
     function handleFile(file) {
-        showPreview(file);
-        analyzeImage(file);
+        currentFile = file;
+        showCropModal(file);
     }
     
     function showPreview(file) {
@@ -422,4 +430,74 @@ document.addEventListener('DOMContentLoaded', function() {
         else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
+    
+    // Crop modal functions
+    function showCropModal(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            imageToCrop.src = e.target.result;
+            cropModal.classList.remove('hidden');
+            
+            // Initialize cropper after image loads
+            imageToCrop.onload = function() {
+                if (cropper) {
+                    cropper.destroy();
+                }
+                cropper = new Cropper(imageToCrop, {
+                    aspectRatio: NaN, // Free aspect ratio
+                    viewMode: 1,
+                    guides: true,
+                    center: true,
+                    highlight: true,
+                    background: true,
+                    autoCrop: true,
+                    autoCropArea: 0.8,
+                    movable: true,
+                    rotatable: false,
+                    scalable: true,
+                    zoomable: true,
+                    zoomOnTouch: true,
+                    zoomOnWheel: true
+                });
+            };
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    // Skip crop button handler
+    skipCropBtn.addEventListener('click', function() {
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        cropModal.classList.add('hidden');
+        // Process original image
+        showPreview(currentFile);
+        analyzeImage(currentFile);
+    });
+    
+    // Apply crop button handler
+    applyCropBtn.addEventListener('click', function() {
+        if (!cropper) return;
+        
+        // Get cropped canvas
+        const canvas = cropper.getCroppedCanvas();
+        
+        // Convert canvas to blob
+        canvas.toBlob(function(blob) {
+            // Create a new file from the blob
+            const croppedFile = new File([blob], currentFile.name, {
+                type: currentFile.type || 'image/png'
+            });
+            
+            // Clean up
+            cropper.destroy();
+            cropper = null;
+            cropModal.classList.add('hidden');
+            
+            // Process cropped image
+            showPreview(croppedFile);
+            analyzeImage(croppedFile);
+        }, currentFile.type || 'image/png');
+    });
 });

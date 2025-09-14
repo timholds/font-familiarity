@@ -9,7 +9,7 @@ from torch import nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
-from dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
+from ml.dataset import add_padding_to_polygons, polygon_to_box, add_padding_to_box
 
 from CRAFT import CRAFTModel
 import numpy as np
@@ -264,7 +264,7 @@ class CRAFTFontClassifier(nn.Module):
                 device=device,
                 use_refiner=True,
                 fp16=craft_fp16, 
-                link_threshold=1.,
+                link_threshold=1.9,
                 text_threshold=.8,
                 low_text=.4,
             )
@@ -697,5 +697,8 @@ class CRAFTFontClassifier(nn.Module):
         # Add labels to output if available
         if 'labels' in batch_data:
             output['labels'] = batch_data['labels']
-            
+
+        # Add attention mask to output for tracking number of characters
+        output['attention_mask'] = batch_data['attention_mask']
+
         return output

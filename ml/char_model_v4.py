@@ -741,5 +741,8 @@ class CRAFTFontClassifier(nn.Module):
         # Add labels to output if available
         if 'labels' in batch_data:
             output['labels'] = batch_data['labels']
-            
+
+        # Add attention mask to output for tracking number of characters
+        output['attention_mask'] = batch_data['attention_mask']
+
         return output
