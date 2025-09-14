@@ -385,13 +385,49 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Display the results
     function displayResults(data) {
+        // Display character count if available
+        if (data.num_chars_extracted !== undefined) {
+            const charCountEl = document.getElementById('char-count-display');
+            if (!charCountEl) {
+                // Create character count display element if it doesn't exist
+                const resultsContainer = document.getElementById('results-container');
+                const charCountDiv = document.createElement('div');
+                charCountDiv.id = 'char-count-display';
+                charCountDiv.style.cssText = 'margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 5px; text-align: center;';
+
+                if (data.num_chars_extracted === 0) {
+                    charCountDiv.innerHTML = `<strong style="color: #ff4444;">⚠️ WARNING: No characters detected by CRAFT!</strong>`;
+                } else {
+                    charCountDiv.innerHTML = `<strong>CRAFT detected ${data.num_chars_extracted} character${data.num_chars_extracted !== 1 ? 's' : ''}</strong>`;
+                }
+
+                // Insert at the beginning of results container
+                const firstChild = resultsContainer.firstChild;
+                if (firstChild) {
+                    resultsContainer.insertBefore(charCountDiv, firstChild.nextSibling);
+                } else {
+                    resultsContainer.appendChild(charCountDiv);
+                }
+            } else {
+                // Update existing element
+                if (data.num_chars_extracted === 0) {
+                    charCountEl.innerHTML = `<strong style="color: #ff4444;">⚠️ WARNING: No characters detected by CRAFT!</strong>`;
+                } else {
+                    charCountEl.innerHTML = `<strong>CRAFT detected ${data.num_chars_extracted} character${data.num_chars_extracted !== 1 ? 's' : ''}</strong>`;
+                }
+            }
+
+            // Log to console for debugging
+            console.log(`CRAFT extracted ${data.num_chars_extracted} characters`);
+        }
+
         // Embedding results
-        embeddingResults.innerHTML = data.embedding_similarity.map(result => 
+        embeddingResults.innerHTML = data.embedding_similarity.map(result =>
             createResultItemHTML(result.font, result.similarity)
         ).join('');
-        
+
         // Classifier results
-        classifierResults.innerHTML = data.classifier_predictions.map(result => 
+        classifierResults.innerHTML = data.classifier_predictions.map(result =>
             createResultItemHTML(result.font, result.probability)
         ).join('');
     }

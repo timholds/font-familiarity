@@ -467,6 +467,14 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                     outputs = model(image_tensor)
                     embedding = outputs['font_embedding']
                     logits = outputs['logits']
+
+                    # Log and track number of characters extracted
+                    if 'attention_mask' in outputs:
+                        num_chars_extracted = int(outputs['attention_mask'].sum().item())
+                        logger.info(f"CRAFT extracted {num_chars_extracted} characters from the image")
+                        response_data['num_chars_extracted'] = num_chars_extracted
+                        if num_chars_extracted == 0:
+                            logger.warning("WARNING: No characters were extracted by CRAFT! Check the image or CRAFT configuration.")
                 else:
                     # Original model approach
                     logger.info("Using original model approach")
@@ -502,6 +510,9 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                     'classifier_predictions': classifier_results,
                     'research_mode': research_mode
                 }
+                # Add character count if available
+                if 'num_chars_extracted' in response_data:
+                    prediction_results['num_chars_extracted'] = response_data['num_chars_extracted']
                 update_metadata(metadata_path, prediction_results)
                 
                 return jsonify({
