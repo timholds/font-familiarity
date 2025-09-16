@@ -474,7 +474,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     guides: true,
                     center: true,
                     highlight: true,
-                    background: true,
+                    background: false,  // No grid background
                     autoCrop: false,  // Don't auto-create crop box, let user drag to create
                     movable: true,
                     rotatable: false,
