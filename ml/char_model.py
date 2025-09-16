@@ -72,14 +72,22 @@ class CharSimpleCNN(nn.Module):
         # TODO clean this up 
         #self.flatten_dim = 128 * 4 * 4 
 
-        self.embedding_layer = nn.Sequential(
+        # Build embedding layers dynamically
+        embedding_layers = [
             nn.Linear(self.flatten_dim, 512),        # 4096 -> H (reduce bottleneck)
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),                # Dropout after first linear
+        ]
+        if dropout_rate > 0:
+            embedding_layers.append(nn.Dropout(dropout_rate))
+
+        embedding_layers.extend([
             nn.Linear(512, embedding_dim),           # H -> 128 (final embedding)
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate * 0.5),          # Lighter dropout after final embedding
-        )
+        ])
+        if dropout_rate > 0:
+            embedding_layers.append(nn.Dropout(dropout_rate * 0.5))
+
+        self.embedding_layer = nn.Sequential(*embedding_layers)
     
         
         self.classifier = nn.Linear(embedding_dim, num_classes)
@@ -122,7 +130,7 @@ class SelfAttentionAggregator(nn.Module):
             embed_dim=embedding_dim,
             num_heads=num_heads,
             batch_first=True,
-            dropout=dropout_rate  # Add dropout to attention mechanism
+            dropout=dropout_rate  # Dropout disabled when rate is 0
         )
         self.norm = nn.LayerNorm(embedding_dim)
         self.projection = nn.Linear(embedding_dim, embedding_dim)
@@ -178,7 +186,10 @@ class SelfAttentionAggregator(nn.Module):
             
         # Final projection with dropout
         aggregated = self.projection(aggregated)
-        aggregated = self.dropout(aggregated)  # Apply dropout after projection
+
+        # Only apply dropout if it exists
+        if hasattr(self, 'dropout'):
+            aggregated = self.dropout(aggregated)  # Apply dropout after projection
         
         return aggregated, attn_weights
     
@@ -204,7 +215,10 @@ class CharacterBasedFontClassifier(nn.Module):
         
         # Final font classifier
         self.font_classifier = nn.Linear(embedding_dim, num_fonts)
-        self.classifier_dropout = nn.Dropout(dropout_rate)  # Dropout before classifier
+
+        # Only create dropout if rate > 0
+        if dropout_rate > 0:
+            self.classifier_dropout = nn.Dropout(dropout_rate)  # Dropout before classifier
         
     def forward(self, char_patches, attention_mask=None):
         """
@@ -251,10 +265,14 @@ class CharacterBasedFontClassifier(nn.Module):
         # Aggregate character embeddings with attention
         font_embedding, attention_weights = self.aggregator(char_embeddings, attention_mask)
         # print(f"Font embedding shape: {font_embedding.shape}, attention_weights shape: {attention_weights.shape}")
-        # Apply dropout before classification
-        font_embedding_dropout = self.classifier_dropout(font_embedding)
-        # Classify font
-        logits = self.font_classifier(font_embedding_dropout)
+        # Apply dropout before classification if it exists
+        if hasattr(self, 'classifier_dropout'):
+            font_embedding_dropout = self.classifier_dropout(font_embedding)
+            # Classify font
+            logits = self.font_classifier(font_embedding_dropout)
+        else:
+            # Classify font without dropout
+            logits = self.font_classifier(font_embedding)
         # print(f"Logits shape: {logits.shape}")
         
         return {
