@@ -119,14 +119,17 @@ class SelfAttentionAggregator(nn.Module):
         super().__init__()
         self.dropout_rate = dropout_rate
         self.multihead_attn = nn.MultiheadAttention(
-            embed_dim=embedding_dim, 
+            embed_dim=embedding_dim,
             num_heads=num_heads,
             batch_first=True,
             dropout=dropout_rate  # Add dropout to attention mechanism
         )
         self.norm = nn.LayerNorm(embedding_dim)
         self.projection = nn.Linear(embedding_dim, embedding_dim)
-        self.dropout = nn.Dropout(dropout_rate)
+
+        # Only create dropout if rate > 0
+        if dropout_rate > 0:
+            self.dropout = nn.Dropout(dropout_rate)
         
     def forward(self, x, attention_mask=None):
         """
@@ -156,7 +159,10 @@ class SelfAttentionAggregator(nn.Module):
         
         # Normalize and apply dropout
         attn_output = self.norm(attn_output + x)  # Add residual connection
-        attn_output = self.dropout(attn_output)  # Apply dropout after normalization
+
+        # Only apply dropout if it exists
+        if hasattr(self, 'dropout'):
+            attn_output = self.dropout(attn_output)  # Apply dropout after normalization
         
         # Aggregate sequence - take mean of unmasked elements
         if attention_mask is not None:
