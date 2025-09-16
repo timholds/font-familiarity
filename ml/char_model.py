@@ -454,13 +454,6 @@ class CRAFTFontClassifier(nn.Module):
                 # Draw rectangle
                 draw.rectangle([x1, y1, x2, y2], outline=(255, 0, 0), width=2)
 
-            # Add text at the top if needed
-            try:
-                font = ImageFont.truetype("arial.ttf", 20)  # Adjust font and size as needed
-            except:
-                font = ImageFont.load_default()
-                draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
-                        fill=(0, 0, 0), font=font)
 
             # Save with exact dimensions
             if save_path is not None and targets is not None:

@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Crop modal elements
     const cropModal = document.getElementById('cropModal');
     const imageToCrop = document.getElementById('imageToCrop');
-    const skipCropBtn = document.getElementById('skipCropBtn');
+    const goBackBtn = document.getElementById('goBackBtn');
     const applyCropBtn = document.getElementById('applyCropBtn');
     let cropper = null;
     let currentFile = null;
@@ -385,36 +385,25 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Display the results
     function displayResults(data) {
-        // Display character count if available
-        if (data.num_chars_extracted !== undefined) {
-            const charCountEl = document.getElementById('char-count-display');
+        // Display character count above visualization if available
+        if (data.num_chars_extracted !== undefined && visualizationContainer) {
+            let charCountEl = document.getElementById('char-count-display');
+
             if (!charCountEl) {
                 // Create character count display element if it doesn't exist
-                const resultsContainer = document.getElementById('results-container');
-                const charCountDiv = document.createElement('div');
-                charCountDiv.id = 'char-count-display';
-                charCountDiv.style.cssText = 'margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 5px; text-align: center;';
+                charCountEl = document.createElement('p');
+                charCountEl.id = 'char-count-display';
+                charCountEl.style.cssText = 'margin: 5px 0; text-align: center; font-size: 14px;';
 
-                if (data.num_chars_extracted === 0) {
-                    charCountDiv.innerHTML = `<strong style="color: #ff4444;">⚠️ WARNING: No characters detected by CRAFT!</strong>`;
-                } else {
-                    charCountDiv.innerHTML = `<strong>CRAFT detected ${data.num_chars_extracted} character${data.num_chars_extracted !== 1 ? 's' : ''}</strong>`;
-                }
+                // Insert it as first child of visualization container
+                visualizationContainer.insertBefore(charCountEl, visualizationContainer.firstChild);
+            }
 
-                // Insert at the beginning of results container
-                const firstChild = resultsContainer.firstChild;
-                if (firstChild) {
-                    resultsContainer.insertBefore(charCountDiv, firstChild.nextSibling);
-                } else {
-                    resultsContainer.appendChild(charCountDiv);
-                }
+            // Update the text
+            if (data.num_chars_extracted === 0) {
+                charCountEl.innerHTML = `<span style="color: #ff4444;">⚠️ WARNING: No characters detected by CRAFT!</span>`;
             } else {
-                // Update existing element
-                if (data.num_chars_extracted === 0) {
-                    charCountEl.innerHTML = `<strong style="color: #ff4444;">⚠️ WARNING: No characters detected by CRAFT!</strong>`;
-                } else {
-                    charCountEl.innerHTML = `<strong>CRAFT detected ${data.num_chars_extracted} character${data.num_chars_extracted !== 1 ? 's' : ''}</strong>`;
-                }
+                charCountEl.innerHTML = `CRAFT detected <strong>${data.num_chars_extracted}</strong> character${data.num_chars_extracted !== 1 ? 's' : ''}`;
             }
 
             // Log to console for debugging
@@ -473,7 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
         reader.onload = function(e) {
             imageToCrop.src = e.target.result;
             cropModal.classList.remove('hidden');
-            
+
             // Initialize cropper after image loads
             imageToCrop.onload = function() {
                 if (cropper) {
@@ -486,8 +475,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     center: true,
                     highlight: true,
                     background: true,
-                    autoCrop: true,
-                    autoCropArea: 0.8,
+                    autoCrop: false,  // Don't auto-create crop box, let user drag to create
                     movable: true,
                     rotatable: false,
                     scalable: true,
@@ -495,45 +483,90 @@ document.addEventListener('DOMContentLoaded', function() {
                     zoomOnTouch: true,
                     zoomOnWheel: true
                 });
+
+                // Focus on the modal for keyboard events
+                cropModal.focus();
             };
         };
         reader.readAsDataURL(file);
     }
-    
-    // Skip crop button handler
-    skipCropBtn.addEventListener('click', function() {
+
+    // Handle keyboard events in crop modal
+    function handleCropModalKeydown(e) {
+        if (!cropModal.classList.contains('hidden')) {
+            if (e.key === 'Escape') {
+                // Escape: Go back to homepage (clear everything)
+                closeCropModalAndReset();
+            } else if (e.key === 'Enter') {
+                // Enter: Accept current crop (or original if no crop)
+                applyCrop();
+            }
+        }
+    }
+
+    // Close modal and reset to homepage
+    function closeCropModalAndReset() {
         if (cropper) {
             cropper.destroy();
             cropper = null;
         }
         cropModal.classList.add('hidden');
-        // Process original image
-        showPreview(currentFile);
-        analyzeImage(currentFile);
-    });
-    
-    // Apply crop button handler
-    applyCropBtn.addEventListener('click', function() {
-        if (!cropper) return;
-        
+        currentFile = null;
+
+        // Reset everything to go back to homepage
+        fileInput.value = '';
+        preview.innerHTML = '';
+        resultsContainer.classList.add('hidden');
+        visualizationContainer.classList.add('hidden');
+        document.getElementById('resetButtonContainer').classList.add('hidden');
+        window.scrollTo(0, 0);
+    }
+
+    // Apply crop (or use original if no crop)
+    function applyCrop() {
+        if (!cropper) {
+            // If no cropper, just use the original file
+            cropModal.classList.add('hidden');
+            showPreview(currentFile);
+            analyzeImage(currentFile);
+            return;
+        }
+
         // Get cropped canvas
         const canvas = cropper.getCroppedCanvas();
-        
+
         // Convert canvas to blob
         canvas.toBlob(function(blob) {
             // Create a new file from the blob
             const croppedFile = new File([blob], currentFile.name, {
                 type: currentFile.type || 'image/png'
             });
-            
+
             // Clean up
             cropper.destroy();
             cropper = null;
             cropModal.classList.add('hidden');
-            
+
             // Process cropped image
             showPreview(croppedFile);
             analyzeImage(croppedFile);
         }, currentFile.type || 'image/png');
-    });
+    }
+
+    // Add keyboard event listener
+    document.addEventListener('keydown', handleCropModalKeydown);
+
+    // Go Back button handler
+    if (goBackBtn) {
+        goBackBtn.addEventListener('click', function() {
+            closeCropModalAndReset();
+        });
+    }
+
+    // Apply crop button handler - now handles both crop and no-crop cases
+    if (applyCropBtn) {
+        applyCropBtn.addEventListener('click', function() {
+            applyCrop();
+        });
+    }
 });

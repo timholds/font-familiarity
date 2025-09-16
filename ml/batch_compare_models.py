@@ -612,45 +612,58 @@ def format_font_name(model_font_name, font_mapping):
     return ' '.join(word.capitalize() for word in lookup_name.split())
 
 
-def generate_embedding_comparison_plot(embeddings_paths, model_names, output_dir):
+def generate_embedding_comparison_plot(embeddings_paths, model_names, output_dir, base_filename,
+                                      label_paths=None, use_categories=False):
     """Generate cosine similarity comparison plot for embedding files.
-    
+
     Args:
         embeddings_paths: List of paths to embedding files
         model_names: List of model names for labels
         output_dir: Directory to save the plot
-    
+        base_filename: Base filename to use (same as HTML report)
+        label_paths: List of paths to label mapping files (for category analysis)
+        use_categories: If True, use category-based analysis script
+
     Returns:
         Path to the generated plot file, or None if generation failed
     """
     try:
-        # Find the analyze_embeddings_distances.py script
-        script_path = Path(__file__).parent.parent / 'analyze_embeddings_distances.py'
-        
+        # Choose which script to use based on category flag
+        if use_categories:
+            script_path = Path(__file__).parent.parent / 'analyze_embeddings_with_categories.py'
+        else:
+            script_path = Path(__file__).parent.parent / 'analyze_embeddings_distances.py'
+
         if not script_path.exists():
-            logger.warning(f"analyze_embeddings_distances.py not found at {script_path}")
+            logger.warning(f"{script_path.name} not found at {script_path}")
             return None
-        
-        # Prepare output filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"embedding_comparison_{timestamp}.png"
+
+        # Use the same base filename as the HTML report
+        output_filename = f"{base_filename}_categories.png" if use_categories else f"{base_filename}.png"
         output_path = Path(output_dir) / output_filename
         
         # Build command
         cmd = [sys.executable, str(script_path)]
-        
+
         # Add embedding file paths
         for path in embeddings_paths:
             cmd.append(str(path))
-        
+
         # Add labels
         cmd.extend(['--labels'] + model_names)
-        
+
         # Add output path
         cmd.extend(['--output', str(output_path)])
-        
+
+        # For category analysis, add label mapping files
+        if use_categories and label_paths:
+            cmd.extend(['--label-files'] + [str(p) for p in label_paths])
+
         # Add other options
-        cmd.extend(['--no-show', '--title', 'Model Embedding Distributions Comparison'])
+        if use_categories:
+            cmd.extend(['--no-show', '--title', 'Model Embedding Distributions by Font Category'])
+        else:
+            cmd.extend(['--no-show', '--title', 'Model Embedding Distributions Comparison'])
         
         logger.info(f"Generating embedding comparison plot...")
         logger.debug(f"Command: {' '.join(cmd)}")
@@ -755,18 +768,34 @@ def main():
             logger.error(f"Error loading model from {model_dir}: {e}")
             raise
     
-    # Generate embedding comparison plot for all models (even single model)
+    # Generate embedding comparison plots for all models (even single model)
     embedding_plot_path = None
+    category_plot_path = None
     if len(embeddings_paths) >= 1:
         # Use same directory as HTML output for the plot
         output_dir = os.path.dirname(args.output_html) if os.path.dirname(args.output_html) else '.'
+        # Extract base filename without extension from HTML output path
+        base_filename = os.path.splitext(os.path.basename(args.output_html))[0]
+
+        # Generate regular embedding plot
         embedding_plot_path = generate_embedding_comparison_plot(
-            embeddings_paths, model_names, output_dir
+            embeddings_paths, model_names, output_dir, base_filename
         )
         if embedding_plot_path:
             logger.info(f"Embedding comparison plot generated: {embedding_plot_path}")
         else:
             logger.warning("Failed to generate embedding comparison plot, continuing without it")
+
+        # Generate category-based embedding plot
+        category_plot_path = generate_embedding_comparison_plot(
+            embeddings_paths, model_names, output_dir, base_filename,
+            label_paths=[os.path.join(os.path.dirname(p), 'label_mapping.npy') for p in embeddings_paths],
+            use_categories=True
+        )
+        if category_plot_path:
+            logger.info(f"Category-based embedding plot generated: {category_plot_path}")
+        else:
+            logger.warning("Failed to generate category-based embedding plot, continuing without it")
     
     # Process all images in the directory
     results, total_images = process_image_directory(
@@ -783,7 +812,9 @@ def main():
     print(f"Report generated: {report_path}")
     if embedding_plot_path:
         print(f"Embedding comparison plot: {embedding_plot_path}")
-    
+    if category_plot_path:
+        print(f"Category-based embedding plot: {category_plot_path}")
+
     # Optionally serve the report
     if args.serve:
         app = Flask(__name__)
