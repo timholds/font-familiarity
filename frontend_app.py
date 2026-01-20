@@ -18,6 +18,7 @@ import io as bio
 import base64
 import uuid 
 from datetime import datetime
+import sys
 from ml.utils import get_params_from_model_path
 
 # Configure logging
@@ -206,6 +207,11 @@ def load_char_model_and_embeddings(model_path: str,
         
         # Load model state
         logger.info(f"\nLoading character model from {model_path}")
+
+        # Make char_model module accessible for torch.load unpickling
+        import ml.char_model
+        sys.modules["char_model"] = ml.char_model
+
         state = torch.load(model_path, map_location=device)
         
         # Check if we have the full model object (new format)
