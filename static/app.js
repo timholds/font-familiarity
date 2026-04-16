@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Crop modal elements
     const cropModal = document.getElementById('cropModal');
     const imageToCrop = document.getElementById('imageToCrop');
-    const goBackBtn = document.getElementById('goBackBtn');
+    const skipCropBtn = document.getElementById('skipCropBtn');
     const applyCropBtn = document.getElementById('applyCropBtn');
     let cropper = null;
     let currentFile = null;
@@ -460,22 +460,21 @@ document.addEventListener('DOMContentLoaded', function() {
     function showCropModal(file) {
         const reader = new FileReader();
         reader.onload = function(e) {
-            imageToCrop.src = e.target.result;
-            cropModal.classList.remove('hidden');
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
 
-            // Initialize cropper after image loads
+            // Attach onload BEFORE setting src to avoid race condition
             imageToCrop.onload = function() {
-                if (cropper) {
-                    cropper.destroy();
-                }
                 cropper = new Cropper(imageToCrop, {
-                    aspectRatio: NaN, // Free aspect ratio
+                    aspectRatio: NaN,
                     viewMode: 1,
                     guides: true,
                     center: true,
                     highlight: true,
-                    background: false,  // No grid background
-                    autoCrop: false,  // Don't auto-create crop box, let user drag to create
+                    background: true,
+                    autoCrop: false,
                     movable: true,
                     rotatable: false,
                     scalable: true,
@@ -484,9 +483,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     zoomOnWheel: true
                 });
 
-                // Focus on the modal for keyboard events
                 cropModal.focus();
             };
+
+            imageToCrop.src = e.target.result;
+            cropModal.classList.remove('hidden');
         };
         reader.readAsDataURL(file);
     }
@@ -557,8 +558,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('keydown', handleCropModalKeydown);
 
     // Go Back button handler
-    if (goBackBtn) {
-        goBackBtn.addEventListener('click', function() {
+    if (skipCropBtn) {
+        skipCropBtn.addEventListener('click', function() {
             closeCropModalAndReset();
         });
     }

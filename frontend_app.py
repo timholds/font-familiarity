@@ -225,6 +225,7 @@ def load_char_model_and_embeddings(model_path: str,
             # New format: full model object
             model = state['model']
             model = model.to(device)
+            model.device = device
 
             # Model was trained with precomputed patches, but we need CRAFT for inference
             if hasattr(model, 'craft') and model.craft is None:

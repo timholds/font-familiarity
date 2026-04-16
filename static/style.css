@@ -559,6 +559,10 @@ button.secondary:hover {
     max-width: 800px;
     max-height: 500px;
     margin: 0 auto 20px;
+    overflow: hidden;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    background: #2a2a2a;
 }
 
 .crop-buttons {
