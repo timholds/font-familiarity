@@ -16,6 +16,8 @@
       gtag('config', 'G-RBRZYSBJ01');
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_version }}">
+    <!-- Cropper.js CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='cropper.min.css') }}">
 </head>
 <body>
     <div class="container">
@@ -66,8 +68,25 @@
             <div id="visualizationImage"></div>
         </div>
 
+        <!-- Crop Modal -->
+        <div id="cropModal" class="crop-modal hidden" tabindex="-1">
+            <div class="crop-modal-content">
+                <h2>Crop Your Image</h2>
+                <p>Select the area containing text for best results</p>
+                <div id="cropContainer">
+                    <img id="imageToCrop" style="max-width: 100%;">
+                </div>
+                <div class="crop-buttons">
+                    <button id="skipCropBtn" class="btn-secondary">Skip Crop</button>
+                    <button id="applyCropBtn" class="btn-primary">Apply Crop</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
+    <!-- Cropper.js JavaScript -->
+    <script src="{{ url_for('static', filename='cropper.min.js') }}"></script>
     <!-- External JavaScript file -->
     <script src="{{ url_for('static', filename='app.js') }}?v={{ css_version }}"></script>
 

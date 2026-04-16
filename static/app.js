@@ -11,6 +11,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const researchModeToggle = document.getElementById('researchModeToggle');
     const visualizationContainer = document.getElementById('visualizationContainer');
     const fontCapitalizationMap = {};
+    
+    // Crop modal elements
+    const cropModal = document.getElementById('cropModal');
+    const imageToCrop = document.getElementById('imageToCrop');
+    const skipCropBtn = document.getElementById('skipCropBtn');
+    const applyCropBtn = document.getElementById('applyCropBtn');
+    let cropper = null;
+    let currentFile = null;
 
     fetch('/static/available_fonts.txt')
         .then(response => response.text())
@@ -126,8 +134,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Process the selected file
     function handleFile(file) {
-        showPreview(file);
-        analyzeImage(file);
+        currentFile = file;
+        showCropModal(file);
     }
     
     function showPreview(file) {
@@ -377,13 +385,38 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Display the results
     function displayResults(data) {
+        // Display character count above visualization if available
+        if (data.num_chars_extracted !== undefined && visualizationContainer) {
+            let charCountEl = document.getElementById('char-count-display');
+
+            if (!charCountEl) {
+                // Create character count display element if it doesn't exist
+                charCountEl = document.createElement('p');
+                charCountEl.id = 'char-count-display';
+                charCountEl.style.cssText = 'margin: 5px 0; text-align: center; font-size: 14px;';
+
+                // Insert it as first child of visualization container
+                visualizationContainer.insertBefore(charCountEl, visualizationContainer.firstChild);
+            }
+
+            // Update the text
+            if (data.num_chars_extracted === 0) {
+                charCountEl.innerHTML = `<span style="color: #ff4444;">⚠️ WARNING: No characters detected by CRAFT!</span>`;
+            } else {
+                charCountEl.innerHTML = `CRAFT detected <strong>${data.num_chars_extracted}</strong> character${data.num_chars_extracted !== 1 ? 's' : ''}`;
+            }
+
+            // Log to console for debugging
+            console.log(`CRAFT extracted ${data.num_chars_extracted} characters`);
+        }
+
         // Embedding results
-        embeddingResults.innerHTML = data.embedding_similarity.map(result => 
+        embeddingResults.innerHTML = data.embedding_similarity.map(result =>
             createResultItemHTML(result.font, result.similarity)
         ).join('');
-        
+
         // Classifier results
-        classifierResults.innerHTML = data.classifier_predictions.map(result => 
+        classifierResults.innerHTML = data.classifier_predictions.map(result =>
             createResultItemHTML(result.font, result.probability)
         ).join('');
     }
@@ -421,5 +454,120 @@ document.addEventListener('DOMContentLoaded', function() {
         if (bytes < 1024) return bytes + ' bytes';
         else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    
+    // Crop modal functions
+    function showCropModal(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+
+            // Attach onload BEFORE setting src to avoid race condition
+            imageToCrop.onload = function() {
+                cropper = new Cropper(imageToCrop, {
+                    aspectRatio: NaN,
+                    viewMode: 1,
+                    guides: true,
+                    center: true,
+                    highlight: true,
+                    background: true,
+                    autoCrop: false,
+                    movable: true,
+                    rotatable: false,
+                    scalable: true,
+                    zoomable: true,
+                    zoomOnTouch: true,
+                    zoomOnWheel: true
+                });
+
+                cropModal.focus();
+            };
+
+            imageToCrop.src = e.target.result;
+            cropModal.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Handle keyboard events in crop modal
+    function handleCropModalKeydown(e) {
+        if (!cropModal.classList.contains('hidden')) {
+            if (e.key === 'Escape') {
+                // Escape: Go back to homepage (clear everything)
+                closeCropModalAndReset();
+            } else if (e.key === 'Enter') {
+                // Enter: Accept current crop (or original if no crop)
+                applyCrop();
+            }
+        }
+    }
+
+    // Close modal and reset to homepage
+    function closeCropModalAndReset() {
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        cropModal.classList.add('hidden');
+        currentFile = null;
+
+        // Reset everything to go back to homepage
+        fileInput.value = '';
+        preview.innerHTML = '';
+        resultsContainer.classList.add('hidden');
+        visualizationContainer.classList.add('hidden');
+        document.getElementById('resetButtonContainer').classList.add('hidden');
+        window.scrollTo(0, 0);
+    }
+
+    // Apply crop (or use original if no crop)
+    function applyCrop() {
+        if (!cropper) {
+            // If no cropper, just use the original file
+            cropModal.classList.add('hidden');
+            showPreview(currentFile);
+            analyzeImage(currentFile);
+            return;
+        }
+
+        // Get cropped canvas
+        const canvas = cropper.getCroppedCanvas();
+
+        // Convert canvas to blob
+        canvas.toBlob(function(blob) {
+            // Create a new file from the blob
+            const croppedFile = new File([blob], currentFile.name, {
+                type: currentFile.type || 'image/png'
+            });
+
+            // Clean up
+            cropper.destroy();
+            cropper = null;
+            cropModal.classList.add('hidden');
+
+            // Process cropped image
+            showPreview(croppedFile);
+            analyzeImage(croppedFile);
+        }, currentFile.type || 'image/png');
+    }
+
+    // Add keyboard event listener
+    document.addEventListener('keydown', handleCropModalKeydown);
+
+    // Go Back button handler
+    if (skipCropBtn) {
+        skipCropBtn.addEventListener('click', function() {
+            closeCropModalAndReset();
+        });
+    }
+
+    // Apply crop button handler - now handles both crop and no-crop cases
+    if (applyCropBtn) {
+        applyCropBtn.addEventListener('click', function() {
+            applyCrop();
+        });
     }
 });

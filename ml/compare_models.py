@@ -62,7 +62,7 @@ def load_model(model_path, embeddings_path, label_mapping_path, device):
                         device=device,
                         use_refiner=True,
                         fp16=False, 
-                        link_threshold=1.,
+                        link_threshold=1.9,
                         text_threshold=.8,
                         low_text=.4,
                     )
@@ -105,7 +105,7 @@ def load_model(model_path, embeddings_path, label_mapping_path, device):
                     device=device,
                     use_refiner=True,
                     fp16=False, 
-                    link_threshold=1.,
+                    link_threshold=1.9,
                     text_threshold=.8,
                     low_text=.4,
                 )
@@ -130,6 +130,9 @@ def load_model(model_path, embeddings_path, label_mapping_path, device):
 def predict_with_model(model, class_embeddings, label_mapping, image_tensor, research_mode=False):
     """Process an image with the given model and return formatted results."""
     results = {}
+
+    # Track number of characters extracted by CRAFT
+    num_chars_extracted = 0
     
     # Generate visualization if in research mode
     if research_mode and (isinstance(model, CRAFTFontClassifier) or isinstance(model, CRAFTFontClassifierV4)):
@@ -155,11 +158,18 @@ def predict_with_model(model, class_embeddings, label_mapping, image_tensor, res
             outputs = model(image_tensor)
             embedding = outputs['font_embedding']
             logits = outputs['logits']
+            # Extract number of characters from attention mask if available
+            if 'attention_mask' in outputs:
+                # Count non-masked characters (where mask is 1)
+                num_chars_extracted = int(outputs['attention_mask'].sum().item())
         elif isinstance(model, CRAFTFontClassifierV4):
             # V4 model returns logits directly and needs get_embedding for embeddings
             outputs = model(image_tensor)
             embedding = outputs['font_embedding']
             logits = outputs['logits']
+            # Extract number of characters from attention mask if available
+            if 'attention_mask' in outputs:
+                num_chars_extracted = int(outputs['attention_mask'].sum().item())
         else:
             embedding = model.get_embedding(image_tensor)
             logits = model.classifier(embedding)
@@ -192,7 +202,11 @@ def predict_with_model(model, class_embeddings, label_mapping, image_tensor, res
         
         results['embedding_similarity'] = embedding_results
         results['classifier_predictions'] = classifier_results
-    
+        results['num_chars_extracted'] = num_chars_extracted
+
+        # Log the number of characters extracted
+        logger.info(f"CRAFT extracted {num_chars_extracted} characters from image")
+
     return results
 
 def create_app(model_path_a, model_path_b, data_dir, 

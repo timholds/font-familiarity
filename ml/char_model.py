@@ -72,14 +72,22 @@ class CharSimpleCNN(nn.Module):
         # TODO clean this up 
         #self.flatten_dim = 128 * 4 * 4 
 
-        self.embedding_layer = nn.Sequential(
+        # Build embedding layers dynamically
+        embedding_layers = [
             nn.Linear(self.flatten_dim, 512),        # 4096 -> H (reduce bottleneck)
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),                # Dropout after first linear
+        ]
+        if dropout_rate > 0:
+            embedding_layers.append(nn.Dropout(dropout_rate))
+
+        embedding_layers.extend([
             nn.Linear(512, embedding_dim),           # H -> 128 (final embedding)
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate * 0.5),          # Lighter dropout after final embedding
-        )
+        ])
+        if dropout_rate > 0:
+            embedding_layers.append(nn.Dropout(dropout_rate * 0.5))
+
+        self.embedding_layer = nn.Sequential(*embedding_layers)
     
         
         self.classifier = nn.Linear(embedding_dim, num_classes)
@@ -119,14 +127,17 @@ class SelfAttentionAggregator(nn.Module):
         super().__init__()
         self.dropout_rate = dropout_rate
         self.multihead_attn = nn.MultiheadAttention(
-            embed_dim=embedding_dim, 
+            embed_dim=embedding_dim,
             num_heads=num_heads,
             batch_first=True,
-            dropout=dropout_rate  # Add dropout to attention mechanism
+            dropout=dropout_rate  # Dropout disabled when rate is 0
         )
         self.norm = nn.LayerNorm(embedding_dim)
         self.projection = nn.Linear(embedding_dim, embedding_dim)
-        self.dropout = nn.Dropout(dropout_rate)
+
+        # Only create dropout if rate > 0
+        if dropout_rate > 0:
+            self.dropout = nn.Dropout(dropout_rate)
         
     def forward(self, x, attention_mask=None):
         """
@@ -156,7 +167,10 @@ class SelfAttentionAggregator(nn.Module):
         
         # Normalize and apply dropout
         attn_output = self.norm(attn_output + x)  # Add residual connection
-        attn_output = self.dropout(attn_output)  # Apply dropout after normalization
+
+        # Only apply dropout if it exists
+        if hasattr(self, 'dropout'):
+            attn_output = self.dropout(attn_output)  # Apply dropout after normalization
         
         # Aggregate sequence - take mean of unmasked elements
         if attention_mask is not None:
@@ -172,7 +186,10 @@ class SelfAttentionAggregator(nn.Module):
             
         # Final projection with dropout
         aggregated = self.projection(aggregated)
-        aggregated = self.dropout(aggregated)  # Apply dropout after projection
+
+        # Only apply dropout if it exists
+        if hasattr(self, 'dropout'):
+            aggregated = self.dropout(aggregated)  # Apply dropout after projection
         
         return aggregated, attn_weights
     
@@ -198,7 +215,10 @@ class CharacterBasedFontClassifier(nn.Module):
         
         # Final font classifier
         self.font_classifier = nn.Linear(embedding_dim, num_fonts)
-        self.classifier_dropout = nn.Dropout(dropout_rate)  # Dropout before classifier
+
+        # Only create dropout if rate > 0
+        if dropout_rate > 0:
+            self.classifier_dropout = nn.Dropout(dropout_rate)  # Dropout before classifier
         
     def forward(self, char_patches, attention_mask=None):
         """
@@ -245,10 +265,14 @@ class CharacterBasedFontClassifier(nn.Module):
         # Aggregate character embeddings with attention
         font_embedding, attention_weights = self.aggregator(char_embeddings, attention_mask)
         # print(f"Font embedding shape: {font_embedding.shape}, attention_weights shape: {attention_weights.shape}")
-        # Apply dropout before classification
-        font_embedding_dropout = self.classifier_dropout(font_embedding)
-        # Classify font
-        logits = self.font_classifier(font_embedding_dropout)
+        # Apply dropout before classification if it exists
+        if hasattr(self, 'classifier_dropout'):
+            font_embedding_dropout = self.classifier_dropout(font_embedding)
+            # Classify font
+            logits = self.font_classifier(font_embedding_dropout)
+        else:
+            # Classify font without dropout
+            logits = self.font_classifier(font_embedding)
         # print(f"Logits shape: {logits.shape}")
         
         return {
@@ -281,7 +305,7 @@ class CRAFTFontClassifier(nn.Module):
                 device=device,
                 use_refiner=True,
                 fp16=craft_fp16, 
-                link_threshold=1.,
+                link_threshold=1.9,
                 text_threshold=.8,
                 low_text=.4,
             )
@@ -430,13 +454,6 @@ class CRAFTFontClassifier(nn.Module):
                 # Draw rectangle
                 draw.rectangle([x1, y1, x2, y2], outline=(255, 0, 0), width=2)
 
-            # Add text at the top if needed
-            try:
-                font = ImageFont.truetype("arial.ttf", 20)  # Adjust font and size as needed
-            except:
-                font = ImageFont.load_default()
-                draw.text((10, 10), f"CRAFT Detections: {len(polygons)} characters", 
-                        fill=(0, 0, 0), font=font)
 
             # Save with exact dimensions
             if save_path is not None and targets is not None:
@@ -715,5 +732,8 @@ class CRAFTFontClassifier(nn.Module):
         # Add labels to output if available
         if 'labels' in batch_data:
             output['labels'] = batch_data['labels']
-            
+
+        # Add attention mask to output for tracking number of characters
+        output['attention_mask'] = batch_data['attention_mask']
+
         return output

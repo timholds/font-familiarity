@@ -30,14 +30,21 @@ A super rough, ~15GB font dataset is available to download on Huggingface https:
 
 
 ## Model and embeddings
-Our goal is to find which fonts are most similar to the unknown input font, so we need to have some idea of what all the *known* fonts look like in feature space and return the closest ones. To find that, we can take the trained model and for each class, average the output embedding over all the training examples to give us a prototype average for each class. 
+Our goal is to find which fonts are most similar to the unknown input font, so we need to have some idea of what all the *known* fonts look like in feature space and return the closest ones. To find that, we can take the trained model and for each class, average the output embedding over all the training examples to give us a prototype average for each class.
 
 For each font class (out of the ~700 fonts), we're:
 - Taking all images of that font (1000 images per class in this case)
 - Running each through the model to get its 1024-dimensional feature vector
 - Computing the average of all these vectors for that class
 
-So if Font_A with n images, we get one 1024-dim vector representing the "average characteristics" of Font_A. When a user inputs their image, we run it through the trained model and use the activations as a query to find the closest font embeddings. 
+So if Font_A with n images, we get one 1024-dim vector representing the "average characteristics" of Font_A. When a user inputs their image, we run it through the trained model and use the activations as a query to find the closest font embeddings.
+
+### Model Versioning & Backward Compatibility
+We save models with `torch.save({'model': model, ...})` which stores the entire model object. When loading, PyTorch uses the CURRENT code definitions, not the code from when the model was saved. This means:
+- If you add layers (like dropout) to the architecture, old models will fail to load
+- Solution: Make new layers conditional (e.g., only create dropout layers if `dropout_rate > 0`)
+- In forward passes, check if layers exist with `hasattr(self, 'layer_name')` before using them
+- This allows the same code to load both old models (without the new layers) and new models (with them) 
 
 ## Frontend
 

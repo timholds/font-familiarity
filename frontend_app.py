@@ -180,19 +180,25 @@ def get_top_k_predictions(logits: torch.Tensor, k: int = 5) -> tuple[np.ndarray,
     return top_k_indices.cpu().numpy(), top_k_probs.cpu().numpy()
 
 
-def load_char_model_and_embeddings(model_path: str, 
-                                   embeddings_path: str, 
+def load_char_model_and_embeddings(model_path: str,
+                                   embeddings_path: str,
                                    label_mapping_path: str) -> None:
     """Initialize character-based model and load pre-computed embeddings."""
     global model, class_embeddings, device, label_mapping, is_initialized
-    
+
     try:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f"Using device: {device}")
-        
+
+        # Extract hyperparameters from model path to get padding values
+        hparams = get_params_from_model_path(model_path)
+        pad_x = hparams.get('pad_x', 0.05)
+        pad_y = hparams.get('pad_y', 0.15)
+        logger.info(f"Extracted padding values from model path: pad_x={pad_x}, pad_y={pad_y}")
+
         # Verify all required files exist
-        for path, name in [(model_path, 'Model'), 
-                          (embeddings_path, 'Embeddings'), 
+        for path, name in [(model_path, 'Model'),
+                          (embeddings_path, 'Embeddings'),
                           (label_mapping_path, 'Label mapping')]:
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"{name} file not found: {path}")
@@ -219,8 +225,28 @@ def load_char_model_and_embeddings(model_path: str,
             # New format: full model object
             model = state['model']
             model = model.to(device)
+            model.device = device
+
+            # Model was trained with precomputed patches, but we need CRAFT for inference
+            if hasattr(model, 'craft') and model.craft is None:
+                from ml.char_model import CRAFTModel
+                model.craft = CRAFTModel(
+                    cache_dir='./CRAFT-text-detection/weights',
+                    device=device,
+                    use_refiner=True,
+                    fp16=False,
+                    link_threshold=1.9,
+                    text_threshold=.8,
+                    low_text=.4,
+                )
+                model.use_precomputed_craft = False
+                # Set the padding values from the model path
+                model.pad_x = pad_x
+                model.pad_y = pad_y
+                logger.info(f"CRAFT initialized for inference with pad_x={pad_x}, pad_y={pad_y}")
+
             model.eval()
-            
+
             # For inference with raw images, ensure precomputed CRAFT is disabled
             if hasattr(model, 'use_precomputed_craft'):
                 if model.use_precomputed_craft and model.craft is None:
@@ -230,25 +256,26 @@ def load_char_model_and_embeddings(model_path: str,
                         cache_dir='weights/',
                         device=device,
                         use_refiner=True,
-                        fp16=False, 
-                        link_threshold=1.,
+                        fp16=False,
+                        link_threshold=1.9,
                         text_threshold=.8,
                         low_text=.4,
                     )
                 model.use_precomputed_craft = False
-                
-            logger.info("Loaded full model object from checkpoint")
+
+            logger.info(f"Loaded full model object from checkpoint")
+            logger.info(f"Model class: {model.__class__.__module__}.{model.__class__.__name__}")
         elif 'model_state_dict' in state:
             # Old format: always use V4 architecture
             logger.info("Detected old checkpoint format (v4model), using V4 architecture...")
-            
+
             # Extract model configuration from the checkpoint
             num_classes = state.get('num_classes', 699)  # Default to 699 if not specified
-            
+
             # Parse model configuration from filename if available
             model_name = os.path.basename(model_path).replace('.pt', '')
             config = get_params_from_model_path(model_name)
-            
+
             # Create V4 model
             model = CRAFTFontClassifierV4(
                 num_fonts=num_classes,
@@ -260,12 +287,12 @@ def load_char_model_and_embeddings(model_path: str,
                 use_precomputed_craft=False,  # Always False for inference
                 craft_weights_dir='weights/'
             )
-            
+
             # Load the state dict
             model.load_state_dict(state['model_state_dict'])
             model = model.to(device)
             model.eval()
-            
+
             # Initialize CRAFT model for inference
             if not hasattr(model, 'craft') or model.craft is None:
                 from CRAFT import CRAFTModel
@@ -273,12 +300,12 @@ def load_char_model_and_embeddings(model_path: str,
                     cache_dir='weights/',
                     device=device,
                     use_refiner=True,
-                    fp16=False, 
-                    link_threshold=1.,
+                    fp16=False,
+                    link_threshold=1.9,
                     text_threshold=.8,
                     low_text=.4,
                 )
-            
+
             logger.info(f"Loaded V4 model with config: embedding_dim={config.get('embedding_dim', 1024)}, "
                        f"num_heads={config.get('num_heads', 16)}, initial_channels={config.get('initial_channels', 16)}, "
                        f"patch_size={config.get('patch_size', 64)}")
@@ -469,7 +496,7 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
         
             # TODO use built in visualize_craft_detections 
             # Generate visualization if in research mode
-            if research_mode and isinstance(model, CRAFTFontClassifier):
+            if research_mode and model.__class__.__name__ == 'CRAFTFontClassifier':
                 logger.info("Generating visualization for research mode")   
                 try:
                     # TODO add option to return image
@@ -497,14 +524,28 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
             
             
             with torch.no_grad():
-                if isinstance(model, (CRAFTFontClassifier, CRAFTFontClassifierV4)):
+                logger.info(f"Model type: {type(model)}")
+                logger.info(f"Model class name: {model.__class__.__name__}")
+
+                # Check if it's a CRAFTFontClassifier by name (handles module path differences)
+                if model.__class__.__name__ in ['CRAFTFontClassifier', 'CRAFTFontClassifierV4']:
                     # Character model - get embedding and logits
                     # TODO make sure model is expecting HWC 0, 255 input
+                    logger.info("Using CRAFTFontClassifier forward pass")
                     outputs = model(image_tensor)
                     embedding = outputs['font_embedding']
                     logits = outputs['logits']
+
+                    # Log and track number of characters extracted
+                    if 'attention_mask' in outputs:
+                        num_chars_extracted = int(outputs['attention_mask'].sum().item())
+                        logger.info(f"CRAFT extracted {num_chars_extracted} characters from the image")
+                        response_data['num_chars_extracted'] = num_chars_extracted
+                        if num_chars_extracted == 0:
+                            logger.warning("WARNING: No characters were extracted by CRAFT! Check the image or CRAFT configuration.")
                 else:
                     # Original model approach (SimpleCNN)
+                    logger.info("Using original model approach")
                     embedding = model.get_embedding(image_tensor)
                     logits = model.classifier(embedding)
                 
@@ -537,6 +578,9 @@ def create_app(model_path=None, data_dir=None, embeddings_path=None,
                     'classifier_predictions': classifier_results,
                     'research_mode': research_mode
                 }
+                # Add character count if available
+                if 'num_chars_extracted' in response_data:
+                    prediction_results['num_chars_extracted'] = response_data['num_chars_extracted']
                 update_metadata(metadata_path, prediction_results)
                 
                 return jsonify({

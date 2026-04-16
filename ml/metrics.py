@@ -6,11 +6,12 @@ import time
 
 class ClassificationMetrics:
     """Unified metrics tracking for both training and evaluation."""
-    
+
     def __init__(self, num_classes: int, device: torch.device):
         self.num_classes = num_classes
         self.device = device
         self.prev_predictions = None
+        self.prev_top5_predictions = None
         self.training_start_time = time.time()
         self.batch_start_time = time.time()
         
@@ -71,14 +72,14 @@ class ClassificationMetrics:
             
         return metrics
 
-    def compute_all_metrics(self, 
-                          logits: torch.Tensor, 
+    def compute_all_metrics(self,
+                          logits: torch.Tensor,
                           targets: torch.Tensor,
                           model: Optional[torch.nn.Module] = None,
                           epoch: Optional[int] = None) -> Dict[str, float]:
         """
         Compute comprehensive metrics for evaluation.
-        
+
         Args:
             logits: Raw model outputs (pre-softmax)
             targets: Ground truth labels
@@ -87,9 +88,9 @@ class ClassificationMetrics:
         """
         probs = F.softmax(logits, dim=1)
         top1_pred = torch.argmax(logits, dim=1)
-        
+
         metrics = {}
-        
+
         # Core metrics
         metrics.update(self._compute_topk_accuracy(logits, targets))
         metrics.update(self._compute_per_class_metrics(top1_pred, targets))
@@ -97,11 +98,14 @@ class ClassificationMetrics:
         metrics.update(self._compute_reliability_metrics(probs, targets, top1_pred))
         # metrics.update(self._compute_map(probs, targets))
         metrics.update(self._compute_logit_stats(logits))
-        
+
         # Training dynamics metrics
         if self.prev_predictions is not None:
             metrics.update(self._compute_prediction_churn(top1_pred))
         self.prev_predictions = top1_pred.clone()
+
+        # Top-5 stability metrics
+        metrics.update(self._compute_top5_stability(logits))
         
         # Add gradient stats if model is provided
         if model is not None and any(p.grad is not None for p in model.parameters()):
@@ -142,6 +146,30 @@ class ClassificationMetrics:
         """Compute prediction stability between epochs."""
         prediction_churn = (current_preds != self.prev_predictions).float().mean().item() * 100
         return {'prediction_churn': prediction_churn}
+
+    def _compute_top5_stability(self, logits: torch.Tensor) -> Dict[str, float]:
+        """Compute top-5 prediction stability between epochs."""
+        metrics = {}
+
+        # Get current top-5 predictions from classifier
+        _, current_top5 = logits.topk(5, dim=1, largest=True, sorted=False)
+
+        # Compute classifier top-5 stability
+        if self.prev_top5_predictions is not None:
+            # Compute Jaccard similarity for each sample's top-5 set
+            stability_scores = []
+            for i in range(current_top5.shape[0]):
+                curr_set = set(current_top5[i].cpu().numpy())
+                prev_set = set(self.prev_top5_predictions[i].cpu().numpy())
+                jaccard = len(curr_set & prev_set) / 5.0  # Since both sets have exactly 5 elements
+                stability_scores.append(jaccard)
+
+            metrics['classifier_top5_stability'] = torch.tensor(stability_scores).mean().item() * 100
+
+        # Store current top-5 for next epoch
+        self.prev_top5_predictions = current_top5.clone()
+
+        return metrics
     
     def _compute_gradient_stats(self, model: torch.nn.Module) -> Dict[str, float]:
         """Compute gradient statistics."""
