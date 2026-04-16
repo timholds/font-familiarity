@@ -17,7 +17,7 @@
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_version }}">
     <!-- Cropper.js CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cropper.min.css') }}">
 </head>
 <body>
     <div class="container">
@@ -77,8 +77,8 @@
                     <img id="imageToCrop" style="max-width: 100%;">
                 </div>
                 <div class="crop-buttons">
-                    <button id="goBackBtn" class="btn-secondary">Go Back</button>
-                    <button id="applyCropBtn" class="btn-primary">Continue</button>
+                    <button id="skipCropBtn" class="btn-secondary">Skip Crop</button>
+                    <button id="applyCropBtn" class="btn-primary">Apply Crop</button>
                 </div>
             </div>
         </div>
@@ -86,7 +86,7 @@
     </div>
 
     <!-- Cropper.js JavaScript -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <script src="{{ url_for('static', filename='cropper.min.js') }}"></script>
     <!-- External JavaScript file -->
     <script src="{{ url_for('static', filename='app.js') }}?v={{ css_version }}"></script>
 
