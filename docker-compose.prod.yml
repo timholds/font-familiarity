@@ -16,7 +16,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:
-      test: ["CMD", "wget", "-O", "-", "http://localhost:8000/test"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/test"]
       interval: 30s
       timeout: 10s
       retries: 3
